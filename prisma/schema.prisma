@@ -10,19 +10,23 @@ datasource db {
 }
 
 model User {
-  id                 String             @id @default(uuid())
-  email              String             @unique
-  passwordHash       String
-  fullName           String
-  isMfaEnabled       Boolean            @default(false)
-  mfaSecretEncrypted String?
-  isSuperadmin       Boolean            @default(false)
-  status             String             @default("ACTIVE") // ACTIVE, SUSPENDED, INVITED
-  createdAt          DateTime           @default(now())
-  updatedAt          DateTime           @updatedAt
-  version            Int                @default(1)
-  sessions           UserSession[]
-  memberships        TenantMembership[]
+  id                        String                  @id @default(uuid())
+  email                     String                  @unique
+  passwordHash              String
+  fullName                  String
+  isMfaEnabled              Boolean                 @default(false)
+  mfaSecretEncrypted        String?
+  isSuperadmin              Boolean                 @default(false)
+  status                    String                  @default("ACTIVE") // ACTIVE, SUSPENDED, INVITED
+  createdAt                 DateTime                @default(now())
+  updatedAt                 DateTime                @updatedAt
+  version                   Int                     @default(1)
+  sessions                  UserSession[]
+  memberships               TenantMembership[]
+  reconciledTransactions    ReconciledTransaction[] @relation("ReconciledTransactions")
+  resolvedProposals         Proposal[]              @relation("ResolvedProposals")
+  bankingResolvedExceptions BankingExceptionItem[]  @relation("BankingResolvedExceptions")
+  approvedPayrollRuns       PayrollRun[]            @relation("ApprovedPayrollRuns")
 }
 
 model UserSession {
@@ -63,6 +67,16 @@ model Tenant {
   journalEntries         JournalEntry[]
   journalEntryLines      JournalEntryLine[]
   accountMonthlyBalances AccountMonthlyBalance[]
+  bankAccounts           BankAccount[]
+  bankStatements         BankStatement[]
+  bankTransactions       BankTransaction[]
+  reconciledTransactions ReconciledTransaction[]
+  proposals              Proposal[]
+  bankingExceptions      BankingExceptionItem[]
+  employees              Employee[]
+  compensationConfigs    CompensationConfig[]
+  payrollRuns            PayrollRun[]
+  payrollItems           PayrollItem[]
 }
 
 model TenantMembership {
@@ -149,31 +163,35 @@ model AccountingPeriod {
   createdAt      DateTime                @default(now())
   journalEntries JournalEntry[]
   balances       AccountMonthlyBalance[]
+  payrollRuns    PayrollRun[]
 
   @@unique([tenantId, fiscalYearId, periodNumber])
 }
 
 model ChartOfAccount {
-  id                String                  @id @default(uuid())
-  tenantId          String
-  tenant            Tenant                  @relation(fields: [tenantId], references: [id])
-  accountCode       String
-  name              String
-  classification    String // ASSET, LIABILITY, EQUITY, REVENUE, EXPENSE
-  subClassification String?
-  parentAccountId   String?
-  parentAccount     ChartOfAccount?         @relation("AccountHierarchy", fields: [parentAccountId], references: [id])
-  childAccounts     ChartOfAccount[]        @relation("AccountHierarchy")
-  isActive          Boolean                 @default(true)
-  isSystemLocked    Boolean                 @default(false)
-  createdAt         DateTime                @default(now())
-  updatedAt         DateTime                @updatedAt
-  version           Int                     @default(1)
-  journalEntryLines JournalEntryLine[]
-  monthlyBalances   AccountMonthlyBalance[]
-  counterparties    Counterparty[]
-  invoiceLines      InvoiceLine[]
-  paymentAccounts   Payment[]               @relation("PaymentAccount")
+  id                     String                  @id @default(uuid())
+  tenantId               String
+  tenant                 Tenant                  @relation(fields: [tenantId], references: [id])
+  accountCode            String
+  name                   String
+  classification         String // ASSET, LIABILITY, EQUITY, REVENUE, EXPENSE
+  subClassification      String?
+  parentAccountId        String?
+  parentAccount          ChartOfAccount?         @relation("AccountHierarchy", fields: [parentAccountId], references: [id])
+  childAccounts          ChartOfAccount[]        @relation("AccountHierarchy")
+  isActive               Boolean                 @default(true)
+  isSystemLocked         Boolean                 @default(false)
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
+  version                Int                     @default(1)
+  journalEntryLines      JournalEntryLine[]
+  monthlyBalances        AccountMonthlyBalance[]
+  counterparties         Counterparty[]
+  invoiceLines           InvoiceLine[]
+  paymentAccounts        Payment[]               @relation("PaymentAccount")
+  bankAccounts           BankAccount[]           @relation("BankAccountLedgerAccount")
+  proposalDebitAccounts  Proposal[]              @relation("ProposalDebitAccount")
+  proposalCreditAccounts Proposal[]              @relation("ProposalCreditAccount")
 
   @@unique([tenantId, accountCode])
 }
@@ -195,34 +213,38 @@ model Counterparty {
   version          Int             @default(1)
   invoices         Invoice[]
   payments         Payment[]
+  proposals        Proposal[]
 
   @@unique([tenantId, normalizedName])
 }
 
 model JournalEntry {
-  id                 String             @id @default(uuid())
-  tenantId           String
-  tenant             Tenant             @relation(fields: [tenantId], references: [id])
-  accountingPeriodId String
-  accountingPeriod   AccountingPeriod   @relation(fields: [accountingPeriodId], references: [id])
-  entryNumber        String
-  entryDate          DateTime
-  description        String
-  status             String             @default("DRAFT") // DRAFT, POSTED, REVERSED
-  sourceType         String // MANUAL, INVOICE, BILL, PAYMENT, PAYROLL, BANK_RECONCILIATION, INVENTORY
-  sourceId           String?
-  reversesEntryId    String?
-  reversesEntry      JournalEntry?      @relation("JournalEntryReversal", fields: [reversesEntryId], references: [id])
-  reversedByEntries  JournalEntry[]     @relation("JournalEntryReversal")
-  totalDebitCents    BigInt             @default(0)
-  totalCreditCents   BigInt             @default(0)
-  createdByUserId    String?
-  createdByAgentId   String?
-  postedAt           DateTime?
-  createdAt          DateTime           @default(now())
-  lines              JournalEntryLine[]
-  invoices           Invoice[]
-  payments           Payment[]
+  id                     String                  @id @default(uuid())
+  tenantId               String
+  tenant                 Tenant                  @relation(fields: [tenantId], references: [id])
+  accountingPeriodId     String
+  accountingPeriod       AccountingPeriod        @relation(fields: [accountingPeriodId], references: [id])
+  entryNumber            String
+  entryDate              DateTime
+  description            String
+  status                 String                  @default("DRAFT") // DRAFT, POSTED, REVERSED
+  sourceType             String // MANUAL, INVOICE, BILL, PAYMENT, PAYROLL, BANK_RECONCILIATION, INVENTORY
+  sourceId               String?
+  reversesEntryId        String?
+  reversesEntry          JournalEntry?           @relation("JournalEntryReversal", fields: [reversesEntryId], references: [id])
+  reversedByEntries      JournalEntry[]          @relation("JournalEntryReversal")
+  totalDebitCents        BigInt                  @default(0)
+  totalCreditCents       BigInt                  @default(0)
+  createdByUserId        String?
+  createdByAgentId       String?
+  postedAt               DateTime?
+  createdAt              DateTime                @default(now())
+  lines                  JournalEntryLine[]
+  invoices               Invoice[]
+  payments               Payment[]
+  reconciledTransactions ReconciledTransaction[]
+  proposalPostedEntries  Proposal[]              @relation("ProposalPostedJournalEntry")
+  payrollRuns            PayrollRun[]
 
   @@unique([tenantId, entryNumber])
 }
@@ -338,4 +360,243 @@ model PaymentAllocation {
   invoice              Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
   allocatedAmountCents BigInt
   createdAt            DateTime @default(now())
+}
+
+model BankAccount {
+  id                     String            @id @default(uuid())
+  tenantId               String
+  tenant                 Tenant            @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  ledgerAccountId        String
+  ledgerAccount          ChartOfAccount    @relation("BankAccountLedgerAccount", fields: [ledgerAccountId], references: [id], onDelete: Restrict)
+  accountName            String
+  institutionName        String
+  accountType            String // CHECKING, SAVINGS, CREDIT_CARD
+  currency               String            @default("USD")
+  accountNumberLast4     String
+  currentBalanceCents    BigInt            @default(0)
+  reconciledBalanceCents BigInt            @default(0)
+  isActive               Boolean           @default(true)
+  createdAt              DateTime          @default(now())
+  updatedAt              DateTime          @updatedAt
+  version                Int               @default(1)
+  statements             BankStatement[]
+  transactions           BankTransaction[]
+
+  @@index([tenantId, isActive])
+}
+
+model BankStatement {
+  id                  String            @id @default(uuid())
+  tenantId            String
+  tenant              Tenant            @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  bankAccountId       String
+  bankAccount         BankAccount       @relation(fields: [bankAccountId], references: [id], onDelete: Restrict)
+  sourceDocumentId    String?
+  fileName            String
+  fileSha256          String
+  mimeType            String
+  statementStartDate  DateTime
+  statementEndDate    DateTime
+  openingBalanceCents BigInt
+  closingBalanceCents BigInt
+  totalDebitsCents    BigInt            @default(0)
+  totalCreditsCents   BigInt            @default(0)
+  status              String            @default("UPLOADED") // UPLOADED, PROCESSING, PARSED, RECONCILED, FAILED, EXCEPTION
+  retryCount          Int               @default(0)
+  errorMessage        String?
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+  version             Int               @default(1)
+  transactions        BankTransaction[]
+
+  @@unique([tenantId, fileSha256])
+  @@unique([tenantId, bankAccountId, statementStartDate, statementEndDate])
+  @@index([tenantId, bankAccountId, status])
+}
+
+model BankTransaction {
+  id                    String                 @id @default(uuid())
+  tenantId              String
+  tenant                Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  bankStatementId       String
+  bankStatement         BankStatement          @relation(fields: [bankStatementId], references: [id], onDelete: Cascade)
+  bankAccountId         String
+  bankAccount           BankAccount            @relation(fields: [bankAccountId], references: [id], onDelete: Restrict)
+  transactionDate       DateTime
+  amountCents           BigInt
+  rawDescription        String
+  normalizedPayee       String?
+  referenceNumber       String?
+  transactionHash       String
+  status                String                 @default("UNRECONCILED") // UNRECONCILED, PROPOSED, MATCHED, RECONCILED, EXCLUDED, FLAGGED
+  createdAt             DateTime               @default(now())
+  reconciledTransaction ReconciledTransaction?
+  proposals             Proposal[]
+
+  @@unique([tenantId, bankAccountId, transactionHash])
+  @@index([tenantId, status, transactionDate])
+  @@index([bankStatementId])
+}
+
+model ReconciledTransaction {
+  id                   String          @id @default(uuid())
+  tenantId             String
+  tenant               Tenant          @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  bankTransactionId    String          @unique
+  bankTransaction      BankTransaction @relation(fields: [bankTransactionId], references: [id], onDelete: Restrict)
+  journalEntryId       String
+  journalEntry         JournalEntry    @relation(fields: [journalEntryId], references: [id], onDelete: Restrict)
+  reconciliationMethod String // AUTO_HIGH_CONFIDENCE, HUMAN_APPROVED, MANUAL_MATCH
+  confidenceScore      Float?
+  reconciledByUserId   String?
+  reconciledByUser     User?           @relation("ReconciledTransactions", fields: [reconciledByUserId], references: [id], onDelete: SetNull)
+  reconciledAt         DateTime        @default(now())
+
+  @@index([tenantId, reconciledAt])
+  @@index([journalEntryId])
+}
+
+model Proposal {
+  id                   String          @id @default(uuid())
+  tenantId             String
+  tenant               Tenant          @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  bankTransactionId    String
+  bankTransaction      BankTransaction @relation(fields: [bankTransactionId], references: [id], onDelete: Restrict)
+  invoiceId            String?
+  counterpartyId       String?
+  counterparty         Counterparty?   @relation(fields: [counterpartyId], references: [id], onDelete: SetNull)
+  proposalType         String // INVOICE_MATCH, VENDOR_PAYMENT, TRANSFER, REFUND, EXPENSE_CLASSIFICATION, REVENUE_CLASSIFICATION, AMBIGUOUS
+  debitAccountId       String
+  debitAccount         ChartOfAccount  @relation("ProposalDebitAccount", fields: [debitAccountId], references: [id], onDelete: Restrict)
+  creditAccountId      String
+  creditAccount        ChartOfAccount  @relation("ProposalCreditAccount", fields: [creditAccountId], references: [id], onDelete: Restrict)
+  amountCents          BigInt
+  confidenceScore      Float
+  evidence             Json
+  rationale            String
+  status               String          @default("PROPOSED") // PROPOSED, APPROVED, REJECTED, MODIFIED
+  autoPostEligible     Boolean         @default(false)
+  postedJournalEntryId String?
+  postedJournalEntry   JournalEntry?   @relation("ProposalPostedJournalEntry", fields: [postedJournalEntryId], references: [id], onDelete: SetNull)
+  resolvedByUserId     String?
+  resolvedByUser       User?           @relation("ResolvedProposals", fields: [resolvedByUserId], references: [id], onDelete: SetNull)
+  resolvedAt           DateTime?
+  createdAt            DateTime        @default(now())
+
+  @@index([tenantId, status])
+  @@index([bankTransactionId])
+}
+
+model BankingExceptionItem {
+  id                 String    @id @default(uuid())
+  tenantId           String
+  tenant             Tenant    @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  entityType         String // STATEMENT, BANK_TRANSACTION, PROPOSAL, INVOICE
+  entityId           String
+  exceptionType      String
+  severity           String // LOW, MEDIUM, HIGH, CRITICAL
+  reason             String
+  evidence           Json?
+  proposedResolution Json?
+  status             String    @default("OPEN") // OPEN, RESOLVED, DISMISSED
+  resolvedByUserId   String?
+  resolvedByUser     User?     @relation("BankingResolvedExceptions", fields: [resolvedByUserId], references: [id], onDelete: SetNull)
+  resolvedAt         DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@index([tenantId, status])
+}
+
+model Employee {
+  id                 String              @id @default(uuid())
+  tenantId           String
+  tenant             Tenant              @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  firstName          String
+  lastName           String
+  email              String
+  ssnLast4           String
+  department         String              @default("General")
+  jobTitle           String
+  payType            String // SALARY, HOURLY
+  rateCents          BigInt
+  status             String              @default("ACTIVE") // ACTIVE, TERMINATED, LEAVE
+  hireDate           DateTime
+  terminationDate    DateTime?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  version            Int                 @default(1)
+  compensationConfig CompensationConfig?
+  payrollItems       PayrollItem[]
+
+  @@unique([tenantId, email])
+  @@index([tenantId, status])
+}
+
+model CompensationConfig {
+  id                                    String   @id @default(uuid())
+  tenantId                              String
+  tenant                                Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  employeeId                            String   @unique
+  employee                              Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  payPeriodsPerYear                     Int      @default(26) // 12, 24, 26, 52
+  taxWithholdingRateBasisPoints         Int      @default(1500)
+  standardDeductionCents                BigInt   @default(0)
+  retirementContributionRateBasisPoints Int      @default(0)
+  directDepositAccountLast4             String?
+  createdAt                             DateTime @default(now())
+  updatedAt                             DateTime @updatedAt
+  version                               Int      @default(1)
+
+  @@unique([tenantId, employeeId])
+}
+
+model PayrollRun {
+  id                   String           @id @default(uuid())
+  tenantId             String
+  tenant               Tenant           @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  accountingPeriodId   String
+  accountingPeriod     AccountingPeriod @relation(fields: [accountingPeriodId], references: [id], onDelete: Restrict)
+  journalEntryId       String?
+  journalEntry         JournalEntry?    @relation(fields: [journalEntryId], references: [id], onDelete: Restrict)
+  runNumber            String
+  payPeriodStart       DateTime
+  payPeriodEnd         DateTime
+  paymentDate          DateTime
+  totalGrossCents      BigInt           @default(0)
+  totalTaxCents        BigInt           @default(0)
+  totalDeductionsCents BigInt           @default(0)
+  totalNetCents        BigInt           @default(0)
+  status               String           @default("DRAFT") // DRAFT, AWAITING_APPROVAL, APPROVED, POSTED, CANCELLED
+  approvedByUserId     String?
+  approvedByUser       User?            @relation("ApprovedPayrollRuns", fields: [approvedByUserId], references: [id], onDelete: SetNull)
+  approvedAt           DateTime?
+  postedAt             DateTime?
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+  version              Int              @default(1)
+  items                PayrollItem[]
+
+  @@unique([tenantId, payPeriodStart, payPeriodEnd])
+  @@index([tenantId, status])
+}
+
+model PayrollItem {
+  id                   String     @id @default(uuid())
+  tenantId             String
+  tenant               Tenant     @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  payrollRunId         String
+  payrollRun           PayrollRun @relation(fields: [payrollRunId], references: [id], onDelete: Cascade)
+  employeeId           String
+  employee             Employee   @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  hoursWorked          Float      @default(0)
+  grossPayCents        BigInt
+  taxWithholdingsCents BigInt
+  deductionsCents      BigInt
+  netPayCents          BigInt
+  breakdown            Json // { standardDeductionCents, retirementContributionCents, otherDeductionsCents }
+  createdAt            DateTime   @default(now())
+
+  @@unique([payrollRunId, employeeId])
+  @@index([payrollRunId])
 }
