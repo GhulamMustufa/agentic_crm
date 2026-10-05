@@ -4,6 +4,7 @@ import { APP_GUARD } from '@nestjs/core';
 
 import { AiModule } from './core/ai/ai.module';
 import { ConfigModule } from './core/config/config.module';
+import { PrismaModule } from './core/prisma/prisma.module';
 import { ContextModule } from './core/context/context.module';
 import { FeatureFlagModule } from './core/feature-flags/feature-flag.module';
 import { LoggingModule } from './core/logging/logging.module';
@@ -29,6 +30,7 @@ import { ExceptionsModule } from './modules/exceptions/exceptions.module';
       limit: 100,
     }]),
     ConfigModule,
+    PrismaModule,
     LoggingModule,
     ContextModule,
     SecurityModule,
