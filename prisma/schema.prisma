@@ -77,6 +77,10 @@ model Tenant {
   compensationConfigs    CompensationConfig[]
   payrollRuns            PayrollRun[]
   payrollItems           PayrollItem[]
+  products               Product[]
+  stockBatches           StockBatch[]
+  stockMovements         StockMovement[]
+  inventoryAlerts        InventoryAlert[]
 }
 
 model TenantMembership {
@@ -169,29 +173,32 @@ model AccountingPeriod {
 }
 
 model ChartOfAccount {
-  id                     String                  @id @default(uuid())
-  tenantId               String
-  tenant                 Tenant                  @relation(fields: [tenantId], references: [id])
-  accountCode            String
-  name                   String
-  classification         String // ASSET, LIABILITY, EQUITY, REVENUE, EXPENSE
-  subClassification      String?
-  parentAccountId        String?
-  parentAccount          ChartOfAccount?         @relation("AccountHierarchy", fields: [parentAccountId], references: [id])
-  childAccounts          ChartOfAccount[]        @relation("AccountHierarchy")
-  isActive               Boolean                 @default(true)
-  isSystemLocked         Boolean                 @default(false)
-  createdAt              DateTime                @default(now())
-  updatedAt              DateTime                @updatedAt
-  version                Int                     @default(1)
-  journalEntryLines      JournalEntryLine[]
-  monthlyBalances        AccountMonthlyBalance[]
-  counterparties         Counterparty[]
-  invoiceLines           InvoiceLine[]
-  paymentAccounts        Payment[]               @relation("PaymentAccount")
-  bankAccounts           BankAccount[]           @relation("BankAccountLedgerAccount")
-  proposalDebitAccounts  Proposal[]              @relation("ProposalDebitAccount")
-  proposalCreditAccounts Proposal[]              @relation("ProposalCreditAccount")
+  id                       String                  @id @default(uuid())
+  tenantId                 String
+  tenant                   Tenant                  @relation(fields: [tenantId], references: [id])
+  accountCode              String
+  name                     String
+  classification           String // ASSET, LIABILITY, EQUITY, REVENUE, EXPENSE
+  subClassification        String?
+  parentAccountId          String?
+  parentAccount            ChartOfAccount?         @relation("AccountHierarchy", fields: [parentAccountId], references: [id])
+  childAccounts            ChartOfAccount[]        @relation("AccountHierarchy")
+  isActive                 Boolean                 @default(true)
+  isSystemLocked           Boolean                 @default(false)
+  createdAt                DateTime                @default(now())
+  updatedAt                DateTime                @updatedAt
+  version                  Int                     @default(1)
+  journalEntryLines        JournalEntryLine[]
+  monthlyBalances          AccountMonthlyBalance[]
+  counterparties           Counterparty[]
+  invoiceLines             InvoiceLine[]
+  paymentAccounts          Payment[]               @relation("PaymentAccount")
+  bankAccounts             BankAccount[]           @relation("BankAccountLedgerAccount")
+  proposalDebitAccounts    Proposal[]              @relation("ProposalDebitAccount")
+  proposalCreditAccounts   Proposal[]              @relation("ProposalCreditAccount")
+  productInventoryAccounts Product[]               @relation("ProductInventoryAccount")
+  productCogsAccounts      Product[]               @relation("ProductCogsAccount")
+  productSalesAccounts     Product[]               @relation("ProductSalesAccount")
 
   @@unique([tenantId, accountCode])
 }
@@ -245,6 +252,7 @@ model JournalEntry {
   reconciledTransactions ReconciledTransaction[]
   proposalPostedEntries  Proposal[]              @relation("ProposalPostedJournalEntry")
   payrollRuns            PayrollRun[]
+  stockMovements         StockMovement[]
 
   @@unique([tenantId, entryNumber])
 }
@@ -599,4 +607,88 @@ model PayrollItem {
 
   @@unique([payrollRunId, employeeId])
   @@index([payrollRunId])
+}
+
+model Product {
+  id                 String           @id @default(uuid())
+  tenantId           String
+  tenant             Tenant           @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  sku                String
+  name               String
+  description        String?
+  unitOfMeasure      String           @default("UNIT") // UNIT, KG, LITER, BOX, PACK
+  valuationMethod    String           @default("FIFO") // FIFO, WAV
+  inventoryAccountId String
+  inventoryAccount   ChartOfAccount   @relation("ProductInventoryAccount", fields: [inventoryAccountId], references: [id], onDelete: Restrict)
+  cogsAccountId      String
+  cogsAccount        ChartOfAccount   @relation("ProductCogsAccount", fields: [cogsAccountId], references: [id], onDelete: Restrict)
+  salesAccountId     String
+  salesAccount       ChartOfAccount   @relation("ProductSalesAccount", fields: [salesAccountId], references: [id], onDelete: Restrict)
+  lowStockThreshold  Float            @default(0)
+  reorderQuantity    Float            @default(0)
+  isActive           Boolean          @default(true)
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  version            Int              @default(1)
+  batches            StockBatch[]
+  movements          StockMovement[]
+  alerts             InventoryAlert[]
+
+  @@unique([tenantId, sku])
+  @@index([tenantId, isActive])
+}
+
+model StockBatch {
+  id                String          @id @default(uuid())
+  tenantId          String
+  tenant            Tenant          @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  productId         String
+  product           Product         @relation(fields: [productId], references: [id], onDelete: Restrict)
+  batchReference    String
+  receivedDate      DateTime
+  originalQuantity  Float
+  remainingQuantity Float
+  unitCostCents     BigInt
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  movements         StockMovement[]
+
+  @@index([tenantId, productId, remainingQuantity])
+}
+
+model StockMovement {
+  id              String        @id @default(uuid())
+  tenantId        String
+  tenant          Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  productId       String
+  product         Product       @relation(fields: [productId], references: [id], onDelete: Restrict)
+  stockBatchId    String?
+  stockBatch      StockBatch?   @relation(fields: [stockBatchId], references: [id], onDelete: SetNull)
+  journalEntryId  String?
+  journalEntry    JournalEntry? @relation(fields: [journalEntryId], references: [id], onDelete: SetNull)
+  movementType    String // INFLOW_PURCHASE, OUTFLOW_SALE, ADJUSTMENT_WRITE_OFF, ADJUSTMENT_RECOUNT
+  quantity        Float // positive for inflow, negative for outflow
+  unitCostCents   BigInt
+  totalCostCents  BigInt
+  referenceNumber String?
+  notes           String?
+  createdAt       DateTime      @default(now())
+
+  @@index([tenantId, productId, createdAt])
+}
+
+model InventoryAlert {
+  id                String    @id @default(uuid())
+  tenantId          String
+  tenant            Tenant    @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  productId         String
+  product           Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  alertType         String // LOW_STOCK, OUT_OF_STOCK
+  currentQuantity   Float
+  thresholdQuantity Float
+  status            String    @default("OPEN") // OPEN, RESOLVED, DISMISSED
+  createdAt         DateTime  @default(now())
+  resolvedAt        DateTime?
+
+  @@index([tenantId, productId, status])
 }
