@@ -18,6 +18,7 @@ import { LedgerModule } from './modules/ledger/ledger.module';
 import { OrganizationModule } from './modules/organization/organization.module';
 import { PayrollModule } from './modules/payroll/payroll.module';
 import { AgentsModule } from './modules/agents/agents.module';
+import { ExceptionsModule } from './modules/exceptions/exceptions.module';
 
 @Module({
   imports: [
@@ -39,6 +40,7 @@ import { AgentsModule } from './modules/agents/agents.module';
     PayrollModule,
     InventoryModule,
     AgentsModule,
+    ExceptionsModule,
   ],
 })
 export class AppModule {}
