@@ -1,4 +1,5 @@
 import { NestFactory } from '@nestjs/core';
+import helmet from 'helmet';
 
 import { AppModule } from './app.module';
 import { AppConfigService } from './core/config/config.service';
@@ -16,9 +17,12 @@ async function bootstrap() {
   // Global Exception Filter
   app.useGlobalFilters(new GlobalExceptionFilter());
 
+  // Security Headers
+  app.use(helmet());
+
   // CORS configuration
   app.enableCors({
-    origin: true,
+    origin: ['https://app.agenticos.com', 'http://localhost:3000'],
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     credentials: true,
   });

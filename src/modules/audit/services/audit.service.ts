@@ -33,9 +33,32 @@ export class AuditService {
     private readonly auditRepo: IAuditRepository,
   ) {}
 
+  private redactState(state: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
+    if (!state) return state;
+    const redacted = structuredClone(state);
+    const sensitiveKeys = ['password', 'ssn', 'routingNumber', 'accountNumber', 'salary', 'salaryRate'];
+    
+    const redactDeep = (obj: any) => {
+      if (!obj || typeof obj !== 'object') return;
+      for (const key in obj) {
+        if (sensitiveKeys.includes(key)) {
+          obj[key] = '***REDACTED***';
+        } else if (typeof obj[key] === 'object') {
+          redactDeep(obj[key]);
+        }
+      }
+    };
+    redactDeep(redacted);
+    return redacted;
+  }
+
   async log(input: CreateAuditEventInput): Promise<AuditEventEntity> {
     const id = uuidv4();
     const createdAt = new Date();
+
+    const previousState = this.redactState(input.previousState);
+    const newState = this.redactState(input.newState);
+    const diff = this.redactState(input.diff);
 
     const latestEvent = await this.auditRepo.getLatestEvent(input.tenantId);
     const previousHash = latestEvent ? latestEvent.eventHash : GENESIS_HASH;
@@ -45,12 +68,15 @@ export class AuditService {
       id,
       input.tenantId,
       input.action,
-      input.newState ?? null,
+      newState ?? null,
       createdAt.toISOString(),
     );
 
     const event: AuditEventEntity = {
       ...input,
+      previousState,
+      newState,
+      diff,
       id,
       previousHash,
       eventHash,

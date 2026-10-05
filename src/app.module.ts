@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { APP_GUARD } from '@nestjs/core';
 
 import { AiModule } from './core/ai/ai.module';
 import { ConfigModule } from './core/config/config.module';
@@ -22,6 +24,10 @@ import { ExceptionsModule } from './modules/exceptions/exceptions.module';
 
 @Module({
   imports: [
+    ThrottlerModule.forRoot([{
+      ttl: 60000,
+      limit: 100,
+    }]),
     ConfigModule,
     LoggingModule,
     ContextModule,
@@ -41,6 +47,12 @@ import { ExceptionsModule } from './modules/exceptions/exceptions.module';
     InventoryModule,
     AgentsModule,
     ExceptionsModule,
+  ],
+  providers: [
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
   ],
 })
 export class AppModule {}
