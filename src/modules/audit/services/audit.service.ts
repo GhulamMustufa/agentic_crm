@@ -102,7 +102,10 @@ export class AuditService {
     state: unknown,
     timestamp: string,
   ): string {
-    const payload = `${previousHash}|${id}|${tenantId}|${action}|${JSON.stringify(state)}|${timestamp}`;
+    const stringifiedState = JSON.stringify(state, (_key, value) =>
+      typeof value === 'bigint' ? value.toString() : value,
+    );
+    const payload = `${previousHash}|${id}|${tenantId}|${action}|${stringifiedState}|${timestamp}`;
     return crypto.createHash('sha256').update(payload).digest('hex');
   }
 }

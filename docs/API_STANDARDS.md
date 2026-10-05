@@ -27,6 +27,11 @@ All external and internal HTTP APIs adhere to strict RESTful design principles.
   - `POST /api/v1/proposals/:id/approve`
   - `POST /api/v1/accounting-periods/:id/lock`
   - `POST /api/v1/bank-statements/:id/reconcile`
+  - `POST /api/v1/payroll/runs/:id/approve`
+  - `POST /api/v1/payroll/runs/:id/post`
+  - `POST /api/v1/inventory/purchases`
+  - `POST /api/v1/inventory/sales`
+  - `POST /api/v1/inventory/adjustments`
 
 ### 1.2 HTTP Methods & Expected Semantics
 

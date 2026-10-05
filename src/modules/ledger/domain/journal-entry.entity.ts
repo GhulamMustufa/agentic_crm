@@ -1,7 +1,7 @@
 export type JournalEntryStatus = 'DRAFT' | 'POSTED' | 'REVERSED';
 
 export type JournalEntrySourceType =
-  'MANUAL' | 'INVOICE' | 'BILL' | 'PAYMENT' | 'PAYROLL' | 'BANK_RECONCILIATION';
+  'MANUAL' | 'INVOICE' | 'BILL' | 'PAYMENT' | 'PAYROLL' | 'BANK_RECONCILIATION' | 'INVENTORY';
 
 export interface JournalEntryLineEntity {
   id: string;

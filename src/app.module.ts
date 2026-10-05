@@ -12,9 +12,11 @@ import { AuditModule } from './modules/audit/audit.module';
 import { BankingModule } from './modules/banking/banking.module';
 import { CounterpartyModule } from './modules/counterparties/counterparty.module';
 import { IdentityModule } from './modules/identity/identity.module';
+import { InventoryModule } from './modules/inventory/inventory.module';
 import { InvoiceModule } from './modules/invoices/invoice.module';
 import { LedgerModule } from './modules/ledger/ledger.module';
 import { OrganizationModule } from './modules/organization/organization.module';
+import { PayrollModule } from './modules/payroll/payroll.module';
 
 @Module({
   imports: [
@@ -33,6 +35,8 @@ import { OrganizationModule } from './modules/organization/organization.module';
     CounterpartyModule,
     InvoiceModule,
     BankingModule,
+    PayrollModule,
+    InventoryModule,
   ],
 })
 export class AppModule {}

@@ -54,7 +54,7 @@ export const createJournalEntrySchema = z
     entryDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Must be YYYY-MM-DD'),
     description: z.string().min(3).max(500),
     sourceType: z
-      .enum(['MANUAL', 'INVOICE', 'BILL', 'PAYMENT', 'PAYROLL', 'BANK_RECONCILIATION'])
+      .enum(['MANUAL', 'INVOICE', 'BILL', 'PAYMENT', 'PAYROLL', 'BANK_RECONCILIATION', 'INVENTORY'])
       .default('MANUAL'),
     sourceId: z.string().uuid().optional(),
     lines: z.array(journalLineInputSchema).min(2, 'Journal entry requires at least 2 lines'),
