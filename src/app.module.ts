@@ -17,6 +17,7 @@ import { InvoiceModule } from './modules/invoices/invoice.module';
 import { LedgerModule } from './modules/ledger/ledger.module';
 import { OrganizationModule } from './modules/organization/organization.module';
 import { PayrollModule } from './modules/payroll/payroll.module';
+import { AgentsModule } from './modules/agents/agents.module';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { PayrollModule } from './modules/payroll/payroll.module';
     BankingModule,
     PayrollModule,
     InventoryModule,
+    AgentsModule,
   ],
 })
 export class AppModule {}
