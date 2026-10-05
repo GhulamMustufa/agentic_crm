@@ -37,6 +37,24 @@ Agentic Business OS is an enterprise-grade multi-tenant SaaS designed to automat
 
 ---
 
+## Phase 1: Accounting Core & Financial Engine
+
+- **Chart of Accounts (COA):** Hierarchical 4-digit standard account codes (Assets 1000s, Liabilities 2000s, Equity 3000s, Revenue 4000s, Expenses 5000s) with system-locked control accounts (AR 1200, AP 2010, Retained Earnings 3999).
+- **Fiscal Years & Accounting Periods:** 12-month calendar periods with strict status locking (`OPEN`, `CLOSED`, `LOCKED`). Mutations to closed periods are strictly prevented.
+- **Double-Entry Journal Entries:** Immutable posting with strict invariant enforcement ($\sum \text{Debits} == \sum \text{Credits} > 0$). Negative lines and zero-balance entries are rejected at schema and domain boundaries.
+- **Account Balances & Rollups:** Real-time period closing balances computed deterministically based on normal balance rules (Debit-normal for Assets/Expenses, Credit-normal for Liabilities/Equity/Revenue).
+- **Financial Statements:**
+  - **Trial Balance:** Full period balance listing with debit/credit balance verification (`isBalanced: true`).
+  - **Profit & Loss (Income Statement):** Period revenue minus operating expenses = Net Income.
+  - **Balance Sheet:** Real-time Assets = Liabilities + Equity (including current period Net Income flow into Retained Earnings).
+- **Counterparties Directory:** Unified Customers and Vendors directory with normalized name matching to prevent duplicates.
+- **Invoicing & Accounts Receivable (AR):** Sales invoices with deterministic line item computation (quantity $\times$ integer cents), sales tax calculation, and automated posting of balanced AR journal entries.
+- **Vendor Bills & Accounts Payable (AP):** Expense bill tracking, AP journal entry posting, and payment terms tracking.
+- **Payments & Multi-Invoice Allocations:** Inbound customer receipts (Dr Cash, Cr AR) and outbound vendor disbursements (Dr AP, Cr Cash) with partial payment handling and allocation bounds validation.
+- **Voiding & Correction Workflows:** Invoices cannot be modified once posted. Voiding posted invoices deterministically posts an inverted reversing journal entry (`REV-...`) with full audit provenance.
+
+---
+
 ## Project Structure
 
 ```
@@ -60,7 +78,10 @@ Agentic Business OS is an enterprise-grade multi-tenant SaaS designed to automat
 │   ├── migrations/          # PostgreSQL DDL migrations
 │   └── modules/             # Bounded business domains
 │       ├── audit/           # Hash-chained immutable audit log
+│       ├── counterparties/  # Customers, vendors, name normalization
 │       ├── identity/        # Users, authentication, session tokens
+│       ├── invoices/        # AR invoices, AP bills, payments, allocations
+│       ├── ledger/          # Chart of accounts, periods, journal entries, balances, financial reports
 │       └── organization/    # Tenants, memberships, organization settings
 └── test/
     ├── integration/         # Supertest end-to-end API integration tests

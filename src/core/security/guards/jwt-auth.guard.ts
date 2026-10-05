@@ -45,7 +45,7 @@ export class JwtAuthGuard implements CanActivate {
     const sessionContext: TenantSessionContext = {
       userId: payload.sub,
       email: payload.email,
-      tenantId: payload.tenantId || '',
+      tenantId: payload.tenantId || (request.headers['x-tenant-id'] as string) || '',
       roleCode: payload.roleCode || 'USER',
       permissions: payload.permissions || [],
       correlationId,

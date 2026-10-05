@@ -33,6 +33,15 @@ export class DomainError extends AppError {
   }
 }
 
+export class UnprocessableEntityError extends AppError {
+  readonly statusCode = 422;
+  readonly errorCode = 'UNPROCESSABLE_ENTITY';
+
+  constructor(message: string, details?: Record<string, unknown>) {
+    super(message, { details });
+  }
+}
+
 export class ValidationError extends AppError {
   readonly statusCode = 400;
   readonly errorCode = 'VALIDATION_FAILED';

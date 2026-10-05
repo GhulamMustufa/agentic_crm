@@ -60,6 +60,10 @@ export class AuditService {
     return this.auditRepo.append(event);
   }
 
+  async recordEvent(input: CreateAuditEventInput): Promise<AuditEventEntity> {
+    return this.log(input);
+  }
+
   async verifyChain(
     tenantId: string,
   ): Promise<{ isValid: boolean; brokenAtEventId?: string; totalVerified: number }> {
