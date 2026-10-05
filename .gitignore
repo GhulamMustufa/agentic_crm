@@ -22,12 +22,12 @@ out/
 .eslintcache
 
 # ------------------------------------------------------------------------------
-# 3. Local Object Storage & User Uploads (Documents, PDFs, Statements)
+# 3. Local Object Storage & User Uploads (Root-level user files)
 # ------------------------------------------------------------------------------
-storage/
-uploads/
-tmp/
-temp/
+/storage/
+/uploads/
+/tmp/
+/temp/
 *.pdf
 *.xlsx
 *.xls
@@ -36,10 +36,10 @@ temp/
 *.tar.gz
 
 # ------------------------------------------------------------------------------
-# 4. Database Storage & Dumps (Keep migrations in src/migrations/)
+# 4. Database Storage & Dumps (Root-level data dirs; keep migrations in src/migrations/)
 # ------------------------------------------------------------------------------
-postgres-data/
-data/
+/postgres-data/
+/data/
 *.sqlite
 *.sqlite3
 *.db
