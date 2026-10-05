@@ -59,8 +59,8 @@ describe('ExceptionService', () => {
 
     expect(resolved.status).toBe(ExceptionStatus.RESOLVED);
     expect(resolved.resolutionAction).toBe(ResolutionAction.REJECT);
-    expect(resolved.history.length).toBe(2);
-    expect(resolved.history[1].action).toBe(ResolutionAction.REJECT);
+    expect(resolved.history?.length).toBe(2);
+    expect(resolved.history?.[1]?.action).toBe(ResolutionAction.REJECT);
     expect(auditService.log).toHaveBeenCalledWith(expect.objectContaining({
       action: 'EXCEPTION_REJECT',
     }));

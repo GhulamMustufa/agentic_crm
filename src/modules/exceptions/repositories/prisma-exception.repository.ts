@@ -2,18 +2,23 @@ import { Injectable } from '@nestjs/common';
 import { IExceptionRepository } from '../domain/exception.repository.interface';
 import { ExceptionEntity, ExceptionStatus, ExceptionType, ResolutionAction, ExceptionHistoryEntry } from '../domain/exception.entity';
 import { PrismaService } from '../../../core/prisma/prisma.service';
+import { Prisma, Exception } from '@prisma/client';
 
 @Injectable()
 export class PrismaExceptionRepository implements IExceptionRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  private toDomain(model: any): ExceptionEntity {
+  private toDomain(model: Exception & Record<string, any>): ExceptionEntity {
     return {
       id: model.id,
       tenantId: model.tenantId,
       type: model.type as ExceptionType,
       status: model.status as ExceptionStatus,
-      context: model.context || {},
+      context: {
+        ...(model.context as Record<string, any> || {}),
+        amount: model.amount,
+        severity: model.severity,
+      },
       evidence: model.evidence || {},
       aiRecommendation: model.aiProposal || '',
       confidence: model.confidence || 0,
@@ -28,7 +33,7 @@ export class PrismaExceptionRepository implements IExceptionRepository {
     };
   }
 
-  private toPrisma(entity: ExceptionEntity): any {
+  private toPrisma(entity: ExceptionEntity): Prisma.ExceptionUncheckedCreateInput {
     return {
       id: entity.id,
       tenantId: entity.tenantId,
@@ -37,7 +42,7 @@ export class PrismaExceptionRepository implements IExceptionRepository {
       description: entity.reason,
       aiProposal: entity.aiRecommendation,
       severity: "medium", // Default severity for now
-      amount: entity.context?.amount || 0,
+      amount: Number(entity.context?.amount || 0),
       // Note: we can add context, evidence, etc to Prisma schema later if needed.
     };
   }
@@ -62,7 +67,7 @@ export class PrismaExceptionRepository implements IExceptionRepository {
   }
 
   async findAll(tenantId: string, status?: ExceptionStatus): Promise<ExceptionEntity[]> {
-    const whereClause: any = { tenantId };
+    const whereClause: Prisma.ExceptionWhereInput = { tenantId };
     if (status) {
       whereClause.status = status;
     }

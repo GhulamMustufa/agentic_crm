@@ -11,12 +11,15 @@ async function main() {
   console.log('Starting database seeding...');
 
   // 1. Create a dummy Tenant
-  const tenant = await prisma.tenant.create({
-    data: {
+  const tenant = await prisma.tenant.upsert({
+    where: { id: 'default-tenant' },
+    update: {},
+    create: {
+      id: 'default-tenant',
       name: 'Agentic CRM Inc.',
     },
   });
-  console.log(`Created Tenant: ${tenant.name} (ID: ${tenant.id})`);
+  console.log(`Created/Found Tenant: ${tenant.name} (ID: ${tenant.id})`);
 
   // 2. Create mock Exceptions
   const exceptions = await Promise.all([
