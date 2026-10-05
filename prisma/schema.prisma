@@ -1,0 +1,47 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Tenant {
+  id           String        @id @default(uuid())
+  name         String
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  transactions Transaction[]
+  exceptions   Exception[]
+}
+
+model Transaction {
+  id          String   @id @default(uuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  date        DateTime
+  amount      Float
+  description String
+  category    String?
+  vendor      String?
+  status      String   @default("pending") // pending, categorized, reconciled, exception
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Exception {
+  id          String   @id @default(uuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  type        String   // unrecognized_vendor, ambiguous_category, missing_receipt
+  severity    String   // low, medium, high
+  description String
+  aiProposal  String?
+  status      String   @default("open") // open, resolved, ignored
+  amount      Float?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}

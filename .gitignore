@@ -102,4 +102,8 @@ Thumbs.db
 *~
 .neon
 .agents
+.claude
+.windsurf
 
+
+/generated/prisma
