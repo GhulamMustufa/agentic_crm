@@ -1,7 +1,8 @@
+import { UnauthorizedException, BadRequestException } from '@nestjs/common';
 import { z } from 'zod';
+
 import { AuditService } from '../../audit/services/audit.service';
 import { AgentContext } from '../domain/agent-context.interface';
-import { UnauthorizedException, BadRequestException } from '@nestjs/common';
 
 export abstract class BaseTool<Input, Output> {
   abstract readonly name: string;
@@ -70,7 +71,7 @@ export abstract class BaseTool<Input, Output> {
   protected abstract performTask(input: Input, context: AgentContext): Promise<Output>;
 
   private authorize(context: AgentContext) {
-    if (this.requiredRoles.length === 0) return;
+    if (this.requiredRoles.length === 0) {return;}
     const hasRole = context.roles.some((role) => this.requiredRoles.includes(role));
     if (!hasRole) {
       throw new UnauthorizedException(`Agent missing required roles for tool ${this.name}`);

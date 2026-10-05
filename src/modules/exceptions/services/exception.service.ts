@@ -1,16 +1,17 @@
 import { Injectable, Inject, NotFoundException, BadRequestException } from '@nestjs/common';
 import { v4 as uuidv4 } from 'uuid';
-import { 
-  IExceptionRepository, 
-  EXCEPTION_REPOSITORY_TOKEN 
-} from '../domain/exception.repository.interface';
+
+import { AuditService } from '../../audit/services/audit.service';
 import { 
   ExceptionEntity, 
   ExceptionStatus, 
   ResolutionAction 
 } from '../domain/exception.entity';
+import { 
+  IExceptionRepository, 
+  EXCEPTION_REPOSITORY_TOKEN 
+} from '../domain/exception.repository.interface';
 import { CreateExceptionDto, ResolveExceptionDto } from '../dto/exception.dto';
-import { AuditService } from '../../audit/services/audit.service';
 
 @Injectable()
 export class ExceptionService {

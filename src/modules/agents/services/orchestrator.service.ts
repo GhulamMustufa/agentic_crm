@@ -1,8 +1,9 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
-import { AgentContext } from '../domain/agent-context.interface';
+
 import { AccountantAgent } from './accountant.agent';
-import { PayrollAgent } from './payroll.agent';
 import { InventoryAgent } from './inventory.agent';
+import { PayrollAgent } from './payroll.agent';
+import { AgentContext } from '../domain/agent-context.interface';
 
 @Injectable()
 export class BusinessOrchestratorService {

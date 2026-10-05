@@ -1,5 +1,5 @@
-import { BaseTool } from '../tools/base-tool';
 import { AgentContext } from '../domain/agent-context.interface';
+import { BaseTool } from '../tools/base-tool';
 
 export abstract class BaseAgent {
   abstract readonly name: string;

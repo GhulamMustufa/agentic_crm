@@ -1,8 +1,9 @@
-import { z } from 'zod';
 import { Injectable } from '@nestjs/common';
-import { BaseTool } from '../base-tool';
+import { z } from 'zod';
+
 import { AuditService } from '../../../audit/services/audit.service';
 import { AgentContext } from '../../domain/agent-context.interface';
+import { BaseTool } from '../base-tool';
 
 const ProposeJournalEntryInputSchema = z.object({
   description: z.string().min(1),
@@ -45,8 +46,8 @@ export class ProposeJournalEntryTool extends BaseTool<Input, Output> {
     let debits = 0;
     let credits = 0;
     for (const line of input.lines) {
-      if (line.type === 'DEBIT') debits += line.amount;
-      if (line.type === 'CREDIT') credits += line.amount;
+      if (line.type === 'DEBIT') {debits += line.amount;}
+      if (line.type === 'CREDIT') {credits += line.amount;}
     }
     
     if (debits !== credits) {

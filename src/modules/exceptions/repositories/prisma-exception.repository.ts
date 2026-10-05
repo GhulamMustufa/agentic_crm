@@ -1,8 +1,10 @@
 import { Injectable } from '@nestjs/common';
-import { IExceptionRepository } from '../domain/exception.repository.interface';
-import { ExceptionEntity, ExceptionStatus, ExceptionType, ResolutionAction, ExceptionHistoryEntry } from '../domain/exception.entity';
-import { PrismaService } from '../../../core/prisma/prisma.service';
 import { Prisma, Exception } from '@prisma/client';
+
+import { PrismaService } from '../../../core/prisma/prisma.service';
+import { ExceptionEntity, ExceptionStatus, ExceptionType, ResolutionAction, ExceptionHistoryEntry } from '../domain/exception.entity';
+import { IExceptionRepository } from '../domain/exception.repository.interface';
+
 
 @Injectable()
 export class PrismaExceptionRepository implements IExceptionRepository {

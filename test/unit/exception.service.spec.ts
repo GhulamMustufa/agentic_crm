@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { ExceptionService } from '../../src/modules/exceptions/services/exception.service';
-import { InMemoryExceptionRepository } from '../../src/modules/exceptions/repositories/in-memory-exception.repository';
+
 import { AuditService } from '../../src/modules/audit/services/audit.service';
 import { ExceptionType, ExceptionStatus, ResolutionAction } from '../../src/modules/exceptions/domain/exception.entity';
+import { InMemoryExceptionRepository } from '../../src/modules/exceptions/repositories/in-memory-exception.repository';
+import { ExceptionService } from '../../src/modules/exceptions/services/exception.service';
 
 describe('ExceptionService', () => {
   let service: ExceptionService;

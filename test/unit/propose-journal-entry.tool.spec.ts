@@ -1,9 +1,10 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { ProposeJournalEntryTool } from '../../src/modules/agents/tools/accountant/propose-journal-entry.tool';
-import { AuditService } from '../../src/modules/audit/services/audit.service';
-import { AgentContext } from '../../src/modules/agents/domain/agent-context.interface';
 import { UnauthorizedException, BadRequestException } from '@nestjs/common';
 import { v4 as uuidv4 } from 'uuid';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+
+import { AgentContext } from '../../src/modules/agents/domain/agent-context.interface';
+import { ProposeJournalEntryTool } from '../../src/modules/agents/tools/accountant/propose-journal-entry.tool';
+import { AuditService } from '../../src/modules/audit/services/audit.service';
 
 describe('ProposeJournalEntryTool', () => {
   let tool: ProposeJournalEntryTool;

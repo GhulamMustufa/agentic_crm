@@ -34,12 +34,12 @@ export class AuditService {
   ) {}
 
   private redactState(state: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
-    if (!state) return state;
+    if (!state) {return state;}
     const redacted = structuredClone(state);
     const sensitiveKeys = ['password', 'ssn', 'routingNumber', 'accountNumber', 'salary', 'salaryRate'];
     
     const redactDeep = (obj: any) => {
-      if (!obj || typeof obj !== 'object') return;
+      if (!obj || typeof obj !== 'object') {return;}
       for (const key in obj) {
         if (sensitiveKeys.includes(key)) {
           obj[key] = '***REDACTED***';

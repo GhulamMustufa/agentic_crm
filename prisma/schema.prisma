@@ -10,12 +10,18 @@ datasource db {
 }
 
 model Tenant {
-  id           String        @id @default(uuid())
-  name         String
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
-  transactions Transaction[]
-  exceptions   Exception[]
+  id                     String                  @id @default(uuid())
+  name                   String
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
+  transactions           Transaction[]
+  exceptions             Exception[]
+  fiscalYears            FiscalYear[]
+  accountingPeriods      AccountingPeriod[]
+  chartOfAccounts        ChartOfAccount[]
+  journalEntries         JournalEntry[]
+  journalEntryLines      JournalEntryLine[]
+  accountMonthlyBalances AccountMonthlyBalance[]
 }
 
 model Transaction {
@@ -44,4 +50,121 @@ model Exception {
   amount      Float?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+}
+
+model FiscalYear {
+  id        String   @id @default(uuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  yearLabel String
+  startDate DateTime
+  endDate   DateTime
+  isClosed  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  periods AccountingPeriod[]
+
+  @@unique([tenantId, yearLabel])
+}
+
+model AccountingPeriod {
+  id             String                  @id @default(uuid())
+  tenantId       String
+  tenant         Tenant                  @relation(fields: [tenantId], references: [id])
+  fiscalYearId   String
+  fiscalYear     FiscalYear              @relation(fields: [fiscalYearId], references: [id])
+  periodNumber   Int
+  periodName     String
+  startDate      DateTime
+  endDate        DateTime
+  status         String                  @default("OPEN") // OPEN, LOCKED, CLOSED
+  closedAt       DateTime?
+  closedByUserId String?
+  createdAt      DateTime                @default(now())
+  journalEntries JournalEntry[]
+  balances       AccountMonthlyBalance[]
+
+  @@unique([tenantId, fiscalYearId, periodNumber])
+}
+
+model ChartOfAccount {
+  id                String                  @id @default(uuid())
+  tenantId          String
+  tenant            Tenant                  @relation(fields: [tenantId], references: [id])
+  accountCode       String
+  name              String
+  classification    String                  // ASSET, LIABILITY, EQUITY, REVENUE, EXPENSE
+  subClassification String?
+  parentAccountId   String?
+  parentAccount     ChartOfAccount?         @relation("AccountHierarchy", fields: [parentAccountId], references: [id])
+  childAccounts     ChartOfAccount[]        @relation("AccountHierarchy")
+  isActive          Boolean                 @default(true)
+  isSystemLocked    Boolean                 @default(false)
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+  version           Int                     @default(1)
+  journalEntryLines JournalEntryLine[]
+  monthlyBalances   AccountMonthlyBalance[]
+
+  @@unique([tenantId, accountCode])
+}
+
+model JournalEntry {
+  id                 String             @id @default(uuid())
+  tenantId           String
+  tenant             Tenant             @relation(fields: [tenantId], references: [id])
+  accountingPeriodId String
+  accountingPeriod   AccountingPeriod   @relation(fields: [accountingPeriodId], references: [id])
+  entryNumber        String
+  entryDate          DateTime
+  description        String
+  status             String             @default("DRAFT") // DRAFT, POSTED, REVERSED
+  sourceType         String             // MANUAL, INVOICE, BILL, PAYMENT, PAYROLL, BANK_RECONCILIATION, INVENTORY
+  sourceId           String?
+  reversesEntryId    String?
+  reversesEntry      JournalEntry?      @relation("JournalEntryReversal", fields: [reversesEntryId], references: [id])
+  reversedByEntries  JournalEntry[]     @relation("JournalEntryReversal")
+  totalDebitCents    BigInt             @default(0)
+  totalCreditCents   BigInt             @default(0)
+  createdByUserId    String?
+  createdByAgentId   String?
+  postedAt           DateTime?
+  createdAt          DateTime           @default(now())
+  lines              JournalEntryLine[]
+
+  @@unique([tenantId, entryNumber])
+}
+
+model JournalEntryLine {
+  id             String         @id @default(uuid())
+  tenantId       String
+  tenant         Tenant         @relation(fields: [tenantId], references: [id])
+  journalEntryId String
+  journalEntry   JournalEntry   @relation(fields: [journalEntryId], references: [id], onDelete: Cascade)
+  accountId      String
+  account        ChartOfAccount @relation(fields: [accountId], references: [id])
+  lineNumber     Int
+  debitCents     BigInt         @default(0)
+  creditCents    BigInt         @default(0)
+  memo           String?
+  createdAt      DateTime       @default(now())
+
+  @@unique([journalEntryId, lineNumber])
+}
+
+model AccountMonthlyBalance {
+  id                  String           @id @default(uuid())
+  tenantId            String
+  tenant              Tenant           @relation(fields: [tenantId], references: [id])
+  accountId           String
+  account             ChartOfAccount   @relation(fields: [accountId], references: [id])
+  accountingPeriodId  String
+  accountingPeriod    AccountingPeriod @relation(fields: [accountingPeriodId], references: [id])
+  openingBalanceCents BigInt           @default(0)
+  totalDebitCents     BigInt           @default(0)
+  totalCreditCents    BigInt           @default(0)
+  closingBalanceCents BigInt           @default(0)
+  updatedAt           DateTime         @updatedAt
+
+  @@unique([tenantId, accountId, accountingPeriodId])
 }

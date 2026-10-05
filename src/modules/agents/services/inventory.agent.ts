@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { BaseAgent } from '../domain/base-agent';
+
 import { AgentContext } from '../domain/agent-context.interface';
+import { BaseAgent } from '../domain/base-agent';
 
 @Injectable()
 export class InventoryAgent extends BaseAgent {

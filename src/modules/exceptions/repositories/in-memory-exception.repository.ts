@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
-import { IExceptionRepository } from '../domain/exception.repository.interface';
+
 import { ExceptionEntity, ExceptionStatus } from '../domain/exception.entity';
+import { IExceptionRepository } from '../domain/exception.repository.interface';
 
 @Injectable()
 export class InMemoryExceptionRepository implements IExceptionRepository {
