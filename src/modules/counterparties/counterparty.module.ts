@@ -2,18 +2,19 @@ import { Module } from '@nestjs/common';
 
 import { CounterpartyController } from './controllers/counterparty.controller';
 import { COUNTERPARTY_REPOSITORY_TOKEN } from './domain/counterparty.repository.interface';
-import { InMemoryCounterpartyRepository } from './repositories/in-memory-counterparty.repository';
+import { PrismaCounterpartyRepository } from './repositories/prisma-counterparty.repository';
 import { CounterpartyService } from './services/counterparty.service';
 import { AuditModule } from '../audit/audit.module';
+import { PrismaModule } from '../../core/prisma/prisma.module';
 
 @Module({
-  imports: [AuditModule],
+  imports: [AuditModule, PrismaModule],
   controllers: [CounterpartyController],
   providers: [
     CounterpartyService,
     {
       provide: COUNTERPARTY_REPOSITORY_TOKEN,
-      useClass: InMemoryCounterpartyRepository,
+      useClass: PrismaCounterpartyRepository,
     },
   ],
   exports: [CounterpartyService, COUNTERPARTY_REPOSITORY_TOKEN],

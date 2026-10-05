@@ -50,6 +50,7 @@ model Tenant {
   version                Int                     @default(1)
   memberships            TenantMembership[]
   settings               TenantSettings?
+  counterparties         Counterparty[]
   transactions           Transaction[]
   exceptions             Exception[]
   fiscalYears            FiscalYear[]
@@ -166,8 +167,28 @@ model ChartOfAccount {
   version           Int                     @default(1)
   journalEntryLines JournalEntryLine[]
   monthlyBalances   AccountMonthlyBalance[]
+  counterparties    Counterparty[]
 
   @@unique([tenantId, accountCode])
+}
+
+model Counterparty {
+  id               String          @id @default(uuid())
+  tenantId         String
+  tenant           Tenant          @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  type             String          // VENDOR, CUSTOMER, BOTH
+  legalName        String
+  normalizedName   String
+  taxIdentifier    String?
+  defaultAccountId String?
+  defaultAccount   ChartOfAccount? @relation(fields: [defaultAccountId], references: [id])
+  paymentTermsDays Int             @default(30)
+  isActive         Boolean         @default(true)
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  version          Int             @default(1)
+
+  @@unique([tenantId, normalizedName])
 }
 
 model JournalEntry {
