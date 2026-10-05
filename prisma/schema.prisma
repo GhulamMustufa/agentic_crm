@@ -51,6 +51,10 @@ model Tenant {
   memberships            TenantMembership[]
   settings               TenantSettings?
   counterparties         Counterparty[]
+  invoices               Invoice[]
+  invoiceLines           InvoiceLine[]
+  payments               Payment[]
+  paymentAllocations     PaymentAllocation[]
   transactions           Transaction[]
   exceptions             Exception[]
   fiscalYears            FiscalYear[]
@@ -78,7 +82,7 @@ model TenantMembership {
 model TenantSettings {
   tenantId                 String   @id
   tenant                   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  autoPostMinConfidence   Float    @default(0.95)
+  autoPostMinConfidence    Float    @default(0.95)
   maxAutoPostAmountCents   BigInt   @default(500000)
   allowAiAutoPosting       Boolean  @default(true)
   requireReceiptAboveCents BigInt   @default(7500)
@@ -104,8 +108,8 @@ model Exception {
   id          String   @id @default(uuid())
   tenantId    String
   tenant      Tenant   @relation(fields: [tenantId], references: [id])
-  type        String   // unrecognized_vendor, ambiguous_category, missing_receipt
-  severity    String   // low, medium, high
+  type        String // unrecognized_vendor, ambiguous_category, missing_receipt
+  severity    String // low, medium, high
   description String
   aiProposal  String?
   status      String   @default("open") // open, resolved, ignored
@@ -155,7 +159,7 @@ model ChartOfAccount {
   tenant            Tenant                  @relation(fields: [tenantId], references: [id])
   accountCode       String
   name              String
-  classification    String                  // ASSET, LIABILITY, EQUITY, REVENUE, EXPENSE
+  classification    String // ASSET, LIABILITY, EQUITY, REVENUE, EXPENSE
   subClassification String?
   parentAccountId   String?
   parentAccount     ChartOfAccount?         @relation("AccountHierarchy", fields: [parentAccountId], references: [id])
@@ -168,6 +172,8 @@ model ChartOfAccount {
   journalEntryLines JournalEntryLine[]
   monthlyBalances   AccountMonthlyBalance[]
   counterparties    Counterparty[]
+  invoiceLines      InvoiceLine[]
+  paymentAccounts   Payment[]               @relation("PaymentAccount")
 
   @@unique([tenantId, accountCode])
 }
@@ -176,7 +182,7 @@ model Counterparty {
   id               String          @id @default(uuid())
   tenantId         String
   tenant           Tenant          @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  type             String          // VENDOR, CUSTOMER, BOTH
+  type             String // VENDOR, CUSTOMER, BOTH
   legalName        String
   normalizedName   String
   taxIdentifier    String?
@@ -187,6 +193,8 @@ model Counterparty {
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @updatedAt
   version          Int             @default(1)
+  invoices         Invoice[]
+  payments         Payment[]
 
   @@unique([tenantId, normalizedName])
 }
@@ -201,7 +209,7 @@ model JournalEntry {
   entryDate          DateTime
   description        String
   status             String             @default("DRAFT") // DRAFT, POSTED, REVERSED
-  sourceType         String             // MANUAL, INVOICE, BILL, PAYMENT, PAYROLL, BANK_RECONCILIATION, INVENTORY
+  sourceType         String // MANUAL, INVOICE, BILL, PAYMENT, PAYROLL, BANK_RECONCILIATION, INVENTORY
   sourceId           String?
   reversesEntryId    String?
   reversesEntry      JournalEntry?      @relation("JournalEntryReversal", fields: [reversesEntryId], references: [id])
@@ -213,6 +221,8 @@ model JournalEntry {
   postedAt           DateTime?
   createdAt          DateTime           @default(now())
   lines              JournalEntryLine[]
+  invoices           Invoice[]
+  payments           Payment[]
 
   @@unique([tenantId, entryNumber])
 }
@@ -249,4 +259,83 @@ model AccountMonthlyBalance {
   updatedAt           DateTime         @updatedAt
 
   @@unique([tenantId, accountId, accountingPeriodId])
+}
+
+model Invoice {
+  id               String              @id @default(uuid())
+  tenantId         String
+  tenant           Tenant              @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  counterpartyId   String
+  counterparty     Counterparty        @relation(fields: [counterpartyId], references: [id], onDelete: Restrict)
+  sourceDocumentId String?
+  journalEntryId   String?
+  journalEntry     JournalEntry?       @relation(fields: [journalEntryId], references: [id], onDelete: Restrict)
+  invoiceType      String // BILL, INVOICE
+  invoiceNumber    String
+  issueDate        DateTime
+  dueDate          DateTime
+  currency         String              @default("USD")
+  subtotalCents    BigInt
+  taxCents         BigInt              @default(0)
+  totalCents       BigInt
+  amountDueCents   BigInt
+  status           String              @default("DRAFT") // DRAFT, APPROVED, POSTED, PARTIALLY_PAID, PAID, VOID
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  version          Int                 @default(1)
+  lines            InvoiceLine[]
+  allocations      PaymentAllocation[]
+
+  @@unique([tenantId, counterpartyId, invoiceType, invoiceNumber])
+}
+
+model InvoiceLine {
+  id            String         @id @default(uuid())
+  tenantId      String
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  invoiceId     String
+  invoice       Invoice        @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  accountId     String
+  account       ChartOfAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  lineNumber    Int
+  description   String
+  quantity      Float          @default(1)
+  unitCostCents BigInt
+  totalCents    BigInt
+  createdAt     DateTime       @default(now())
+
+  @@unique([invoiceId, lineNumber])
+}
+
+model Payment {
+  id               String              @id @default(uuid())
+  tenantId         String
+  tenant           Tenant              @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  counterpartyId   String
+  counterparty     Counterparty        @relation(fields: [counterpartyId], references: [id], onDelete: Restrict)
+  bankAccountId    String?
+  paymentAccountId String
+  paymentAccount   ChartOfAccount      @relation("PaymentAccount", fields: [paymentAccountId], references: [id], onDelete: Restrict)
+  journalEntryId   String?
+  journalEntry     JournalEntry?       @relation(fields: [journalEntryId], references: [id], onDelete: Restrict)
+  paymentType      String // DISBURSEMENT, RECEIPT
+  paymentDate      DateTime
+  amountCents      BigInt
+  paymentMethod    String // ACH, WIRE, CHECK, CREDIT_CARD, CASH
+  referenceNumber  String?
+  status           String              @default("CLEARED") // CLEARED, VOID
+  createdAt        DateTime            @default(now())
+  allocations      PaymentAllocation[]
+}
+
+model PaymentAllocation {
+  id                   String   @id @default(uuid())
+  tenantId             String
+  tenant               Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  paymentId            String
+  payment              Payment  @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  invoiceId            String
+  invoice              Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  allocatedAmountCents BigInt
+  createdAt            DateTime @default(now())
 }
