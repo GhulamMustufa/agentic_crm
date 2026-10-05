@@ -1,0 +1,50 @@
+{
+  "name": "agentic-business-os",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Production-grade multi-tenant Agentic Business OS",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "ESLINT_USE_FLAT_CONFIG=false eslint \"{src,test}/**/*.ts\"",
+    "lint:fix": "ESLINT_USE_FLAT_CONFIG=false eslint \"{src,test}/**/*.ts\" --fix",
+    "format:check": "prettier --check \"**/*.{ts,js,json,md,css}\"",
+    "format": "prettier --write \"**/*.{ts,js,json,md,css}\"",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "build": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@nestjs/testing": "^10.4.22",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/express": "^5.0.6",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/node": "^20.19.43",
+    "@types/supertest": "^6.0.3",
+    "@types/uuid": "^10.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
+    "eslint": "^9.0.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-import": "^2.30.0",
+    "prettier": "^3.3.3",
+    "supertest": "^7.3.1",
+    "typescript": "^5.6.2",
+    "unplugin-swc": "^1.6.0",
+    "vitest": "^2.1.9"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  },
+  "dependencies": {
+    "@nestjs/common": "^10.4.22",
+    "@nestjs/core": "^10.4.22",
+    "@nestjs/platform-express": "^10.4.22",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.3",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2",
+    "uuid": "^10.0.0",
+    "zod": "^3.25.76"
+  }
+}

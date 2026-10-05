@@ -1,0 +1,48 @@
+name: Continuous Integration & Standards Enforcement
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality-gate:
+    name: Lint, Typecheck, Format & Security Audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Verify Code Formatting (Prettier)
+        run: npm run format:check
+
+      - name: Static Code Analysis (ESLint)
+        run: npm run lint
+
+      - name: Strict TypeScript Compilation
+        run: npm run typecheck
+
+      - name: Run Test Suites
+        run: npm run test
+
+      - name: Execute Build
+        run: npm run build
+
+      - name: Dependency Security Audit
+        run: npm audit --audit-level=high
+        continue-on-error: true
