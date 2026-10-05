@@ -1,12 +1,13 @@
 "use client"
 
 import * as React from "react"
-import { Check, X, AlertTriangle, FileQuestion, HelpCircle, ChevronRight, Building2, UploadCloud, Search } from "lucide-react"
+import { Check, X, AlertTriangle, FileQuestion, HelpCircle, ChevronRight, Building2, UploadCloud, Search, CheckCircle2 } from "lucide-react"
 
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
+import { EmptyState } from "@/components/shared/empty-state"
 
 type ExceptionType = "unrecognized_vendor" | "ambiguous_category" | "missing_receipt"
 
@@ -20,7 +21,7 @@ interface ExceptionItem {
   aiProposal: string
 }
 
-const mockExceptions: ExceptionItem[] = [
+const initialMockExceptions: ExceptionItem[] = [
   {
     id: "EX-1042",
     date: "Oct 05, 2026",
@@ -51,9 +52,16 @@ const mockExceptions: ExceptionItem[] = [
 ]
 
 export default function ExceptionsPage() {
-  const [selectedId, setSelectedId] = React.useState<string | null>(mockExceptions[0].id)
+  const [exceptions, setExceptions] = React.useState<ExceptionItem[]>(initialMockExceptions)
+  const [selectedId, setSelectedId] = React.useState<string | null>(initialMockExceptions[0]?.id || null)
   
-  const selectedException = mockExceptions.find(e => e.id === selectedId)
+  const selectedException = exceptions.find(e => e.id === selectedId)
+
+  const handleApprove = () => {
+    const updated = exceptions.filter(e => e.id !== selectedId)
+    setExceptions(updated)
+    setSelectedId(updated.length > 0 ? updated[0].id : null)
+  }
 
   const getTypeIcon = (type: ExceptionType) => {
     switch(type) {
@@ -69,6 +77,23 @@ export default function ExceptionsPage() {
       case "ambiguous_category": return "Ambiguous Category"
       case "missing_receipt": return "Missing Receipt"
     }
+  }
+
+  if (exceptions.length === 0) {
+    return (
+      <div className="flex flex-col h-[calc(100vh-8rem)] pt-12">
+        <EmptyState
+          icon={CheckCircle2}
+          title="All caught up!"
+          description="Your AI accountant has handled everything. There are no exceptions requiring your attention."
+          actionLabel="Refresh Exceptions"
+          onAction={() => {
+            setExceptions(initialMockExceptions)
+            setSelectedId(initialMockExceptions[0].id)
+          }}
+        />
+      </div>
+    )
   }
 
   return (
@@ -94,7 +119,7 @@ export default function ExceptionsPage() {
       <div className="flex flex-col md:flex-row gap-6 flex-1 min-h-0">
         {/* Left Pane: List */}
         <div className="w-full md:w-1/3 flex flex-col gap-3 overflow-y-auto pr-1">
-          {mockExceptions.map(exc => (
+          {exceptions.map(exc => (
             <Card 
               key={exc.id} 
               className={`cursor-pointer transition-colors hover:bg-muted/50 ${selectedId === exc.id ? 'border-primary shadow-sm bg-primary/5 dark:bg-primary/10' : ''}`}
@@ -184,11 +209,11 @@ export default function ExceptionsPage() {
               </div>
 
               <div className="p-4 border-t shrink-0 flex items-center justify-end gap-3 bg-muted/20">
-                <Button variant="ghost">Skip for now</Button>
+                <Button variant="ghost" onClick={handleApprove}>Skip for now</Button>
                 <Button variant="outline">
                   <ChevronRight className="w-4 h-4 mr-2" /> Modify
                 </Button>
-                <Button className="bg-emerald-600 hover:bg-emerald-700 text-white">
+                <Button onClick={handleApprove} className="bg-emerald-600 hover:bg-emerald-700 text-white">
                   <Check className="w-4 h-4 mr-2" /> Approve Proposal
                 </Button>
               </div>
