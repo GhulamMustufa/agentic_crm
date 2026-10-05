@@ -164,6 +164,10 @@ export class LedgerService {
     return this.ledgerRepo.findAccountByCode(tenantId, code);
   }
 
+  async getAccountById(tenantId: string, id: string): Promise<AccountEntity | null> {
+    return this.ledgerRepo.findAccountById(tenantId, id);
+  }
+
   /**
    * Initializes a Fiscal Year and 12 monthly accounting periods.
    */
