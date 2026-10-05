@@ -2,19 +2,20 @@ import { Module } from '@nestjs/common';
 
 import { AuthController } from './controllers/auth.controller';
 import { USER_REPOSITORY_TOKEN } from './domain/user.repository.interface';
-import { InMemoryUserRepository } from './repositories/in-memory-user.repository';
+import { PrismaUserRepository } from './repositories/prisma-user.repository';
 import { AuthService } from './services/auth.service';
+import { PrismaModule } from '../../core/prisma/prisma.module';
 
 @Module({
+  imports: [PrismaModule],
   controllers: [AuthController],
   providers: [
     AuthService,
-    InMemoryUserRepository,
     {
       provide: USER_REPOSITORY_TOKEN,
-      useExisting: InMemoryUserRepository,
+      useClass: PrismaUserRepository,
     },
   ],
-  exports: [AuthService, USER_REPOSITORY_TOKEN, InMemoryUserRepository],
+  exports: [AuthService, USER_REPOSITORY_TOKEN],
 })
 export class IdentityModule {}

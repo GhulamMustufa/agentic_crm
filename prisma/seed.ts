@@ -16,10 +16,11 @@ async function main() {
     update: {},
     create: {
       id: 'default-tenant',
-      name: 'Agentic CRM Inc.',
+      slug: 'default-tenant',
+      legalName: 'Agentic CRM Inc.',
     },
   });
-  console.log(`Created/Found Tenant: ${tenant.name} (ID: ${tenant.id})`);
+  console.log(`Created/Found Tenant: ${tenant.legalName} (ID: ${tenant.id})`);
 
   // 2. Create mock Exceptions
   const exceptions = await Promise.all([

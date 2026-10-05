@@ -13,6 +13,12 @@ describe('End-to-End API Test Suite (Phase 0)', () => {
   let userId: string;
   let tenantId: string;
 
+  const timestamp = Date.now();
+  const testEmail = `alex.founder_${timestamp}@company.com`;
+  const inviteEmail = `elena.controller_${timestamp}@company.com`;
+  const outsiderEmail = `outsider_${timestamp}@other.com`;
+  const testSlug = `alpha-innovations-${timestamp}`;
+
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
@@ -33,13 +39,13 @@ describe('End-to-End API Test Suite (Phase 0)', () => {
     const res = await request(app.getHttpServer())
       .post('/api/v1/auth/register')
       .send({
-        email: 'alex.founder@company.com',
+        email: testEmail,
         password: 'Password123!',
         fullName: 'Alex Founder',
       })
       .expect(201);
 
-    expect(res.body.data.user.email).toBe('alex.founder@company.com');
+    expect(res.body.data.user.email).toBe(testEmail);
     expect(res.body.data.tokens.accessToken).toBeDefined();
     userToken = res.body.data.tokens.accessToken;
     userId = res.body.data.user.id;
@@ -49,7 +55,7 @@ describe('End-to-End API Test Suite (Phase 0)', () => {
     const res = await request(app.getHttpServer())
       .post('/api/v1/auth/login')
       .send({
-        email: 'alex.founder@company.com',
+        email: testEmail,
         password: 'Password123!',
       })
       .expect(200);
@@ -65,7 +71,7 @@ describe('End-to-End API Test Suite (Phase 0)', () => {
       .expect(200);
 
     expect(res.body.data.id).toBe(userId);
-    expect(res.body.data.email).toBe('alex.founder@company.com');
+    expect(res.body.data.email).toBe(testEmail);
   });
 
   it('4. POST /api/v1/organizations -> should create organization and assign user as OWNER', async () => {
@@ -74,14 +80,14 @@ describe('End-to-End API Test Suite (Phase 0)', () => {
       .set('Authorization', `Bearer ${userToken}`)
       .send({
         legalName: 'Alpha Innovations Corp.',
-        slug: 'alpha-innovations',
+        slug: testSlug,
         baseCurrency: 'USD',
         timezone: 'America/New_York',
       })
       .expect(201);
 
     expect(res.body.data.id).toBeDefined();
-    expect(res.body.data.slug).toBe('alpha-innovations');
+    expect(res.body.data.slug).toBe(testSlug);
     tenantId = res.body.data.id;
   });
 
@@ -92,7 +98,7 @@ describe('End-to-End API Test Suite (Phase 0)', () => {
       .expect(200);
 
     expect(res.body.data.length).toBeGreaterThanOrEqual(1);
-    expect(res.body.data[0].slug).toBe('alpha-innovations');
+    expect(res.body.data[0].slug).toBe(testSlug);
   });
 
   it('6. POST /api/v1/organizations/:id/members -> OWNER can invite team member', async () => {
@@ -100,12 +106,12 @@ describe('End-to-End API Test Suite (Phase 0)', () => {
       .post(`/api/v1/organizations/${tenantId}/members`)
       .set('Authorization', `Bearer ${userToken}`)
       .send({
-        email: 'elena.controller@company.com',
+        email: inviteEmail,
         roleCode: 'CONTROLLER',
       })
       .expect(201);
 
-    expect(res.body.data.email).toBe('elena.controller@company.com');
+    expect(res.body.data.email).toBe(inviteEmail);
     expect(res.body.data.roleCode).toBe('CONTROLLER');
   });
 
@@ -114,7 +120,7 @@ describe('End-to-End API Test Suite (Phase 0)', () => {
     const outsiderRes = await request(app.getHttpServer())
       .post('/api/v1/auth/register')
       .send({
-        email: 'outsider@other.com',
+        email: outsiderEmail,
         password: 'Password123!',
         fullName: 'Outsider User',
       })

@@ -9,11 +9,47 @@ datasource db {
   provider = "postgresql"
 }
 
+model User {
+  id                 String             @id @default(uuid())
+  email              String             @unique
+  passwordHash       String
+  fullName           String
+  isMfaEnabled       Boolean            @default(false)
+  mfaSecretEncrypted String?
+  isSuperadmin       Boolean            @default(false)
+  status             String             @default("ACTIVE") // ACTIVE, SUSPENDED, INVITED
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  version            Int                @default(1)
+  sessions           UserSession[]
+  memberships        TenantMembership[]
+}
+
+model UserSession {
+  id               String   @id @default(uuid())
+  userId           String
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  refreshTokenHash String
+  userAgent        String?
+  ipAddress        String?
+  expiresAt        DateTime
+  isRevoked        Boolean  @default(false)
+  createdAt        DateTime @default(now())
+}
+
 model Tenant {
   id                     String                  @id @default(uuid())
-  name                   String
+  slug                   String                  @unique
+  legalName              String
+  taxIdentifier          String?
+  baseCurrency           String                  @default("USD")
+  timezone               String                  @default("UTC")
+  status                 String                  @default("ACTIVE") // ACTIVE, TRIAL, DELINQUENT, SUSPENDED
   createdAt              DateTime                @default(now())
   updatedAt              DateTime                @updatedAt
+  version                Int                     @default(1)
+  memberships            TenantMembership[]
+  settings               TenantSettings?
   transactions           Transaction[]
   exceptions             Exception[]
   fiscalYears            FiscalYear[]
@@ -22,6 +58,31 @@ model Tenant {
   journalEntries         JournalEntry[]
   journalEntryLines      JournalEntryLine[]
   accountMonthlyBalances AccountMonthlyBalance[]
+}
+
+model TenantMembership {
+  id        String   @id @default(uuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  roleCode  String
+  status    String   @default("ACTIVE") // ACTIVE, INVITED, INACTIVE
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, userId])
+}
+
+model TenantSettings {
+  tenantId                 String   @id
+  tenant                   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  autoPostMinConfidence   Float    @default(0.95)
+  maxAutoPostAmountCents   BigInt   @default(500000)
+  allowAiAutoPosting       Boolean  @default(true)
+  requireReceiptAboveCents BigInt   @default(7500)
+  updatedAt                DateTime @updatedAt
+  version                  Int      @default(1)
 }
 
 model Transaction {

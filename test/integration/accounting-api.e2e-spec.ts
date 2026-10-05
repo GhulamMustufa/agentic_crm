@@ -36,10 +36,11 @@ describe('Accounting API End-to-End Test Suite (Phase 1)', () => {
   });
 
   it('1. Setup User & Organization', async () => {
+    const timestamp = Date.now();
     const regRes = await request(app.getHttpServer())
       .post('/api/v1/auth/register')
       .send({
-        email: 'cfo@saasplatform.com',
+        email: `cfo_${timestamp}@saasplatform.com`,
         password: 'Password123!',
         fullName: 'Chief Financial Officer',
       })
@@ -52,7 +53,7 @@ describe('Accounting API End-to-End Test Suite (Phase 1)', () => {
       .set('Authorization', `Bearer ${userToken}`)
       .send({
         legalName: 'CloudScale SaaS Inc.',
-        slug: 'cloudscale-saas',
+        slug: `cloudscale-saas-${timestamp}`,
         baseCurrency: 'USD',
         timezone: 'America/New_York',
       })
@@ -104,7 +105,7 @@ describe('Accounting API End-to-End Test Suite (Phase 1)', () => {
     // Period 3 is March 2026
     marchPeriodId = fyRes.body.data.periods[2].id;
     expect(marchPeriodId).toBeDefined();
-  });
+  }, 15000);
 
   it('3. Create Customer and Vendor Counterparties', async () => {
     const custRes = await request(app.getHttpServer())

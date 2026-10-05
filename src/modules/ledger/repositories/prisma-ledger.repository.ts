@@ -45,7 +45,8 @@ export class PrismaLedgerRepository implements ILedgerRepository {
       update: {},
       create: {
         id: tenantId,
-        name: `Tenant ${tenantId}`,
+        slug: tenantId,
+        legalName: `Tenant ${tenantId}`,
       },
     });
     this.knownTenants.add(tenantId);
