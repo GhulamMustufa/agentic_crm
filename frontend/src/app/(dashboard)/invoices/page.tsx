@@ -6,13 +6,12 @@ import {
   Plus,
   Search,
   Download,
-  Filter,
-  Clock,
   CheckCircle2,
   AlertTriangle,
   ArrowUpRight,
   ArrowDownLeft,
   MoreVertical,
+  Loader2,
 } from 'lucide-react';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -28,6 +27,19 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { formatCurrency, formatIsoDate } from '@/lib/formatters';
+import { apiClient } from '@/lib/api-client';
+
+interface RawInvoice {
+  id: string;
+  invoiceNumber: string;
+  invoiceType: 'INVOICE' | 'BILL';
+  counterparty?: { legalName: string };
+  issueDate: string;
+  dueDate: string;
+  totalCents: string | number;
+  amountDueCents: string | number;
+  status: 'DRAFT' | 'APPROVED' | 'POSTED' | 'PARTIALLY_PAID' | 'PAID' | 'VOID';
+}
 
 interface InvoiceRecord {
   id: string;
@@ -40,76 +52,59 @@ interface InvoiceRecord {
   status: 'DRAFT' | 'POSTED' | 'PAID' | 'OVERDUE' | 'VOID';
 }
 
-const mockInvoices: InvoiceRecord[] = [
-  {
-    id: 'inv-1',
-    invoiceNumber: 'INV-2026-0104',
-    type: 'ACCOUNTS_RECEIVABLE',
-    counterpartyName: 'Acme Global Industries',
-    issueDate: '2026-10-01T00:00:00.000Z',
-    dueDate: '2026-10-31T00:00:00.000Z',
-    totalAmount: 18500.0,
-    status: 'POSTED',
-  },
-  {
-    id: 'inv-2',
-    invoiceNumber: 'INV-2026-0103',
-    type: 'ACCOUNTS_RECEIVABLE',
-    counterpartyName: 'Starlight SaaS Technologies',
-    issueDate: '2026-09-28T00:00:00.000Z',
-    dueDate: '2026-10-15T00:00:00.000Z',
-    totalAmount: 9400.0,
-    status: 'PAID',
-  },
-  {
-    id: 'inv-3',
-    invoiceNumber: 'BILL-2026-0089',
-    type: 'ACCOUNTS_PAYABLE',
-    counterpartyName: 'Cloudflare Network Services',
-    issueDate: '2026-10-02T00:00:00.000Z',
-    dueDate: '2026-10-12T00:00:00.000Z',
-    totalAmount: 1420.0,
-    status: 'POSTED',
-  },
-  {
-    id: 'inv-4',
-    invoiceNumber: 'BILL-2026-0088',
-    type: 'ACCOUNTS_PAYABLE',
-    counterpartyName: 'Amazon Web Services (AWS)',
-    issueDate: '2026-09-15T00:00:00.000Z',
-    dueDate: '2026-10-01T00:00:00.000Z',
-    totalAmount: 4250.0,
-    status: 'OVERDUE',
-  },
-  {
-    id: 'inv-5',
-    invoiceNumber: 'INV-2026-0105',
-    type: 'ACCOUNTS_RECEIVABLE',
-    counterpartyName: 'Helios Logistics Group',
-    issueDate: '2026-10-05T00:00:00.000Z',
-    dueDate: '2026-11-05T00:00:00.000Z',
-    totalAmount: 12100.0,
-    status: 'DRAFT',
-  },
-  {
-    id: 'inv-6',
-    invoiceNumber: 'BILL-2026-0090',
-    type: 'ACCOUNTS_PAYABLE',
-    counterpartyName: 'Google Cloud Platform',
-    issueDate: '2026-09-20T00:00:00.000Z',
-    dueDate: '2026-10-05T00:00:00.000Z',
-    totalAmount: 3820.0,
-    status: 'PAID',
-  },
-];
-
 export default function InvoicesPage() {
   const [searchTerm, setSearchTerm] = React.useState('');
   const [activeTab, setActiveTab] = React.useState<'ALL' | 'RECEIVABLE' | 'PAYABLE' | 'OVERDUE'>(
     'ALL',
   );
+  const [invoices, setInvoices] = React.useState<InvoiceRecord[]>([]);
+  const [loading, setLoading] = React.useState(true);
 
-  const filteredInvoices = mockInvoices.filter((inv) => {
+  const fetchInvoices = React.useCallback(async () => {
+    try {
+      setLoading(true);
+      const res = await apiClient.get<{ data: RawInvoice[] }>('/invoices');
+      const rawList = res.data || [];
+
+      const mapped: InvoiceRecord[] = rawList.map((inv) => {
+        const isAr = inv.invoiceType === 'INVOICE';
+        const total = Number(inv.totalCents || 0) / 100;
+        let mappedStatus: InvoiceRecord['status'] = 'DRAFT';
+        if (inv.status === 'PAID') mappedStatus = 'PAID';
+        else if (inv.status === 'POSTED' || inv.status === 'APPROVED') mappedStatus = 'POSTED';
+        else if (inv.status === 'VOID') mappedStatus = 'VOID';
+
+        // Check overdue
+        if (mappedStatus === 'POSTED' && new Date(inv.dueDate) < new Date()) {
+          mappedStatus = 'OVERDUE';
+        }
+
+        return {
+          id: inv.id,
+          invoiceNumber: inv.invoiceNumber,
+          type: isAr ? 'ACCOUNTS_RECEIVABLE' : 'ACCOUNTS_PAYABLE',
+          counterpartyName: inv.counterparty?.legalName || 'Unspecified Counterparty',
+          issueDate: inv.issueDate,
+          dueDate: inv.dueDate,
+          totalAmount: total,
+          status: mappedStatus,
+        };
+      });
+
+      setInvoices(mapped);
+    } catch (err) {
+      console.warn('Could not fetch live invoices:', err);
+      setInvoices([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    fetchInvoices();
+  }, [fetchInvoices]);
+
+  const filteredInvoices = invoices.filter((inv) => {
     const matchesSearch =
       inv.invoiceNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
       inv.counterpartyName.toLowerCase().includes(searchTerm.toLowerCase());
@@ -121,6 +116,25 @@ export default function InvoicesPage() {
     if (activeTab === 'OVERDUE') return inv.status === 'OVERDUE';
     return true;
   });
+
+  // Calculate live KPIs
+  const totalReceivables = invoices
+    .filter((inv) => inv.type === 'ACCOUNTS_RECEIVABLE' && inv.status !== 'PAID')
+    .reduce((sum, inv) => sum + inv.totalAmount, 0);
+
+  const totalPayables = invoices
+    .filter((inv) => inv.type === 'ACCOUNTS_PAYABLE' && inv.status !== 'PAID')
+    .reduce((sum, inv) => sum + inv.totalAmount, 0);
+
+  const overdueAmount = invoices
+    .filter((inv) => inv.status === 'OVERDUE')
+    .reduce((sum, inv) => sum + inv.totalAmount, 0);
+
+  const overdueCount = invoices.filter((inv) => inv.status === 'OVERDUE').length;
+
+  const collectedThisMonth = invoices
+    .filter((inv) => inv.status === 'PAID' && inv.type === 'ACCOUNTS_RECEIVABLE')
+    .reduce((sum, inv) => sum + inv.totalAmount, 0);
 
   const getStatusBadge = (status: InvoiceRecord['status']) => {
     switch (status) {
@@ -195,7 +209,9 @@ export default function InvoicesPage() {
             <ArrowDownLeft className="h-4 w-4 text-emerald-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold tabular-nums">$40,000.00</div>
+            <div className="text-2xl font-bold tabular-nums">
+              {formatCurrency(totalReceivables)}
+            </div>
             <p className="text-xs text-muted-foreground mt-1">Incoming revenue expected</p>
           </CardContent>
         </Card>
@@ -206,7 +222,7 @@ export default function InvoicesPage() {
             <ArrowUpRight className="h-4 w-4 text-blue-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold tabular-nums">$9,490.00</div>
+            <div className="text-2xl font-bold tabular-nums">{formatCurrency(totalPayables)}</div>
             <p className="text-xs text-muted-foreground mt-1">Upcoming vendor obligations</p>
           </CardContent>
         </Card>
@@ -220,10 +236,12 @@ export default function InvoicesPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-rose-700 dark:text-rose-400 tabular-nums">
-              $4,250.00
+              {formatCurrency(overdueAmount)}
             </div>
             <p className="text-xs text-rose-600/80 dark:text-rose-400/80 mt-1">
-              1 vendor bill past due date
+              {overdueCount === 0
+                ? 'No overdue bills'
+                : `${overdueCount} vendor bill${overdueCount > 1 ? 's' : ''} past due date`}
             </p>
           </CardContent>
         </Card>
@@ -235,7 +253,7 @@ export default function InvoicesPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400 tabular-nums">
-              $13,220.00
+              {formatCurrency(collectedThisMonth)}
             </div>
             <p className="text-xs text-muted-foreground mt-1">Reconciled against general ledger</p>
           </CardContent>
@@ -296,48 +314,70 @@ export default function InvoicesPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Invoice #</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Counterparty</TableHead>
-                <TableHead>Issue Date</TableHead>
-                <TableHead>Due Date</TableHead>
-                <TableHead className="text-right">Amount</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="w-12"></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredInvoices.map((inv) => (
-                <TableRow key={inv.id}>
-                  <TableCell className="font-semibold">{inv.invoiceNumber}</TableCell>
-                  <TableCell>
-                    <span className="text-xs font-medium text-muted-foreground">
-                      {inv.type === 'ACCOUNTS_RECEIVABLE' ? 'Customer (AR)' : 'Vendor (AP)'}
-                    </span>
-                  </TableCell>
-                  <TableCell>{inv.counterpartyName}</TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {formatIsoDate(inv.issueDate)}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {formatIsoDate(inv.dueDate)}
-                  </TableCell>
-                  <TableCell className="text-right font-medium tabular-nums">
-                    {formatCurrency(inv.totalAmount)}
-                  </TableCell>
-                  <TableCell>{getStatusBadge(inv.status)}</TableCell>
-                  <TableCell>
-                    <Button variant="ghost" size="icon" className="h-8 w-8">
-                      <MoreVertical className="h-4 w-4" />
-                    </Button>
-                  </TableCell>
+          {loading ? (
+            <div className="flex items-center justify-center py-12 text-muted-foreground gap-2">
+              <Loader2 className="w-5 h-5 animate-spin" />
+              <span>Loading invoice records...</span>
+            </div>
+          ) : filteredInvoices.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mb-3">
+                <FileText className="w-6 h-6 text-muted-foreground" />
+              </div>
+              <h3 className="font-semibold text-lg">No Invoices or Bills Found</h3>
+              <p className="text-sm text-muted-foreground max-w-sm mt-1 mb-4">
+                Your business has no customer invoices or vendor bills recorded yet. Create an
+                invoice or process a statement to get started.
+              </p>
+              <Button size="sm">
+                <Plus className="w-4 h-4 mr-2" />
+                Create First Invoice
+              </Button>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Invoice #</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Counterparty</TableHead>
+                  <TableHead>Issue Date</TableHead>
+                  <TableHead>Due Date</TableHead>
+                  <TableHead className="text-right">Amount</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="w-12"></TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {filteredInvoices.map((inv) => (
+                  <TableRow key={inv.id}>
+                    <TableCell className="font-semibold">{inv.invoiceNumber}</TableCell>
+                    <TableCell>
+                      <span className="text-xs font-medium text-muted-foreground">
+                        {inv.type === 'ACCOUNTS_RECEIVABLE' ? 'Customer (AR)' : 'Vendor (AP)'}
+                      </span>
+                    </TableCell>
+                    <TableCell>{inv.counterpartyName}</TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {formatIsoDate(inv.issueDate)}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {formatIsoDate(inv.dueDate)}
+                    </TableCell>
+                    <TableCell className="text-right font-medium tabular-nums">
+                      {formatCurrency(inv.totalAmount)}
+                    </TableCell>
+                    <TableCell>{getStatusBadge(inv.status)}</TableCell>
+                    <TableCell>
+                      <Button variant="ghost" size="icon" className="h-8 w-8">
+                        <MoreVertical className="h-4 w-4" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
     </div>

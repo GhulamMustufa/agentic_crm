@@ -7,6 +7,23 @@ import { ValidationError } from '../../../core/errors/app-error';
 
 import type { IStatementParser, ParsedStatementResult } from './statement-parser.interface';
 
+const AiStatementTransactionSchema = z.object({
+  date: z.string(),
+  description: z.string(),
+  amount: z.number(),
+});
+
+const AiStatementSchema = z.object({
+  bankName: z.string().optional(),
+  accountType: z.string().optional(),
+  accountNumberLast4: z.string().optional(),
+  startDate: z.string(),
+  endDate: z.string(),
+  openingBalance: z.number(),
+  closingBalance: z.number(),
+  transactions: z.array(AiStatementTransactionSchema),
+});
+
 type AiStatementData = z.infer<typeof AiStatementSchema>;
 
 @Injectable()
@@ -107,7 +124,7 @@ You must return ONLY a JSON object matching this schema:
       totalCreditsCents,
       transactions: parsedTransactions,
       bankName: data.bankName,
-      accountType: data.accountType,
+      accountType: data.accountType as 'CHECKING' | 'SAVINGS' | 'CREDIT_CARD' | undefined,
       accountNumberLast4: data.accountNumberLast4,
     };
   }

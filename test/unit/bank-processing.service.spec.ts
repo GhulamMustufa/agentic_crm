@@ -8,6 +8,7 @@ import {
 } from '../../src/core/errors/app-error';
 import { InMemoryAuditRepository } from '../../src/modules/audit/repositories/in-memory-audit.repository';
 import { AuditService } from '../../src/modules/audit/services/audit.service';
+import { AiStatementParser } from '../../src/modules/banking/parsers/ai-statement.parser';
 import { CsvStatementParser } from '../../src/modules/banking/parsers/csv-statement.parser';
 import { PdfStatementParser } from '../../src/modules/banking/parsers/pdf-statement.parser';
 import { InMemoryBankingRepository } from '../../src/modules/banking/repositories/in-memory-banking.repository';
