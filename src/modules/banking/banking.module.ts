@@ -9,6 +9,7 @@ import { BankingController } from './controllers/banking.controller';
 import { BANKING_REPOSITORY_TOKEN } from './domain/banking.repository.interface';
 import { CsvStatementParser } from './parsers/csv-statement.parser';
 import { PdfStatementParser } from './parsers/pdf-statement.parser';
+import { AiStatementParser } from './parsers/ai-statement.parser';
 import { PrismaBankingRepository } from './repositories/prisma-banking.repository';
 import { AiAccountantService } from './services/ai-accountant.service';
 import { BankProcessingService } from './services/bank-processing.service';
@@ -20,6 +21,7 @@ import { BankProcessingService } from './services/bank-processing.service';
     BankProcessingService,
     AiAccountantService,
     CsvStatementParser,
+    AiStatementParser,
     PdfStatementParser,
     {
       provide: BANKING_REPOSITORY_TOKEN,
