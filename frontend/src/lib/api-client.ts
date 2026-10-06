@@ -91,7 +91,16 @@ export const apiClient = {
       },
     };
 
-    const response = await fetch(url, config);
+    let response: Response;
+    try {
+      response = await fetch(url, config);
+    } catch (netErr) {
+      const msg = 'Unable to connect to backend server. Please check server availability.';
+      if (!options.silent) {
+        toast.error(msg);
+      }
+      throw new ApiError(msg, 0, netErr);
+    }
 
     if (!response.ok) {
       if (response.status === 401 && typeof window !== 'undefined') {
@@ -115,9 +124,9 @@ export const apiClient = {
 
               const refreshData = await refreshResponse.json();
               authStorage.setAuthSession(refreshData.data.tokens, refreshData.data.user);
-              
+
               processQueue(null, refreshData.data.tokens.accessToken);
-              
+
               // Retry the original request
               return this.fetch<T>(endpoint, options);
             } catch (err) {
@@ -154,7 +163,7 @@ export const apiClient = {
       } catch {
         errorData = null;
       }
-      
+
       const message = extractReadableError(errorData, response.status, response.statusText);
 
       if (response.status !== 401 && !options.silent) {
