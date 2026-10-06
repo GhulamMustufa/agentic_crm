@@ -11,9 +11,9 @@ interface RequestOptions extends RequestInit {
 
 class ApiError extends Error {
   public status: number
-  public data: any
+  public data: unknown
 
-  constructor(message: string, status: number, data: any) {
+  constructor(message: string, status: number, data: unknown) {
     super(message)
     this.status = status
     this.data = data
@@ -46,13 +46,17 @@ export const apiClient = {
     const response = await fetch(url, config)
 
     if (!response.ok) {
-      let errorData
+      let errorData: unknown
       try {
         errorData = await response.json()
-      } catch (err) {
+      } catch {
         errorData = { message: "An unexpected error occurred" }
       }
-      throw new ApiError(errorData.message || response.statusText, response.status, errorData)
+      const message =
+        typeof errorData === "object" && errorData !== null && "message" in errorData
+          ? String((errorData as { message: unknown }).message)
+          : response.statusText
+      throw new ApiError(message, response.status, errorData)
     }
 
     if (response.status === 204) {
@@ -66,15 +70,15 @@ export const apiClient = {
     return this.fetch<T>(endpoint, { ...options, method: "GET" })
   },
 
-  post<T>(endpoint: string, body: any, options?: Omit<RequestOptions, "method" | "body">) {
+  post<T>(endpoint: string, body: unknown, options?: Omit<RequestOptions, "method" | "body">) {
     return this.fetch<T>(endpoint, { ...options, method: "POST", body: JSON.stringify(body) })
   },
 
-  put<T>(endpoint: string, body: any, options?: Omit<RequestOptions, "method" | "body">) {
+  put<T>(endpoint: string, body: unknown, options?: Omit<RequestOptions, "method" | "body">) {
     return this.fetch<T>(endpoint, { ...options, method: "PUT", body: JSON.stringify(body) })
   },
 
-  patch<T>(endpoint: string, body: any, options?: Omit<RequestOptions, "method" | "body">) {
+  patch<T>(endpoint: string, body: unknown, options?: Omit<RequestOptions, "method" | "body">) {
     return this.fetch<T>(endpoint, { ...options, method: "PATCH", body: JSON.stringify(body) })
   },
 

@@ -30,16 +30,22 @@ export function ExceptionListClient({ initialData }: { initialData: ExceptionIte
       const res = await fetch('http://localhost:3000/exceptions', {
         headers: { 'x-tenant-id': 'default-tenant' }
       })
-      if (!res.ok) throw new Error('Failed to fetch exceptions')
-      const data = await res.json()
-      return data.map((item: any) => ({
+      const data = (await res.json()) as Array<{
+        id: string
+        createdAt: string
+        reason: string
+        type: ExceptionType
+        context?: { amount?: number; severity?: "high" | "medium" | "low" }
+        aiRecommendation?: string
+      }>
+      return data.map((item) => ({
         id: item.id,
         date: item.createdAt,
         amount: item.context?.amount || 0,
         description: item.reason,
         type: item.type,
         severity: item.context?.severity || "medium",
-        aiProposal: item.aiRecommendation
+        aiProposal: item.aiRecommendation || "",
       })) as ExceptionItem[]
     },
     initialData,

@@ -34,6 +34,7 @@ export default function SetupPage() {
   })
 
   async function onSubmit(data: SetupFormValues) {
+    void data
     setIsLoading(true)
     // Simulate API call to create organization
     setTimeout(() => {

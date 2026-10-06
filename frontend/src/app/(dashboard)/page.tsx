@@ -2,9 +2,9 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { ArrowRight, CheckCircle2, AlertCircle, FileText, Bot, DollarSign, Activity } from "lucide-react"
+import { CheckCircle2, AlertCircle, DollarSign, Activity } from "lucide-react"
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 
 export default function DashboardPage() {

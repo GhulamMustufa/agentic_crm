@@ -37,6 +37,7 @@ export default function RegisterPage() {
   })
 
   async function onSubmit(data: RegisterFormValues) {
+    void data
     setIsLoading(true)
     // Simulate API call to register
     setTimeout(() => {

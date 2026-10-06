@@ -37,6 +37,7 @@ export default function LoginPage() {
   })
 
   async function onSubmit(data: LoginFormValues) {
+    void data
     setIsLoading(true)
     // Simulate API call
     setTimeout(() => {

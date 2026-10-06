@@ -17,6 +17,18 @@ export interface ExceptionItem {
   aiProposal: string;
 }
 
+interface RawExceptionDto {
+  id: string;
+  createdAt: string;
+  type: ExceptionType;
+  reason: string;
+  aiRecommendation?: string;
+  context?: {
+    amount?: number;
+    severity?: "high" | "medium" | "low";
+  };
+}
+
 export async function getPendingExceptions(): Promise<ExceptionItem[]> {
   const res = await fetch('http://localhost:3000/exceptions', {
     headers: { 'x-tenant-id': 'default-tenant' },
@@ -24,16 +36,16 @@ export async function getPendingExceptions(): Promise<ExceptionItem[]> {
   });
   
   if (!res.ok) throw new Error('Failed to fetch exceptions');
-  const data = await res.json();
+  const data: RawExceptionDto[] = await res.json();
   
-  return data.map((item: any) => ({
+  return data.map((item) => ({
     id: item.id,
-    date: item.createdAt, // Will format in component or here? Formatting should be presentational. We'll pass raw ISO here.
+    date: item.createdAt,
     amount: item.context?.amount || 0,
     description: item.reason,
     type: item.type,
     severity: item.context?.severity || "medium",
-    aiProposal: item.aiRecommendation
+    aiProposal: item.aiRecommendation || "",
   }));
 }
 
