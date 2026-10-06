@@ -14,6 +14,7 @@ import {
   RefreshCw,
   UploadCloud,
   FileSpreadsheet,
+  ArrowUpDown,
 } from 'lucide-react';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -38,8 +39,8 @@ interface TransactionItem {
   accountName: string;
   accountCode: string;
   counterparty: string;
-  debit: number;
-  credit: number;
+  inflow: number; // Deposit (Money In)
+  outflow: number; // Withdrawal (Money Out)
   status: 'RECONCILED' | 'AI_MATCHED' | 'PENDING_REVIEW';
   isAuditLocked: boolean;
 }
@@ -54,89 +55,14 @@ interface RawBankTransaction {
   createdAt: string;
 }
 
-const sampleTransactions: TransactionItem[] = [
-  {
-    id: 'tx-1',
-    date: '2026-10-06T08:15:00.000Z',
-    description: 'Customer Wire Payment - INV-2026-0103',
-    accountName: 'Operating Cash',
-    accountCode: '1010',
-    counterparty: 'Starlight SaaS Technologies',
-    debit: 9400.0,
-    credit: 0,
-    status: 'RECONCILED',
-    isAuditLocked: true,
-  },
-  {
-    id: 'tx-2',
-    date: '2026-10-06T08:15:00.000Z',
-    description: 'Accounts Receivable Relief - INV-2026-0103',
-    accountName: 'Accounts Receivable',
-    accountCode: '1200',
-    counterparty: 'Starlight SaaS Technologies',
-    debit: 0,
-    credit: 9400.0,
-    status: 'RECONCILED',
-    isAuditLocked: true,
-  },
-  {
-    id: 'tx-3',
-    date: '2026-10-05T14:20:00.000Z',
-    description: 'Monthly Infrastructure & CDN Compute',
-    accountName: 'Cloud Infrastructure',
-    accountCode: '6010',
-    counterparty: 'Cloudflare Network Services',
-    debit: 1420.0,
-    credit: 0,
-    status: 'AI_MATCHED',
-    isAuditLocked: false,
-  },
-  {
-    id: 'tx-4',
-    date: '2026-10-05T14:20:00.000Z',
-    description: 'Accounts Payable Accrual',
-    accountName: 'Accounts Payable',
-    accountCode: '2010',
-    counterparty: 'Cloudflare Network Services',
-    debit: 0,
-    credit: 1420.0,
-    status: 'AI_MATCHED',
-    isAuditLocked: false,
-  },
-  {
-    id: 'tx-5',
-    date: '2026-10-04T10:00:00.000Z',
-    description: 'Semi-Monthly Payroll Batch Run #18',
-    accountName: 'Payroll Expense - Engineering',
-    accountCode: '6100',
-    counterparty: 'Payroll Processing',
-    debit: 48500.0,
-    credit: 0,
-    status: 'RECONCILED',
-    isAuditLocked: true,
-  },
-  {
-    id: 'tx-6',
-    date: '2026-10-04T10:00:00.000Z',
-    description: 'Payroll Direct Deposits Outflow',
-    accountName: 'Operating Cash',
-    accountCode: '1010',
-    counterparty: 'Payroll Clearing',
-    debit: 0,
-    credit: 48500.0,
-    status: 'RECONCILED',
-    isAuditLocked: true,
-  },
-];
-
 export default function TransactionsPage() {
   const [searchTerm, setSearchTerm] = React.useState('');
   const [statusFilter, setStatusFilter] = React.useState<
     'ALL' | 'RECONCILED' | 'AI_MATCHED' | 'PENDING_REVIEW'
   >('ALL');
+  const [sortOrder, setSortOrder] = React.useState<'STATEMENT_ASC' | 'DESC'>('STATEMENT_ASC');
   const [transactions, setTransactions] = React.useState<TransactionItem[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
-  const [useSampleFallback, setUseSampleFallback] = React.useState(false);
 
   const loadData = React.useCallback(async () => {
     setIsLoading(true);
@@ -146,8 +72,9 @@ export default function TransactionsPage() {
 
       if (rawList.length > 0) {
         const mapped: TransactionItem[] = rawList.map((tx) => {
-          const amountNum = Math.abs(Number(tx.amountCents || 0) / 100);
-          const isDeposit = Number(tx.amountCents || 0) > 0;
+          const rawAmount = Number(tx.amountCents || 0) / 100;
+          const isDeposit = rawAmount > 0;
+          const absAmount = Math.abs(rawAmount);
 
           let status: TransactionItem['status'] = 'PENDING_REVIEW';
           if (tx.status === 'RECONCILED') status = 'RECONCILED';
@@ -160,21 +87,19 @@ export default function TransactionsPage() {
             accountName: isDeposit ? 'Operating Cash (Deposit)' : 'Operating Cash (Disbursement)',
             accountCode: '1010',
             counterparty: tx.normalizedPayee || 'Institutional Counterparty',
-            debit: isDeposit ? amountNum : 0,
-            credit: isDeposit ? 0 : amountNum,
+            inflow: isDeposit ? absAmount : 0,
+            outflow: isDeposit ? 0 : absAmount,
             status,
             isAuditLocked: tx.status === 'RECONCILED',
           };
         });
 
         setTransactions(mapped);
-        setUseSampleFallback(false);
       } else {
-        // No live transactions yet
         setTransactions([]);
       }
     } catch (err) {
-      console.warn('Could not fetch live transactions, falling back:', err);
+      console.warn('Could not fetch live transactions:', err);
       setTransactions([]);
     } finally {
       setIsLoading(false);
@@ -185,10 +110,16 @@ export default function TransactionsPage() {
     loadData();
   }, [loadData]);
 
-  const displayedList =
-    transactions.length > 0 ? transactions : useSampleFallback ? sampleTransactions : [];
+  // Order sorting: preserve statement chronological order (Page 1 top -> Page 5 bottom) by default
+  const sortedList = React.useMemo(() => {
+    const copy = [...transactions];
+    if (sortOrder === 'DESC') {
+      return copy.reverse();
+    }
+    return copy;
+  }, [transactions, sortOrder]);
 
-  const filtered = displayedList.filter((tx) => {
+  const filtered = sortedList.filter((tx) => {
     const matchesSearch =
       tx.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
       tx.counterparty.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -200,13 +131,12 @@ export default function TransactionsPage() {
     return tx.status === statusFilter;
   });
 
-  const totalDebits = displayedList.reduce((acc, t) => acc + t.debit, 0);
-  const totalCredits = displayedList.reduce((acc, t) => acc + t.credit, 0);
-  const reconciledCount = displayedList.filter((t) => t.status === 'RECONCILED').length;
+  // Calculate totals
+  const totalInflows = transactions.reduce((acc, t) => acc + t.inflow, 0);
+  const totalOutflows = transactions.reduce((acc, t) => acc + t.outflow, 0);
+  const reconciledCount = transactions.filter((t) => t.status === 'RECONCILED').length;
   const reconciliationRate =
-    displayedList.length > 0
-      ? ((reconciledCount / displayedList.length) * 100).toFixed(1)
-      : '100.0';
+    transactions.length > 0 ? ((reconciledCount / transactions.length) * 100).toFixed(1) : '100.0';
 
   const getStatusBadge = (status: TransactionItem['status']) => {
     switch (status) {
@@ -246,7 +176,7 @@ export default function TransactionsPage() {
   };
 
   const exportCsv = () => {
-    if (displayedList.length === 0) return;
+    if (transactions.length === 0) return;
     const headers = [
       'ID',
       'Date',
@@ -254,19 +184,19 @@ export default function TransactionsPage() {
       'Account',
       'Code',
       'Counterparty',
-      'Debit',
-      'Credit',
+      'Inflow_Deposit',
+      'Outflow_Withdrawal',
       'Status',
     ];
-    const rows = displayedList.map((t) => [
+    const rows = transactions.map((t) => [
       t.id,
       t.date,
       `"${t.description.replace(/"/g, '""')}"`,
       `"${t.accountName}"`,
       t.accountCode,
       `"${t.counterparty}"`,
-      t.debit,
-      t.credit,
+      t.inflow,
+      t.outflow,
       t.status,
     ]);
     const csvContent =
@@ -291,15 +221,24 @@ export default function TransactionsPage() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Transactions & Ledger</h1>
           <p className="text-muted-foreground mt-1">
-            Immutable General Ledger double-entry records and verified banking transactions.
+            Immutable General Ledger records aligned with uploaded bank statements.
           </p>
         </div>
         <div className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={() =>
+              setSortOrder((prev) => (prev === 'STATEMENT_ASC' ? 'DESC' : 'STATEMENT_ASC'))
+            }
+          >
+            <ArrowUpDown className="w-4 h-4 mr-2" />
+            {sortOrder === 'STATEMENT_ASC' ? 'Statement Order (Oldest First)' : 'Newest First'}
+          </Button>
           <Button variant="outline" onClick={loadData} disabled={isLoading}>
             <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
             Sync Ledger
           </Button>
-          <Button variant="outline" onClick={exportCsv} disabled={displayedList.length === 0}>
+          <Button variant="outline" onClick={exportCsv} disabled={transactions.length === 0}>
             <Download className="w-4 h-4 mr-2" />
             Export CSV
           </Button>
@@ -310,23 +249,27 @@ export default function TransactionsPage() {
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Ledger Debits</CardTitle>
+            <CardTitle className="text-sm font-medium">Total Inflows (Deposits)</CardTitle>
             <ArrowDownLeft className="h-4 w-4 text-emerald-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold tabular-nums">{formatCurrency(totalDebits)}</div>
-            <p className="text-xs text-muted-foreground mt-1">Current accounting period</p>
+            <div className="text-2xl font-bold tabular-nums text-emerald-600 dark:text-emerald-400">
+              +{formatCurrency(totalInflows)}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">Money received across statement</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Ledger Credits</CardTitle>
-            <ArrowUpRight className="h-4 w-4 text-blue-500" />
+            <CardTitle className="text-sm font-medium">Total Outflows (Withdrawals)</CardTitle>
+            <ArrowUpRight className="h-4 w-4 text-rose-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold tabular-nums">{formatCurrency(totalCredits)}</div>
-            <p className="text-xs text-muted-foreground mt-1">Disbursements & adjustments</p>
+            <div className="text-2xl font-bold tabular-nums text-rose-600 dark:text-rose-400">
+              -{formatCurrency(totalOutflows)}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">Disbursements & payments</p>
           </CardContent>
         </Card>
 
@@ -402,7 +345,7 @@ export default function TransactionsPage() {
       </div>
 
       {/* Main Transactions Table or Empty State */}
-      {displayedList.length === 0 ? (
+      {transactions.length === 0 ? (
         <Card className="py-16 text-center border-dashed">
           <CardContent className="space-y-4 max-w-md mx-auto">
             <div className="w-12 h-12 rounded-full bg-primary/10 text-primary flex items-center justify-center mx-auto">
@@ -422,9 +365,6 @@ export default function TransactionsPage() {
                   Go to Banking Upload
                 </Link>
               </Button>
-              <Button variant="ghost" onClick={() => setUseSampleFallback(true)}>
-                Preview with Demo Records
-              </Button>
             </div>
           </CardContent>
         </Card>
@@ -437,8 +377,12 @@ export default function TransactionsPage() {
                   <TableHead className="w-[120px]">Date</TableHead>
                   <TableHead>Description & Payee</TableHead>
                   <TableHead>Chart of Accounts</TableHead>
-                  <TableHead className="text-right">Debit</TableHead>
-                  <TableHead className="text-right">Credit</TableHead>
+                  <TableHead className="text-right text-emerald-600 dark:text-emerald-400 font-semibold">
+                    Deposit (Inflow)
+                  </TableHead>
+                  <TableHead className="text-right text-rose-600 dark:text-rose-400 font-semibold">
+                    Withdrawal (Outflow)
+                  </TableHead>
                   <TableHead className="w-[140px]">Status</TableHead>
                 </TableRow>
               </TableHeader>
@@ -459,18 +403,18 @@ export default function TransactionsPage() {
                       </div>
                     </TableCell>
                     <TableCell className="text-right tabular-nums font-mono">
-                      {tx.debit > 0 ? (
+                      {tx.inflow > 0 ? (
                         <span className="text-emerald-600 dark:text-emerald-400 font-medium">
-                          +{formatCurrency(tx.debit)}
+                          +{formatCurrency(tx.inflow)}
                         </span>
                       ) : (
                         <span className="text-muted-foreground/40">—</span>
                       )}
                     </TableCell>
                     <TableCell className="text-right tabular-nums font-mono">
-                      {tx.credit > 0 ? (
-                        <span className="text-foreground font-medium">
-                          {formatCurrency(tx.credit)}
+                      {tx.outflow > 0 ? (
+                        <span className="text-rose-600 dark:text-rose-400 font-medium">
+                          -{formatCurrency(tx.outflow)}
                         </span>
                       ) : (
                         <span className="text-muted-foreground/40">—</span>

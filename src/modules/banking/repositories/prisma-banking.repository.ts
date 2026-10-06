@@ -463,7 +463,7 @@ export class PrismaBankingRepository implements IBankingRepository {
         ...(options?.bankAccountId ? { bankAccountId: options.bankAccountId } : {}),
         ...(options?.status ? { status: options.status } : {}),
       },
-      orderBy: { transactionDate: 'desc' },
+      orderBy: [{ transactionDate: 'asc' }, { createdAt: 'asc' }],
     });
     return items.map((t) => this.toBankTransactionEntity(t));
   }
