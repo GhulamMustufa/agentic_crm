@@ -56,7 +56,7 @@ export const apiClient = {
 
     if (!response.ok) {
       if (response.status === 401 && typeof window !== 'undefined') {
-        authStorage.clear();
+        authStorage.clearAuthSession();
         if (!window.location.pathname.startsWith('/login')) {
           // Show alert or let the login page show the toast based on query param
           window.location.href = '/login?expired=true';
