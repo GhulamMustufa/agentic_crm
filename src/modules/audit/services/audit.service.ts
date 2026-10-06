@@ -133,6 +133,24 @@ export class AuditService {
     return { isValid: true, totalVerified: events.length };
   }
 
+  private canonicalStringify(obj: unknown): string {
+    if (obj === null || obj === undefined) {
+      return 'null';
+    }
+    if (typeof obj !== 'object') {
+      return typeof obj === 'bigint' ? JSON.stringify(obj.toString()) : JSON.stringify(obj);
+    }
+    if (Array.isArray(obj)) {
+      return '[' + obj.map((item) => this.canonicalStringify(item)).join(',') + ']';
+    }
+    const keys = Object.keys(obj as Record<string, unknown>).sort();
+    const pairs = keys.map((key) => {
+      const val = (obj as Record<string, unknown>)[key];
+      return JSON.stringify(key) + ':' + this.canonicalStringify(val);
+    });
+    return '{' + pairs.join(',') + '}';
+  }
+
   private computeHash(
     previousHash: string,
     id: string,
@@ -141,9 +159,7 @@ export class AuditService {
     state: unknown,
     timestamp: string,
   ): string {
-    const stringifiedState = JSON.stringify(state, (_key, value) =>
-      typeof value === 'bigint' ? value.toString() : value,
-    );
+    const stringifiedState = this.canonicalStringify(state);
     const payload = `${previousHash}|${id}|${tenantId}|${action}|${stringifiedState}|${timestamp}`;
     return crypto.createHash('sha256').update(payload).digest('hex');
   }

@@ -59,7 +59,10 @@ export class PrismaAuditRepository implements IAuditRepository {
       byPrevHash.set(event.previousHash, event);
     }
 
-    let current = events.find((e) => !events.some((other) => other.eventHash === e.previousHash));
+    const genesisHash = '0'.repeat(64);
+    let current =
+      events.find((e) => e.previousHash === genesisHash) ??
+      events.find((e) => !events.some((other) => other.eventHash === e.previousHash));
     if (!current) {
       return events;
     }
