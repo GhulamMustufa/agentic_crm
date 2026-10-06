@@ -13,6 +13,7 @@ import {
   exceptionKeys, 
   ExceptionItem, 
   ExceptionType, 
+  getPendingExceptions,
   resolveException 
 } from "@/lib/api/exceptions"
 
@@ -23,31 +24,9 @@ export function ExceptionListClient({ initialData }: { initialData: ExceptionIte
   const queryClient = useQueryClient()
   const [selectedId, setSelectedId] = React.useState<string | null>(initialData[0]?.id || null)
   
-  const { data: exceptions = initialData, isLoading } = useQuery({
+  const { data: exceptions = initialData, isLoading } = useQuery<ExceptionItem[]>({
     queryKey: exceptionKeys.lists(),
-    queryFn: async () => {
-      // Just re-fetching the initialData logic
-      const res = await fetch('http://localhost:3000/exceptions', {
-        headers: { 'x-tenant-id': 'default-tenant' }
-      })
-      const data = (await res.json()) as Array<{
-        id: string
-        createdAt: string
-        reason: string
-        type: ExceptionType
-        context?: { amount?: number; severity?: "high" | "medium" | "low" }
-        aiRecommendation?: string
-      }>
-      return data.map((item) => ({
-        id: item.id,
-        date: item.createdAt,
-        amount: item.context?.amount || 0,
-        description: item.reason,
-        type: item.type,
-        severity: item.context?.severity || "medium",
-        aiProposal: item.aiRecommendation || "",
-      })) as ExceptionItem[]
-    },
+    queryFn: () => getPendingExceptions(),
     initialData,
   })
 
