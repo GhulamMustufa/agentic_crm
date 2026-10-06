@@ -6,7 +6,7 @@ import {
   DeleteObjectCommand,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import { Injectable } from '@nestjs/common';
+import { Injectable, Inject } from '@nestjs/common';
 
 import { AppConfigService } from '../config/config.service';
 
@@ -74,7 +74,7 @@ export class S3StorageService implements IObjectStorage {
   private readonly client: S3Client;
   private readonly bucket: string;
 
-  constructor(private readonly config: AppConfigService) {
+  constructor(@Inject(AppConfigService) private readonly config: AppConfigService) {
     this.bucket = this.config.get('S3_BUCKET') || 'uploads';
     const endpoint = this.config.get('S3_ENDPOINT') || undefined;
     const region = this.config.get('S3_REGION') || 'ap-southeast-1';

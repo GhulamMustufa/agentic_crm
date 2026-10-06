@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Inject } from '@nestjs/common';
 
 import { ConflictError, NotFoundError } from '../../../core/errors/app-error';
 import { PrismaService } from '../../../core/prisma/prisma.service';
@@ -9,7 +9,7 @@ import type { User, UserSession } from '@prisma/client';
 
 @Injectable()
 export class PrismaUserRepository implements IUserRepository {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
 
   private toUserEntity(model: User): UserEntity {
     return {

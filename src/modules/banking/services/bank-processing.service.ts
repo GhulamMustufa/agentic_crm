@@ -1,6 +1,6 @@
 import * as crypto from 'crypto';
 
-import { Inject, Injectable, Optional } from '@nestjs/common';
+import { Inject, Injectable, Optional, forwardRef } from '@nestjs/common';
 
 import { AiAccountantService } from './ai-accountant.service';
 import {
@@ -74,10 +74,15 @@ export class BankProcessingService {
     private readonly counterpartyRepo: ICounterpartyRepository,
     @Inject(INVOICE_REPOSITORY_TOKEN)
     private readonly invoiceRepo: IInvoiceRepository,
+    @Inject(forwardRef(() => LedgerService))
     private readonly ledgerService: LedgerService,
+    @Inject(forwardRef(() => AuditService))
     private readonly auditService: AuditService,
+    @Inject(forwardRef(() => AiAccountantService))
     private readonly aiAccountant: AiAccountantService,
+    @Inject(forwardRef(() => CsvStatementParser))
     private readonly csvParser: CsvStatementParser,
+    @Inject(forwardRef(() => PdfStatementParser))
     private readonly pdfParser: PdfStatementParser,
     @Optional()
     @Inject(OBJECT_STORAGE_TOKEN)

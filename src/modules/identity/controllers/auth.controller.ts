@@ -1,4 +1,14 @@
-import { Controller, Post, Get, Body, Req, HttpCode, HttpStatus, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Get,
+  Body,
+  Req,
+  HttpCode,
+  HttpStatus,
+  UseGuards,
+  Inject,
+} from '@nestjs/common';
 
 import { Public, CurrentUser } from '../../../core/security/decorators/auth.decorators';
 import { JwtAuthGuard } from '../../../core/security/guards/jwt-auth.guard';
@@ -10,7 +20,7 @@ import type { Request } from 'express';
 
 @Controller('api/v1/auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(@Inject(AuthService) private readonly authService: AuthService) {}
 
   @Public()
   @Post('register')

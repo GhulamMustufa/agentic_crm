@@ -59,7 +59,7 @@ export default function SetupPage() {
       const orgRes = await apiClient.post<{ data: { id: string; name: string } }>(
         '/organizations',
         {
-          name: data.companyName,
+          legalName: data.companyName,
           slug,
         },
       );
