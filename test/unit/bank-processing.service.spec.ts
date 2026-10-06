@@ -66,7 +66,7 @@ describe('BankProcessingService - AI Accountant Workflow', () => {
     const aiGateway = new AiGatewayService();
     aiAccountantService = new AiAccountantService(aiGateway);
     const csvParser = new CsvStatementParser();
-    const pdfParser = new PdfStatementParser({} as any);
+    const pdfParser = new PdfStatementParser();
 
     bankProcessingService = new BankProcessingService(
       bankingRepo,

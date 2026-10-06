@@ -13,7 +13,7 @@ describe('Multilingual & Multi-Currency Engine (Malaysia MYR & China CNY)', () =
 
   beforeAll(() => {
     csvParser = new CsvStatementParser();
-    pdfParser = new PdfStatementParser({} as any);
+    pdfParser = new PdfStatementParser();
   });
 
   describe('Monetary & Date Normalization', () => {

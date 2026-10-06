@@ -55,6 +55,14 @@ export const apiClient = {
     const response = await fetch(url, config);
 
     if (!response.ok) {
+      if (response.status === 401 && typeof window !== 'undefined') {
+        authStorage.clear();
+        if (!window.location.pathname.startsWith('/login')) {
+          // Show alert or let the login page show the toast based on query param
+          window.location.href = '/login?expired=true';
+        }
+      }
+
       let errorData: unknown;
       try {
         errorData = await response.json();

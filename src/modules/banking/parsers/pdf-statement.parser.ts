@@ -1,4 +1,5 @@
-import { Injectable, Inject } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
+
 import { parseMonetaryCents, normalizeDate } from './csv-statement.parser';
 import { ValidationError } from '../../../core/errors/app-error';
 
@@ -7,7 +8,6 @@ import type {
   ParsedStatementResult,
   ParsedTransactionLine,
 } from './statement-parser.interface';
-import { AiStatementParser } from './ai-statement.parser';
 
 export class MalformedPdfError extends ValidationError {
   constructor(reason: string) {
@@ -18,11 +18,6 @@ export class MalformedPdfError extends ValidationError {
 
 @Injectable()
 export class PdfStatementParser implements IStatementParser {
-  constructor(
-    @Inject(AiStatementParser)
-    private readonly aiParser: AiStatementParser,
-  ) {}
-
   async parse(content: string | Buffer): Promise<ParsedStatementResult> {
     const rawBuffer = Buffer.isBuffer(content)
       ? content
@@ -130,9 +125,9 @@ export class PdfStatementParser implements IStatementParser {
     }
 
     if (transactions.length === 0) {
-      // FAST REGEX PARSING FAILED. Route to AI Parser.
-      console.log('[PdfStatementParser] Regex failed to extract transactions. Routing to Universal AiProvider fallback...');
-      return this.aiParser.parse(content);
+      throw new ValidationError(
+        'PDF extraction uncertain: zero transaction lines could be reliably identified in statement',
+      );
     }
 
     transactions.sort((a, b) => a.date.localeCompare(b.date));
