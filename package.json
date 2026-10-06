@@ -19,6 +19,8 @@
     "frontend:dev": "npm --prefix frontend run dev",
     "frontend:build": "npm --prefix frontend run build",
     "frontend:test": "npm --prefix frontend run test:e2e",
+    "build:all": "npm run build && npm run frontend:build",
+    "validate": "npm run typecheck && npm run build:all && npm run test",
     "prepare": "husky"
   },
   "prisma": {

@@ -28,7 +28,6 @@ type RegisterFormValues = z.infer<typeof registerSchema>;
 export default function RegisterPage() {
   const router = useRouter();
   const [isLoading, setIsLoading] = React.useState(false);
-  const [isLoading, setIsLoading] = React.useState(false);
 
   const {
     register,
