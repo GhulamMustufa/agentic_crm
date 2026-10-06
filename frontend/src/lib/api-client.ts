@@ -43,6 +43,20 @@ function extractReadableError(errorData: unknown, status: number, statusText: st
   return statusText || 'An error occurred. Please try again.';
 }
 
+let isRefreshing = false;
+let failedQueue: Array<{ resolve: (token: string) => void; reject: (err: unknown) => void }> = [];
+
+const processQueue = (error: unknown, token: string | null = null) => {
+  failedQueue.forEach((prom) => {
+    if (error) {
+      prom.reject(error);
+    } else {
+      prom.resolve(token as string);
+    }
+  });
+  failedQueue = [];
+};
+
 export const apiClient = {
   async fetch<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
     const { params, headers, ...customConfig } = options;
@@ -81,10 +95,56 @@ export const apiClient = {
 
     if (!response.ok) {
       if (response.status === 401 && typeof window !== 'undefined') {
-        authStorage.clearAuthSession();
-        if (!window.location.pathname.startsWith('/login')) {
-          // Show alert or let the login page show the toast based on query param
-          window.location.href = '/login?expired=true';
+        const refreshToken = authStorage.getRefreshToken();
+        const isAuthEndpoint = endpoint.startsWith('/auth/');
+
+        if (refreshToken && !isAuthEndpoint) {
+          if (!isRefreshing) {
+            isRefreshing = true;
+
+            try {
+              const refreshResponse = await window.fetch(`${API_BASE_URL}/auth/refresh`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ refreshToken }),
+              });
+
+              if (!refreshResponse.ok) {
+                throw new Error('Refresh failed');
+              }
+
+              const refreshData = await refreshResponse.json();
+              authStorage.setAuthSession(refreshData.data.tokens, refreshData.data.user);
+              
+              processQueue(null, refreshData.data.tokens.accessToken);
+              
+              // Retry the original request
+              return this.fetch<T>(endpoint, options);
+            } catch (err) {
+              processQueue(err, null);
+              authStorage.clearAuthSession();
+              if (!window.location.pathname.startsWith('/login')) {
+                window.location.href = '/login?expired=true';
+              }
+              throw new ApiError('Session expired', 401, null);
+            } finally {
+              isRefreshing = false;
+            }
+          } else {
+            // Already refreshing, queue the request
+            return new Promise<T>((resolve, reject) => {
+              failedQueue.push({
+                resolve: () => resolve(this.fetch<T>(endpoint, options)),
+                reject: (err) => reject(err),
+              });
+            });
+          }
+        } else {
+          // No refresh token or we are already on an auth endpoint
+          authStorage.clearAuthSession();
+          if (!window.location.pathname.startsWith('/login')) {
+            window.location.href = '/login?expired=true';
+          }
         }
       }
 
