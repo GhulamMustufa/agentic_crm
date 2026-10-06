@@ -1,6 +1,6 @@
 import * as crypto from 'crypto';
 
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 
 import { AiAccountantService } from './ai-accountant.service';
 import {
@@ -9,6 +9,7 @@ import {
   UnprocessableEntityError,
   ValidationError,
 } from '../../../core/errors/app-error';
+import { OBJECT_STORAGE_TOKEN, type IObjectStorage } from '../../../core/storage/storage.service';
 import { AuditService } from '../../audit/services/audit.service';
 import {
   COUNTERPARTY_REPOSITORY_TOKEN,
@@ -78,6 +79,9 @@ export class BankProcessingService {
     private readonly aiAccountant: AiAccountantService,
     private readonly csvParser: CsvStatementParser,
     private readonly pdfParser: PdfStatementParser,
+    @Optional()
+    @Inject(OBJECT_STORAGE_TOKEN)
+    private readonly storage?: IObjectStorage,
   ) {}
 
   private readonly processingLocks = new Set<string>();
@@ -278,6 +282,40 @@ export class BankProcessingService {
         totalCreditsCents: parsedData.totalCreditsCents,
         status: 'PROCESSING',
       });
+
+      // Archive raw document to Object Storage (Neon S3)
+      if (this.storage) {
+        const ext = dto.mimeType === 'text/csv' ? 'csv' : 'pdf';
+        const storageKey = `${tenantId}/statements/${fileSha256}.${ext}`;
+        const fileBuffer =
+          dto.mimeType === 'text/csv'
+            ? Buffer.from(dto.content, 'utf-8')
+            : Buffer.from(dto.content, 'base64');
+
+        await this.storage
+          .putObject(storageKey, fileBuffer, {
+            contentType: dto.mimeType,
+            metadata: {
+              tenantId,
+              fileName: dto.fileName,
+              statementId: statement.id,
+              bankAccountId: bankAccount.id,
+            },
+          })
+          .catch((err: Error) => {
+            this.auditService
+              .recordEvent({
+                tenantId,
+                action: 'STORAGE_ARCHIVE_FAILED',
+                entityType: 'STATEMENT',
+                entityId: statement.id,
+                actorType: 'SYSTEM',
+                actorId: userId,
+                newState: { error: err.message, storageKey },
+              })
+              .catch(() => {});
+          });
+      }
 
       await this.auditService.recordEvent({
         tenantId,

@@ -1,176 +1,723 @@
-"use client"
+'use client';
 
-import * as React from "react"
-import { UploadCloud, Building2, CheckCircle2, Clock, MoreVertical, Loader2 } from "lucide-react"
+import * as React from 'react';
+import Link from 'next/link';
+import {
+  UploadCloud,
+  Building2,
+  CheckCircle2,
+  Clock,
+  MoreVertical,
+  Loader2,
+  AlertCircle,
+  Plus,
+  FileText,
+  ArrowRight,
+  RefreshCw,
+  Landmark,
+} from 'lucide-react';
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { Progress } from "@/components/ui/progress"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Progress } from '@/components/ui/progress';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { apiClient, ApiError } from '@/lib/api-client';
+import { formatCurrency, formatIsoDate } from '@/lib/formatters';
+
+interface BankAccount {
+  id: string;
+  tenantId: string;
+  ledgerAccountId: string;
+  accountName: string;
+  institutionName: string;
+  accountType: 'CHECKING' | 'SAVINGS' | 'CREDIT_CARD';
+  currency: string;
+  accountNumberLast4: string;
+  currentBalanceCents: string | number;
+  reconciledBalanceCents: string | number;
+  isActive: boolean;
+  createdAt: string;
+}
+
+interface LedgerAccount {
+  id: string;
+  accountCode: string;
+  name: string;
+  classification: string;
+  subClassification: string;
+}
+
+interface UploadResult {
+  statement: {
+    id: string;
+    fileName: string;
+    fileSha256: string;
+    status: string;
+    createdAt: string;
+  };
+  transactions: Array<{
+    id: string;
+    transactionDate: string;
+    amountCents: string | number;
+    rawDescription: string;
+    status: string;
+  }>;
+  proposals: Array<{
+    id: string;
+    proposalType: string;
+    confidenceScore: number;
+    status: string;
+  }>;
+  exceptions: Array<{
+    id: string;
+    exceptionType: string;
+    severity: string;
+    reason: string;
+  }>;
+}
 
 export default function BankingPage() {
-  const [isUploading, setIsUploading] = React.useState(false)
-  const [uploadProgress, setUploadProgress] = React.useState(0)
-  const [processingStage, setProcessingStage] = React.useState<"idle" | "uploading" | "extracting" | "classifying" | "reconciling" | "complete">("idle")
+  const [accounts, setAccounts] = React.useState<BankAccount[]>([]);
+  const [isLoadingAccounts, setIsLoadingAccounts] = React.useState(true);
+  const [selectedAccountId, setSelectedAccountId] = React.useState<string>('');
 
-  const simulateUpload = () => {
-    setIsUploading(true)
-    setProcessingStage("uploading")
-    setUploadProgress(10)
+  // Account Creation Form State
+  const [isAddingAccount, setIsAddingAccount] = React.useState(false);
+  const [isSubmittingAccount, setIsSubmittingAccount] = React.useState(false);
+  const [newAccountName, setNewAccountName] = React.useState('Primary Operating Checking');
+  const [newInstitution, setNewInstitution] = React.useState('Mercury Bank');
+  const [newAccountType, setNewAccountType] = React.useState<
+    'CHECKING' | 'SAVINGS' | 'CREDIT_CARD'
+  >('CHECKING');
+  const [newLast4, setNewLast4] = React.useState('4092');
+  const [accountFormError, setAccountFormError] = React.useState<string | null>(null);
 
-    setTimeout(() => {
-      setProcessingStage("extracting")
-      setUploadProgress(40)
-    }, 1500)
+  // Upload State
+  const [isDragging, setIsDragging] = React.useState(false);
+  const [isUploading, setIsUploading] = React.useState(false);
+  const [uploadProgress, setUploadProgress] = React.useState(0);
+  const [processingStage, setProcessingStage] = React.useState<
+    'idle' | 'uploading' | 'extracting' | 'classifying' | 'reconciling' | 'complete' | 'error'
+  >('idle');
+  const [uploadError, setUploadError] = React.useState<string | null>(null);
+  const [uploadResult, setUploadResult] = React.useState<UploadResult | null>(null);
 
-    setTimeout(() => {
-      setProcessingStage("classifying")
-      setUploadProgress(70)
-    }, 3000)
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
-    setTimeout(() => {
-      setProcessingStage("reconciling")
-      setUploadProgress(90)
-    }, 4500)
+  const loadAccounts = React.useCallback(async () => {
+    setIsLoadingAccounts(true);
+    try {
+      const response = await apiClient.get<{ data: BankAccount[] }>('/banking/accounts');
+      const list = response.data || [];
+      setAccounts(list);
+      if (list.length > 0) {
+        setSelectedAccountId(list[0].id);
+      }
+    } catch (err) {
+      console.error('Failed to load bank accounts:', err);
+    } finally {
+      setIsLoadingAccounts(false);
+    }
+  }, []);
 
-    setTimeout(() => {
-      setProcessingStage("complete")
-      setUploadProgress(100)
-    }, 6000)
-  }
+  React.useEffect(() => {
+    loadAccounts();
+  }, [loadAccounts]);
+
+  const handleCreateAccount = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAccountFormError(null);
+    setIsSubmittingAccount(true);
+
+    try {
+      // 1. Get or seed ledger accounts
+      let ledgerRes = await apiClient.get<{ data: LedgerAccount[] }>('/ledger/accounts');
+      let ledgerAccounts = ledgerRes.data || [];
+
+      if (ledgerAccounts.length === 0) {
+        // Seed standard COA
+        const seeded = await apiClient.post<{ data: LedgerAccount[] }>(
+          '/ledger/accounts/seed-standard',
+          {},
+        );
+        ledgerAccounts = seeded.data || [];
+      }
+
+      // Find cash account (1010)
+      const cashAccount =
+        ledgerAccounts.find(
+          (acc) => acc.accountCode === '1010' || acc.subClassification === 'CASH',
+        ) || ledgerAccounts[0];
+
+      if (!cashAccount) {
+        throw new Error('Unable to locate cash account in Chart of Accounts.');
+      }
+
+      // 2. Create the bank account
+      const res = await apiClient.post<{ data: BankAccount }>('/banking/accounts', {
+        ledgerAccountId: cashAccount.id,
+        accountName: newAccountName.trim(),
+        institutionName: newInstitution.trim(),
+        accountType: newAccountType,
+        currency: 'USD',
+        accountNumberLast4: newLast4.trim(),
+      });
+
+      const created = res.data;
+      setAccounts((prev) => [created, ...prev]);
+      setSelectedAccountId(created.id);
+      setIsAddingAccount(false);
+    } catch (err) {
+      const msg =
+        err instanceof ApiError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : 'Failed to create bank account';
+      setAccountFormError(msg);
+    } finally {
+      setIsSubmittingAccount(false);
+    }
+  };
+
+  const handleFileProcess = async (file: File) => {
+    if (!selectedAccountId && accounts.length === 0) {
+      setUploadError('Please add a bank account first before uploading statements.');
+      return;
+    }
+
+    const targetAccountId = selectedAccountId || accounts[0]?.id;
+    if (!targetAccountId) {
+      setUploadError('Please select a target bank account.');
+      return;
+    }
+
+    setUploadError(null);
+    setIsUploading(true);
+    setProcessingStage('uploading');
+    setUploadProgress(15);
+
+    try {
+      let content = '';
+      const isPdf = file.name.endsWith('.pdf') || file.type.includes('pdf');
+      const mimeType = isPdf ? ('application/pdf' as const) : ('text/csv' as const);
+
+      if (isPdf) {
+        // Read as Base64 data URL and strip header
+        const base64Data = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            const raw = reader.result as string;
+            const base64 = raw.split(',')[1] || '';
+            resolve(base64);
+          };
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+        content = base64Data;
+      } else {
+        // Read as text
+        content = await file.text();
+      }
+
+      setProcessingStage('extracting');
+      setUploadProgress(45);
+
+      // Send to backend
+      const response = await apiClient.post<{ data: UploadResult }>('/banking/statements/upload', {
+        bankAccountId: targetAccountId,
+        fileName: file.name,
+        mimeType,
+        content,
+      });
+
+      setProcessingStage('classifying');
+      setUploadProgress(75);
+
+      setTimeout(() => {
+        setProcessingStage('reconciling');
+        setUploadProgress(90);
+      }, 300);
+
+      setTimeout(() => {
+        setProcessingStage('complete');
+        setUploadProgress(100);
+        setUploadResult(response.data);
+        loadAccounts(); // Refresh balances
+      }, 700);
+    } catch (err) {
+      setProcessingStage('error');
+      const msg =
+        err instanceof ApiError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : 'An unexpected error occurred during statement processing';
+      setUploadError(msg);
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      handleFileProcess(file);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) {
+      handleFileProcess(file);
+    }
+  };
+
+  const triggerUploadClick = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+      fileInputRef.current.click();
+    }
+  };
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex justify-between items-center">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Bank Accounts</h1>
-          <p className="text-muted-foreground mt-1">Manage accounts and statement processing.</p>
+          <h1 className="text-3xl font-bold tracking-tight">Bank Accounts & Ingestion</h1>
+          <p className="text-muted-foreground mt-1">
+            Manage linked institutional accounts and upload bank statements for automated ledger
+            ingestion.
+          </p>
         </div>
-        <Button>
-          <Building2 className="w-4 h-4 mr-2" />
-          Add Account
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={loadAccounts} disabled={isLoadingAccounts}>
+            <RefreshCw className={`w-4 h-4 mr-2 ${isLoadingAccounts ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+          <Button onClick={() => setIsAddingAccount((prev) => !prev)}>
+            <Building2 className="w-4 h-4 mr-2" />
+            {isAddingAccount ? 'Cancel' : 'Add Account'}
+          </Button>
+        </div>
       </div>
 
+      {/* Add Account Inline Form */}
+      {isAddingAccount && (
+        <Card className="border-primary/20 bg-primary/5">
+          <CardHeader>
+            <CardTitle className="text-lg">Connect Bank Account</CardTitle>
+            <CardDescription>
+              Register an institutional bank account linked to your General Ledger Cash account
+              (1010).
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleCreateAccount} className="space-y-4">
+              {accountFormError && (
+                <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-md text-sm text-destructive flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{accountFormError}</span>
+                </div>
+              )}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="space-y-1">
+                  <Label htmlFor="accountName">Account Name</Label>
+                  <Input
+                    id="accountName"
+                    value={newAccountName}
+                    onChange={(e) => setNewAccountName(e.target.value)}
+                    placeholder="e.g. Chase Operating Checking"
+                    required
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="institution">Financial Institution</Label>
+                  <Input
+                    id="institution"
+                    value={newInstitution}
+                    onChange={(e) => setNewInstitution(e.target.value)}
+                    placeholder="e.g. JPMorgan Chase"
+                    required
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="accountType">Account Type</Label>
+                  <select
+                    id="accountType"
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                    value={newAccountType}
+                    onChange={(e) =>
+                      setNewAccountType(e.target.value as 'CHECKING' | 'SAVINGS' | 'CREDIT_CARD')
+                    }
+                  >
+                    <option value="CHECKING">Checking</option>
+                    <option value="SAVINGS">Savings</option>
+                    <option value="CREDIT_CARD">Credit Card</option>
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="last4">Last 4 Digits</Label>
+                  <Input
+                    id="last4"
+                    maxLength={4}
+                    value={newLast4}
+                    onChange={(e) => setNewLast4(e.target.value.replace(/\D/g, ''))}
+                    placeholder="4092"
+                    required
+                  />
+                </div>
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <Button type="button" variant="ghost" onClick={() => setIsAddingAccount(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={isSubmittingAccount}>
+                  {isSubmittingAccount ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Connecting...
+                    </>
+                  ) : (
+                    'Save Account'
+                  )}
+                </Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+      )}
+
       <div className="grid gap-6 md:grid-cols-2">
+        {/* Connected Accounts Card */}
         <Card>
           <CardHeader>
             <CardTitle>Connected Accounts</CardTitle>
-            <CardDescription>Your synced financial institutions.</CardDescription>
+            <CardDescription>Institutions registered for automated reconciliation.</CardDescription>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Account</TableHead>
-                  <TableHead>Balance</TableHead>
-                  <TableHead>Last Sync</TableHead>
-                  <TableHead></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                <TableRow>
-                  <TableCell>
-                    <div className="font-medium">Chase Business Checking</div>
-                    <div className="text-xs text-muted-foreground">...4829</div>
-                  </TableCell>
-                  <TableCell className="tabular-nums">$42,500.00</TableCell>
-                  <TableCell>
-                    <Badge variant="secondary" className="font-normal text-xs">
-                      2 hrs ago
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Button variant="ghost" size="icon">
-                      <MoreVertical className="w-4 h-4" />
-                    </Button>
-                  </TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell>
-                    <div className="font-medium">SVB Corporate Savings</div>
-                    <div className="text-xs text-muted-foreground">...1102</div>
-                  </TableCell>
-                  <TableCell className="tabular-nums">$100,000.00</TableCell>
-                  <TableCell>
-                    <Badge variant="outline" className="font-normal text-xs text-orange-500 border-orange-200">
-                      Statement Required
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Button variant="ghost" size="icon">
-                      <MoreVertical className="w-4 h-4" />
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              </TableBody>
-            </Table>
+            {isLoadingAccounts ? (
+              <div className="py-8 flex flex-col items-center justify-center text-muted-foreground gap-2">
+                <Loader2 className="w-6 h-6 animate-spin text-primary" />
+                <span className="text-sm">Loading connected institutions...</span>
+              </div>
+            ) : accounts.length === 0 ? (
+              <div className="py-8 text-center space-y-3">
+                <Landmark className="w-10 h-10 mx-auto text-muted-foreground/60" />
+                <div>
+                  <h4 className="font-semibold text-sm">No Bank Accounts Configured</h4>
+                  <p className="text-xs text-muted-foreground mt-1 max-w-sm mx-auto">
+                    Add your primary checking or savings account to start uploading statements and
+                    running AI classification.
+                  </p>
+                </div>
+                <Button size="sm" onClick={() => setIsAddingAccount(true)}>
+                  <Plus className="w-4 h-4 mr-1" /> Add Primary Account
+                </Button>
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Account</TableHead>
+                    <TableHead>Balance</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {accounts.map((acc) => {
+                    const balanceNum = Number(acc.currentBalanceCents || 0) / 100;
+                    const isSelected = selectedAccountId === acc.id;
+
+                    return (
+                      <TableRow
+                        key={acc.id}
+                        className={`cursor-pointer transition-colors ${
+                          isSelected ? 'bg-muted/70 font-medium' : 'hover:bg-muted/30'
+                        }`}
+                        onClick={() => setSelectedAccountId(acc.id)}
+                      >
+                        <TableCell>
+                          <div className="font-medium flex items-center gap-2">
+                            {acc.accountName}
+                            {isSelected && (
+                              <Badge variant="secondary" className="text-[10px] h-4 px-1">
+                                Selected
+                              </Badge>
+                            )}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {acc.institutionName} •••• {acc.accountNumberLast4}
+                          </div>
+                        </TableCell>
+                        <TableCell className="tabular-nums font-mono">
+                          {formatCurrency(balanceNum)}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className="text-xs">
+                            {acc.accountType}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Button variant="ghost" size="icon" className="h-8 w-8">
+                            <MoreVertical className="w-4 h-4" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            )}
           </CardContent>
         </Card>
 
+        {/* Upload Statement Card */}
         <Card>
           <CardHeader>
-            <CardTitle>Upload Statement</CardTitle>
-            <CardDescription>Drag and drop a PDF or CSV to process manually.</CardDescription>
+            <div className="flex justify-between items-start">
+              <div>
+                <CardTitle>Upload Statement</CardTitle>
+                <CardDescription>
+                  Upload bank statements (PDF or CSV) to trigger the live AI ingestion pipeline.
+                </CardDescription>
+              </div>
+              {accounts.length > 0 && (
+                <div className="text-right">
+                  <span className="text-xs text-muted-foreground block">Target Account:</span>
+                  <select
+                    className="text-xs font-semibold bg-transparent border-b border-input focus:outline-none"
+                    value={selectedAccountId}
+                    onChange={(e) => setSelectedAccountId(e.target.value)}
+                  >
+                    {accounts.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.accountName} (•••• {a.accountNumberLast4})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
           </CardHeader>
           <CardContent className="space-y-6">
-            {!isUploading || processingStage === "complete" ? (
-              <div 
-                className="border-2 border-dashed rounded-lg p-10 flex flex-col items-center justify-center text-center space-y-4 hover:bg-muted/50 transition-colors cursor-pointer"
-                onClick={simulateUpload}
+            {/* Hidden File Input */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".pdf,.csv,text/csv,application/pdf"
+              className="hidden"
+              onChange={handleFileInputChange}
+            />
+
+            {uploadError && (
+              <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-lg text-sm text-destructive flex items-start gap-3">
+                <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <p className="font-semibold">Statement Upload Failed</p>
+                  <p className="text-xs opacity-90">{uploadError}</p>
+                </div>
+              </div>
+            )}
+
+            {!isUploading && processingStage !== 'complete' ? (
+              <div
+                className={`border-2 border-dashed rounded-lg p-10 flex flex-col items-center justify-center text-center space-y-4 transition-colors cursor-pointer ${
+                  isDragging
+                    ? 'border-primary bg-primary/10'
+                    : 'hover:bg-muted/50 border-muted-foreground/25'
+                }`}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setIsDragging(true);
+                }}
+                onDragLeave={() => setIsDragging(false)}
+                onDrop={handleDrop}
+                onClick={triggerUploadClick}
               >
-                <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
-                  <UploadCloud className="w-6 h-6 text-primary" />
+                <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+                  <UploadCloud className="w-6 h-6" />
                 </div>
                 <div>
-                  <h3 className="font-medium">Click to upload statement</h3>
+                  <h3 className="font-semibold text-base">Click or drag bank statement here</h3>
                   <p className="text-sm text-muted-foreground mt-1">
-                    PDF, CSV, or QBO formats supported.
+                    Accepts official bank statements in <strong>.PDF</strong> or{' '}
+                    <strong>.CSV</strong> formats
                   </p>
                 </div>
-                {processingStage === "complete" && (
-                  <Badge className="bg-emerald-500 hover:bg-emerald-600">
-                    <CheckCircle2 className="w-3 h-3 mr-1" /> Last upload successful
-                  </Badge>
-                )}
+                <div className="flex gap-2 text-xs text-muted-foreground">
+                  <span className="flex items-center gap-1">
+                    <FileText className="w-3.5 h-3.5" /> Chase, Mercury, SVB, Stripe, or standard
+                    CSV
+                  </span>
+                </div>
               </div>
-            ) : (
-              <div className="space-y-6">
+            ) : isUploading ? (
+              <div className="space-y-6 py-4">
                 <div className="flex items-center justify-between text-sm font-medium">
                   <div className="flex items-center text-primary">
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    {processingStage === "uploading" && "Uploading document..."}
-                    {processingStage === "extracting" && "AI is extracting transactions..."}
-                    {processingStage === "classifying" && "AI is classifying vendors and categories..."}
-                    {processingStage === "reconciling" && "Matching against the general ledger..."}
+                    {processingStage === 'uploading' &&
+                      'Uploading document & calculating SHA-256 fingerprint...'}
+                    {processingStage === 'extracting' &&
+                      'Extracting line items and balances via AI OCR...'}
+                    {processingStage === 'classifying' &&
+                      'Assigning General Ledger codes and counterparties...'}
+                    {processingStage === 'reconciling' &&
+                      'Verifying double-entry invariants & anomalies...'}
                   </div>
-                  <span>{uploadProgress}%</span>
+                  <span className="tabular-nums font-mono">{uploadProgress}%</span>
                 </div>
                 <Progress value={uploadProgress} className="h-2" />
-                
-                <div className="space-y-2 pt-4">
-                  <div className={`flex justify-between text-sm ${uploadProgress >= 40 ? 'text-foreground' : 'text-muted-foreground'}`}>
+
+                <div className="space-y-3 pt-2">
+                  <div
+                    className={`flex justify-between text-sm ${
+                      uploadProgress >= 15 ? 'text-foreground' : 'text-muted-foreground'
+                    }`}
+                  >
                     <span className="flex items-center gap-2">
-                      {uploadProgress >= 40 ? <CheckCircle2 className="w-4 h-4 text-emerald-500" /> : <Clock className="w-4 h-4" />}
+                      {uploadProgress >= 15 ? (
+                        <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                      ) : (
+                        <Clock className="w-4 h-4" />
+                      )}
+                      File Cryptographic Verification
+                    </span>
+                    {uploadProgress >= 15 && (
+                      <span className="text-xs text-muted-foreground">SHA-256 Validated</span>
+                    )}
+                  </div>
+
+                  <div
+                    className={`flex justify-between text-sm ${
+                      uploadProgress >= 45 ? 'text-foreground' : 'text-muted-foreground'
+                    }`}
+                  >
+                    <span className="flex items-center gap-2">
+                      {uploadProgress >= 45 ? (
+                        <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                      ) : (
+                        <Clock className="w-4 h-4" />
+                      )}
                       Data Extraction
                     </span>
-                    {uploadProgress >= 40 && <span>2,481 found</span>}
+                    {uploadProgress >= 45 && (
+                      <span className="text-xs text-muted-foreground">Parsing Line Items...</span>
+                    )}
                   </div>
-                  <div className={`flex justify-between text-sm ${uploadProgress >= 70 ? 'text-foreground' : 'text-muted-foreground'}`}>
+
+                  <div
+                    className={`flex justify-between text-sm ${
+                      uploadProgress >= 75 ? 'text-foreground' : 'text-muted-foreground'
+                    }`}
+                  >
                     <span className="flex items-center gap-2">
-                      {uploadProgress >= 70 ? <CheckCircle2 className="w-4 h-4 text-emerald-500" /> : <Clock className="w-4 h-4" />}
-                      Classification
+                      {uploadProgress >= 75 ? (
+                        <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                      ) : (
+                        <Clock className="w-4 h-4" />
+                      )}
+                      Chart of Accounts Classification
                     </span>
-                    {uploadProgress >= 70 && <span>97% automated</span>}
+                    {uploadProgress >= 75 && (
+                      <span className="text-xs text-muted-foreground">Heuristic + LLM Routing</span>
+                    )}
                   </div>
-                  <div className={`flex justify-between text-sm ${uploadProgress >= 90 ? 'text-foreground' : 'text-muted-foreground'}`}>
+
+                  <div
+                    className={`flex justify-between text-sm ${
+                      uploadProgress >= 90 ? 'text-foreground' : 'text-muted-foreground'
+                    }`}
+                  >
                     <span className="flex items-center gap-2">
-                      {uploadProgress >= 90 ? <CheckCircle2 className="w-4 h-4 text-emerald-500" /> : <Clock className="w-4 h-4" />}
-                      Ledger Reconciliation
+                      {uploadProgress >= 90 ? (
+                        <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                      ) : (
+                        <Clock className="w-4 h-4" />
+                      )}
+                      Double-Entry General Ledger Reconciliation
                     </span>
-                    {uploadProgress >= 90 && <span className="text-orange-500 font-medium">12 exceptions</span>}
+                    {uploadProgress >= 90 && (
+                      <span className="text-xs text-emerald-500">
+                        Checking Sum(Debits) == Sum(Credits)
+                      </span>
+                    )}
                   </div>
+                </div>
+              </div>
+            ) : (
+              /* Success / Results Display */
+              <div className="space-y-5 py-2">
+                <div className="p-4 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 rounded-lg flex items-start gap-3">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <p className="font-semibold text-emerald-900 dark:text-emerald-200">
+                      Statement Successfully Ingested & Reconciled!
+                    </p>
+                    <p className="text-xs text-emerald-800 dark:text-emerald-300">
+                      Statement ID: <span className="font-mono">{uploadResult?.statement.id}</span>
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-3 text-center">
+                  <div className="p-3 bg-card border rounded-lg">
+                    <div className="text-2xl font-bold tabular-nums text-primary">
+                      {uploadResult?.transactions?.length ?? 0}
+                    </div>
+                    <div className="text-xs text-muted-foreground mt-1">Transactions Extracted</div>
+                  </div>
+                  <div className="p-3 bg-card border rounded-lg">
+                    <div className="text-2xl font-bold tabular-nums text-indigo-500">
+                      {uploadResult?.proposals?.length ?? 0}
+                    </div>
+                    <div className="text-xs text-muted-foreground mt-1">AI Proposals Generated</div>
+                  </div>
+                  <div className="p-3 bg-card border rounded-lg">
+                    <div className="text-2xl font-bold tabular-nums text-amber-500">
+                      {uploadResult?.exceptions?.length ?? 0}
+                    </div>
+                    <div className="text-xs text-muted-foreground mt-1">Exceptions Flagged</div>
+                  </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                  <Button asChild className="flex-1">
+                    <Link href="/transactions">
+                      View Transactions <ArrowRight className="w-4 h-4 ml-1" />
+                    </Link>
+                  </Button>
+                  {(uploadResult?.exceptions?.length ?? 0) > 0 && (
+                    <Button asChild variant="outline" className="flex-1">
+                      <Link href="/exceptions">
+                        Review Exceptions ({uploadResult?.exceptions.length})
+                      </Link>
+                    </Button>
+                  )}
+                  <Button
+                    variant="ghost"
+                    onClick={() => {
+                      setProcessingStage('idle');
+                      setUploadResult(null);
+                    }}
+                  >
+                    Upload Another
+                  </Button>
                 </div>
               </div>
             )}
@@ -178,5 +725,5 @@ export default function BankingPage() {
         </Card>
       </div>
     </div>
-  )
+  );
 }

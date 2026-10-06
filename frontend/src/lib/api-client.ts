@@ -1,15 +1,12 @@
-/**
- * Base API Client for communicating with the NestJS Backend.
- * Handles base URLs, standard headers, and error formatting.
- */
+import { authStorage } from './auth-storage';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
 
 interface RequestOptions extends RequestInit {
   params?: Record<string, string | number | boolean>;
 }
 
-class ApiError extends Error {
+export class ApiError extends Error {
   public status: number;
   public data: unknown;
 
@@ -35,10 +32,22 @@ export const apiClient = {
       url += `?${searchParams.toString()}`;
     }
 
+    const token = authStorage.getAuthToken();
+    const tenantId = authStorage.getActiveTenantId();
+
+    const authHeaders: Record<string, string> = {};
+    if (token) {
+      authHeaders['Authorization'] = `Bearer ${token}`;
+    }
+    if (tenantId) {
+      authHeaders['x-tenant-id'] = tenantId;
+    }
+
     const config: RequestInit = {
       ...customConfig,
       headers: {
         'Content-Type': 'application/json',
+        ...authHeaders,
         ...headers,
       },
     };

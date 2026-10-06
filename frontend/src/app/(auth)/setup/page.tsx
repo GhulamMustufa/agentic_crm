@@ -1,47 +1,88 @@
-"use client"
+'use client';
 
-import * as React from "react"
-import { useRouter } from "next/navigation"
-import { zodResolver } from "@hookform/resolvers/zod"
-import { useForm } from "react-hook-form"
-import * as z from "zod"
-import { Building, Loader2 } from "lucide-react"
+import * as React from 'react';
+import { useRouter } from 'next/navigation';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { useForm } from 'react-hook-form';
+import * as z from 'zod';
+import { Building, Loader2 } from 'lucide-react';
 
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardFooter } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardFooter } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+
+import { apiClient } from '@/lib/api-client';
+import { authStorage } from '@/lib/auth-storage';
 
 const setupSchema = z.object({
-  companyName: z.string().min(2, { message: "Company name is required" }),
-  industry: z.string().min(2, { message: "Industry is required" }),
+  companyName: z.string().min(2, { message: 'Company name is required' }),
+  industry: z.string().min(2, { message: 'Industry is required' }),
   registrationNumber: z.string().optional(),
-})
+});
 
-type SetupFormValues = z.infer<typeof setupSchema>
+type SetupFormValues = z.infer<typeof setupSchema>;
 
 export default function SetupPage() {
-  const router = useRouter()
-  const [isLoading, setIsLoading] = React.useState(false)
+  const router = useRouter();
+  const [isLoading, setIsLoading] = React.useState(false);
+  const [serverError, setServerError] = React.useState<string | null>(null);
 
-  const { register, handleSubmit, formState: { errors } } = useForm<SetupFormValues>({
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+  } = useForm<SetupFormValues>({
     resolver: zodResolver(setupSchema),
     defaultValues: {
-      companyName: "",
-      industry: "",
-      registrationNumber: "",
+      companyName: '',
+      industry: '',
+      registrationNumber: '',
     },
-  })
+  });
 
   async function onSubmit(data: SetupFormValues) {
-    void data
-    setIsLoading(true)
-    // Simulate API call to create organization
-    setTimeout(() => {
-      setIsLoading(false)
-      // Send to dashboard after setup
-      router.push("/")
-    }, 1500)
+    setIsLoading(true);
+    setServerError(null);
+
+    try {
+      const slug =
+        data.companyName
+          .toLowerCase()
+          .replace(/[^a-z0-9]/g, '-')
+          .replace(/-+/g, '-')
+          .slice(0, 50) +
+        '-' +
+        Math.random().toString(36).slice(2, 6);
+
+      // 1. Create Organization
+      const orgRes = await apiClient.post<{ data: { id: string; name: string } }>(
+        '/organizations',
+        {
+          name: data.companyName,
+          slug,
+        },
+      );
+
+      const tenantId = orgRes.data.id;
+      authStorage.setActiveTenantId(tenantId);
+
+      // 2. Seed Standard Chart of Accounts (COA)
+      try {
+        await apiClient.post('/ledger/accounts/seed-standard', {});
+      } catch (err) {
+        // Accounts might already be seeded or skipped
+        console.warn('COA seed notice:', err);
+      }
+
+      router.push('/');
+    } catch (err: unknown) {
+      const msg =
+        err instanceof Error ? err.message : 'Failed to set up workspace. Please try again.';
+      setServerError(msg);
+    } finally {
+      setIsLoading(false);
+    }
   }
 
   return (
@@ -61,20 +102,45 @@ export default function SetupPage() {
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="companyName">Company name</Label>
-              <Input id="companyName" placeholder="Acme Corp" disabled={isLoading} {...register("companyName")} />
-              {errors.companyName && <p className="text-sm text-destructive font-medium">{errors.companyName.message}</p>}
+              <Input
+                id="companyName"
+                placeholder="Acme Corp"
+                disabled={isLoading}
+                {...register('companyName')}
+              />
+              {errors.companyName && (
+                <p className="text-sm text-destructive font-medium">{errors.companyName.message}</p>
+              )}
             </div>
-            
+
             <div className="space-y-2">
               <Label htmlFor="industry">Industry</Label>
-              <Input id="industry" placeholder="Technology, Retail, etc." disabled={isLoading} {...register("industry")} />
-              {errors.industry && <p className="text-sm text-destructive font-medium">{errors.industry.message}</p>}
+              <Input
+                id="industry"
+                placeholder="Technology, Retail, etc."
+                disabled={isLoading}
+                {...register('industry')}
+              />
+              {errors.industry && (
+                <p className="text-sm text-destructive font-medium">{errors.industry.message}</p>
+              )}
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="registrationNumber">Company Registration Number (Optional)</Label>
-              <Input id="registrationNumber" placeholder="Leave blank if not applicable" disabled={isLoading} {...register("registrationNumber")} />
+              <Input
+                id="registrationNumber"
+                placeholder="Leave blank if not applicable"
+                disabled={isLoading}
+                {...register('registrationNumber')}
+              />
             </div>
+
+            {serverError && (
+              <div className="p-3 text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-md">
+                {serverError}
+              </div>
+            )}
 
             <Button type="submit" className="w-full" disabled={isLoading}>
               {isLoading ? (
@@ -83,7 +149,7 @@ export default function SetupPage() {
                   Creating workspace...
                 </>
               ) : (
-                "Complete setup"
+                'Complete setup'
               )}
             </Button>
           </form>
@@ -93,5 +159,5 @@ export default function SetupPage() {
         </CardFooter>
       </Card>
     </div>
-  )
+  );
 }

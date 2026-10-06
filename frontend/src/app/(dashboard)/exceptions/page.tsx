@@ -1,12 +1,12 @@
-import { Search } from "lucide-react"
-import { Input } from "@/components/ui/input"
-import { Button } from "@/components/ui/button"
-import { getPendingExceptions } from "@/lib/api/exceptions"
-import { ExceptionListClient } from "./_components/exception-list-client"
+'use client';
 
-export default async function ExceptionsPage() {
-  const initialData = await getPendingExceptions();
+import * as React from 'react';
+import { Search } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { ExceptionListClient } from './_components/exception-list-client';
 
+export default function ExceptionsPage() {
   return (
     <div className="flex flex-col h-[calc(100vh-8rem)]">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6 shrink-0">
@@ -27,7 +27,7 @@ export default async function ExceptionsPage() {
         </div>
       </div>
 
-      <ExceptionListClient initialData={initialData} />
+      <ExceptionListClient initialData={[]} />
     </div>
-  )
+  );
 }

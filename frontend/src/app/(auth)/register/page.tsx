@@ -1,50 +1,73 @@
-"use client"
+'use client';
 
-import * as React from "react"
-import Link from "next/link"
-import { useRouter } from "next/navigation"
-import { zodResolver } from "@hookform/resolvers/zod"
-import { useForm } from "react-hook-form"
-import * as z from "zod"
-import { Bot, Loader2 } from "lucide-react"
+import * as React from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { useForm } from 'react-hook-form';
+import * as z from 'zod';
+import { Bot, Loader2 } from 'lucide-react';
 
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardFooter } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardFooter } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+
+import { apiClient } from '@/lib/api-client';
+import { authStorage } from '@/lib/auth-storage';
 
 const registerSchema = z.object({
-  firstName: z.string().min(2, { message: "First name must be at least 2 characters" }),
-  lastName: z.string().min(2, { message: "Last name must be at least 2 characters" }),
-  email: z.string().email({ message: "Please enter a valid email address" }),
-  password: z.string().min(8, { message: "Password must be at least 8 characters" }),
-})
+  firstName: z.string().min(2, { message: 'First name must be at least 2 characters' }),
+  lastName: z.string().min(2, { message: 'Last name must be at least 2 characters' }),
+  email: z.string().email({ message: 'Please enter a valid email address' }),
+  password: z.string().min(8, { message: 'Password must be at least 8 characters' }),
+});
 
-type RegisterFormValues = z.infer<typeof registerSchema>
+type RegisterFormValues = z.infer<typeof registerSchema>;
 
 export default function RegisterPage() {
-  const router = useRouter()
-  const [isLoading, setIsLoading] = React.useState(false)
+  const router = useRouter();
+  const [isLoading, setIsLoading] = React.useState(false);
+  const [serverError, setServerError] = React.useState<string | null>(null);
 
-  const { register, handleSubmit, formState: { errors } } = useForm<RegisterFormValues>({
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+  } = useForm<RegisterFormValues>({
     resolver: zodResolver(registerSchema),
     defaultValues: {
-      firstName: "",
-      lastName: "",
-      email: "",
-      password: "",
+      firstName: '',
+      lastName: '',
+      email: '',
+      password: '',
     },
-  })
+  });
 
   async function onSubmit(data: RegisterFormValues) {
-    void data
-    setIsLoading(true)
-    // Simulate API call to register
-    setTimeout(() => {
-      setIsLoading(false)
-      // Send to setup after register
-      router.push("/setup")
-    }, 1500)
+    setIsLoading(true);
+    setServerError(null);
+
+    try {
+      const res = await apiClient.post<{
+        data: {
+          user: { id: string; email: string; fullName: string };
+          tokens: { accessToken: string; refreshToken: string };
+        };
+      }>('/auth/register', {
+        email: data.email,
+        password: data.password,
+        fullName: `${data.firstName} ${data.lastName}`,
+      });
+
+      authStorage.setAuthSession(res.data.tokens, res.data.user);
+      router.push('/setup');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Registration failed. Please try again.';
+      setServerError(msg);
+    } finally {
+      setIsLoading(false);
+    }
   }
 
   return (
@@ -54,9 +77,7 @@ export default function RegisterPage() {
           <Bot className="h-6 w-6 text-primary" />
         </div>
         <h1 className="text-2xl font-bold tracking-tight">Create an account</h1>
-        <p className="text-sm text-muted-foreground">
-          Enter your information to get started
-        </p>
+        <p className="text-sm text-muted-foreground">Enter your information to get started</p>
       </div>
 
       <Card>
@@ -65,27 +86,47 @@ export default function RegisterPage() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="firstName">First name</Label>
-                <Input id="firstName" disabled={isLoading} {...register("firstName")} />
-                {errors.firstName && <p className="text-sm text-destructive font-medium">{errors.firstName.message}</p>}
+                <Input id="firstName" disabled={isLoading} {...register('firstName')} />
+                {errors.firstName && (
+                  <p className="text-sm text-destructive font-medium">{errors.firstName.message}</p>
+                )}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="lastName">Last name</Label>
-                <Input id="lastName" disabled={isLoading} {...register("lastName")} />
-                {errors.lastName && <p className="text-sm text-destructive font-medium">{errors.lastName.message}</p>}
+                <Input id="lastName" disabled={isLoading} {...register('lastName')} />
+                {errors.lastName && (
+                  <p className="text-sm text-destructive font-medium">{errors.lastName.message}</p>
+                )}
               </div>
             </div>
-            
+
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
-              <Input id="email" type="email" placeholder="m@example.com" disabled={isLoading} {...register("email")} />
-              {errors.email && <p className="text-sm text-destructive font-medium">{errors.email.message}</p>}
+              <Input
+                id="email"
+                type="email"
+                placeholder="m@example.com"
+                disabled={isLoading}
+                {...register('email')}
+              />
+              {errors.email && (
+                <p className="text-sm text-destructive font-medium">{errors.email.message}</p>
+              )}
             </div>
-            
+
             <div className="space-y-2">
               <Label htmlFor="password">Password</Label>
-              <Input id="password" type="password" disabled={isLoading} {...register("password")} />
-              {errors.password && <p className="text-sm text-destructive font-medium">{errors.password.message}</p>}
+              <Input id="password" type="password" disabled={isLoading} {...register('password')} />
+              {errors.password && (
+                <p className="text-sm text-destructive font-medium">{errors.password.message}</p>
+              )}
             </div>
+
+            {serverError && (
+              <div className="p-3 text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-md">
+                {serverError}
+              </div>
+            )}
 
             <Button type="submit" className="w-full" disabled={isLoading}>
               {isLoading ? (
@@ -94,20 +135,23 @@ export default function RegisterPage() {
                   Creating account...
                 </>
               ) : (
-                "Sign up"
+                'Sign up'
               )}
             </Button>
           </form>
         </CardContent>
         <CardFooter className="flex flex-col gap-4 text-center text-sm">
           <div className="text-muted-foreground">
-            Already have an account?{" "}
-            <Link href="/login" className="text-primary font-medium hover:underline underline-offset-4">
+            Already have an account?{' '}
+            <Link
+              href="/login"
+              className="text-primary font-medium hover:underline underline-offset-4"
+            >
               Sign in
             </Link>
           </div>
         </CardFooter>
       </Card>
     </div>
-  )
+  );
 }
