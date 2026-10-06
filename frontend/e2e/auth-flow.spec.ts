@@ -1,7 +1,9 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('Authentication & Onboarding Flow', () => {
-  test('should complete registration and organization onboarding to dashboard', async ({ page }) => {
+  test('should complete registration and organization onboarding to dashboard', async ({
+    page,
+  }) => {
     // 1. Visit Register Page
     await page.goto('/register');
     await expect(page.getByRole('heading', { name: /create an account/i })).toBeVisible();

@@ -6,7 +6,8 @@ import { BaseAgent } from '../domain/base-agent';
 @Injectable()
 export class PayrollAgent extends BaseAgent {
   readonly name = 'payroll_agent';
-  readonly description = 'Specialist agent for handling payroll runs, deductions, and employee compensation.';
+  readonly description =
+    'Specialist agent for handling payroll runs, deductions, and employee compensation.';
   private readonly logger = new Logger(PayrollAgent.name);
 
   constructor() {

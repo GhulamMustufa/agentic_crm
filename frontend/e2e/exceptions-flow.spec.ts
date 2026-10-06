@@ -1,7 +1,9 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('Exception Center Review & Resolution Flow', () => {
-  test('should inspect AI proposals and approve an exception with optimistic UI update', async ({ page }) => {
+  test('should inspect AI proposals and approve an exception with optimistic UI update', async ({
+    page,
+  }) => {
     // 1. Visit Exception Center
     await page.goto('/exceptions');
     await expect(page.getByRole('heading', { name: /exception center/i })).toBeVisible();
@@ -28,6 +30,8 @@ test.describe('Exception Center Review & Resolution Flow', () => {
     await approveButton.click();
 
     // 7. Optimistic UI Verification: Approved Item Removed from List
-    await expect(page.locator('span', { hasText: /cloudflare hosting/i })).not.toBeVisible({ timeout: 5000 });
+    await expect(page.locator('span', { hasText: /cloudflare hosting/i })).not.toBeVisible({
+      timeout: 5000,
+    });
   });
 });

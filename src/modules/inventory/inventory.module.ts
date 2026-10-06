@@ -21,4 +21,3 @@ import { InventoryService } from './services/inventory.service';
   exports: [InventoryService, INVENTORY_REPOSITORY_TOKEN],
 })
 export class InventoryModule {}
-

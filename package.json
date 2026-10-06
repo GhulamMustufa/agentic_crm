@@ -12,6 +12,13 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "build": "tsc -p tsconfig.json",
+    "dev": "concurrently -n backend,frontend -c blue,magenta \"npm run start:dev\" \"npm run frontend:dev\"",
+    "start:all": "concurrently -n backend,frontend -c blue,magenta \"npm run start\" \"npm run frontend:dev\"",
+    "start": "cross-env PORT=4000 tsx src/main.ts",
+    "start:dev": "cross-env PORT=4000 tsx watch src/main.ts",
+    "frontend:dev": "npm --prefix frontend run dev",
+    "frontend:build": "npm --prefix frontend run build",
+    "frontend:test": "npm --prefix frontend run test:e2e",
     "prepare": "husky"
   },
   "prisma": {
@@ -32,6 +39,7 @@
     "@typescript-eslint/eslint-plugin": "^8.0.0",
     "@typescript-eslint/parser": "^8.0.0",
     "@vitest/coverage-v8": "^4.1.11",
+    "concurrently": "^9.2.4",
     "cross-env": "^10.1.0",
     "eslint": "^9.0.0",
     "eslint-config-prettier": "^9.1.0",

@@ -4,20 +4,22 @@ import { BaseTool } from '../tools/base-tool';
 export abstract class BaseAgent {
   abstract readonly name: string;
   abstract readonly description: string;
-  
-  protected tools: Map<string, BaseTool<any, any>> = new Map();
 
-  constructor(tools: BaseTool<any, any>[]) {
-    for (const tool of tools) {
-      this.tools.set(tool.name, tool);
+  protected tools: Map<string, BaseTool<unknown, unknown>> = new Map();
+
+  constructor(tools: BaseTool<unknown, unknown>[] = []) {
+    for (const tool of tools || []) {
+      if (tool && tool.name) {
+        this.tools.set(tool.name, tool);
+      }
     }
   }
 
-  getTools(): BaseTool<any, any>[] {
+  getTools(): BaseTool<unknown, unknown>[] {
     return Array.from(this.tools.values());
   }
 
-  getTool(name: string): BaseTool<any, any> | undefined {
+  getTool(name: string): BaseTool<unknown, unknown> | undefined {
     return this.tools.get(name);
   }
 

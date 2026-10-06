@@ -21,9 +21,9 @@ export class InMemoryExceptionRepository implements IExceptionRepository {
   }
 
   async findAll(tenantId: string, status?: ExceptionStatus): Promise<ExceptionEntity[]> {
-    const all = Array.from(this.exceptions.values()).filter(e => e.tenantId === tenantId);
+    const all = Array.from(this.exceptions.values()).filter((e) => e.tenantId === tenantId);
     if (status) {
-      return all.filter(e => e.status === status);
+      return all.filter((e) => e.status === status);
     }
     return all;
   }

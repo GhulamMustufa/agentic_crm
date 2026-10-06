@@ -1,7 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 import { AuditService } from '../../src/modules/audit/services/audit.service';
-import { ExceptionType, ExceptionStatus, ResolutionAction } from '../../src/modules/exceptions/domain/exception.entity';
+import {
+  ExceptionType,
+  ExceptionStatus,
+  ResolutionAction,
+} from '../../src/modules/exceptions/domain/exception.entity';
 import { InMemoryExceptionRepository } from '../../src/modules/exceptions/repositories/in-memory-exception.repository';
 import { ExceptionService } from '../../src/modules/exceptions/services/exception.service';
 
@@ -35,9 +39,11 @@ describe('ExceptionService', () => {
     expect(exception.id).toBeDefined();
     expect(exception.status).toBe(ExceptionStatus.OPEN);
     expect(exception.tenantId).toBe('tenant-1');
-    expect(auditService.log).toHaveBeenCalledWith(expect.objectContaining({
-      action: 'EXCEPTION_CREATED',
-    }));
+    expect(auditService.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'EXCEPTION_CREATED',
+      }),
+    );
   });
 
   it('should resolve an exception and advance its status', async () => {
@@ -62,9 +68,11 @@ describe('ExceptionService', () => {
     expect(resolved.resolutionAction).toBe(ResolutionAction.REJECT);
     expect(resolved.history?.length).toBe(2);
     expect(resolved.history?.[1]?.action).toBe(ResolutionAction.REJECT);
-    expect(auditService.log).toHaveBeenCalledWith(expect.objectContaining({
-      action: 'EXCEPTION_REJECT',
-    }));
+    expect(auditService.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'EXCEPTION_REJECT',
+      }),
+    );
   });
 
   it('should reject invalid resolution actions', async () => {
@@ -82,7 +90,9 @@ describe('ExceptionService', () => {
 
     // Try to APPROVE when only REJECT is available
     await expect(
-      service.resolveException('tenant-1', exception.id, 'user-1', { action: ResolutionAction.APPROVE })
+      service.resolveException('tenant-1', exception.id, 'user-1', {
+        action: ResolutionAction.APPROVE,
+      }),
     ).rejects.toThrow(/not available/);
   });
 });

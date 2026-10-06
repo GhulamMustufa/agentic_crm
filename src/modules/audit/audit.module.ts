@@ -21,4 +21,3 @@ import { PrismaModule } from '../../core/prisma/prisma.module';
   exports: [AuditService, AUDIT_REPOSITORY_TOKEN, InMemoryAuditRepository, PrismaAuditRepository],
 })
 export class AuditModule {}
-

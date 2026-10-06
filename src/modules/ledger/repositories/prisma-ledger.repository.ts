@@ -1,6 +1,5 @@
 import { Injectable } from '@nestjs/common';
 
-
 import { ConflictError, NotFoundError } from '../../../core/errors/app-error';
 import { PrismaService } from '../../../core/prisma/prisma.service';
 
@@ -295,7 +294,10 @@ export class PrismaLedgerRepository implements ILedgerRepository {
     return this.toAccountingPeriodEntity(period);
   }
 
-  async findPeriodByDate(tenantId: string, dateStr: string): Promise<AccountingPeriodEntity | null> {
+  async findPeriodByDate(
+    tenantId: string,
+    dateStr: string,
+  ): Promise<AccountingPeriodEntity | null> {
     const targetDate = new Date(dateStr);
     const period = await this.prisma.accountingPeriod.findFirst({
       where: {

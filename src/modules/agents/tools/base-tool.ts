@@ -52,7 +52,8 @@ export abstract class BaseTool<Input, Output> {
       });
 
       return parsedOutput;
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
       // 7. Audit Log - Failure
       await this.auditService.log({
         tenantId: context.tenantId,
@@ -62,7 +63,7 @@ export abstract class BaseTool<Input, Output> {
         actorType: 'AI_AGENT',
         actorId: context.userId,
         correlationId: context.correlationId,
-        newState: { error: error.message },
+        newState: { error: errorMessage },
       });
       throw error;
     }
@@ -71,7 +72,9 @@ export abstract class BaseTool<Input, Output> {
   protected abstract performTask(input: Input, context: AgentContext): Promise<Output>;
 
   private authorize(context: AgentContext) {
-    if (this.requiredRoles.length === 0) {return;}
+    if (this.requiredRoles.length === 0) {
+      return;
+    }
     const hasRole = context.roles.some((role) => this.requiredRoles.includes(role));
     if (!hasRole) {
       throw new UnauthorizedException(`Agent missing required roles for tool ${this.name}`);

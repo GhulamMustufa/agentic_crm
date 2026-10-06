@@ -1,5 +1,4 @@
 import { Injectable } from '@nestjs/common';
-import type { Counterparty } from '@prisma/client';
 
 import { ConflictError, NotFoundError } from '../../../core/errors/app-error';
 import { PrismaService } from '../../../core/prisma/prisma.service';
@@ -9,6 +8,7 @@ import type {
   ICounterpartyRepository,
   CreateCounterpartyInput,
 } from '../domain/counterparty.repository.interface';
+import type { Counterparty } from '@prisma/client';
 
 @Injectable()
 export class PrismaCounterpartyRepository implements ICounterpartyRepository {
@@ -142,9 +142,15 @@ export class PrismaCounterpartyRepository implements ICounterpartyRepository {
       data: {
         ...(updates.legalName !== undefined ? { legalName: updates.legalName.trim() } : {}),
         ...(updates.normalizedName !== undefined ? { normalizedName: updates.normalizedName } : {}),
-        ...(updates.taxIdentifier !== undefined ? { taxIdentifier: updates.taxIdentifier?.trim() } : {}),
-        ...(updates.defaultAccountId !== undefined ? { defaultAccountId: updates.defaultAccountId } : {}),
-        ...(updates.paymentTermsDays !== undefined ? { paymentTermsDays: updates.paymentTermsDays } : {}),
+        ...(updates.taxIdentifier !== undefined
+          ? { taxIdentifier: updates.taxIdentifier?.trim() }
+          : {}),
+        ...(updates.defaultAccountId !== undefined
+          ? { defaultAccountId: updates.defaultAccountId }
+          : {}),
+        ...(updates.paymentTermsDays !== undefined
+          ? { paymentTermsDays: updates.paymentTermsDays }
+          : {}),
         ...(updates.isActive !== undefined ? { isActive: updates.isActive } : {}),
         version: { increment: 1 },
       },

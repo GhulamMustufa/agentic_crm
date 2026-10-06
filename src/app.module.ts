@@ -25,10 +25,12 @@ import { PayrollModule } from './modules/payroll/payroll.module';
 
 @Module({
   imports: [
-    ThrottlerModule.forRoot([{
-      ttl: 60000,
-      limit: 100,
-    }]),
+    ThrottlerModule.forRoot([
+      {
+        ttl: 60000,
+        limit: 100,
+      },
+    ]),
     ConfigModule,
     PrismaModule,
     LoggingModule,

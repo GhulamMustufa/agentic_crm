@@ -16,10 +16,7 @@ export class ExceptionController {
   }
 
   @Get()
-  async getExceptions(
-    @Req() req: Request, 
-    @Query('status') status?: ExceptionStatus
-  ) {
+  async getExceptions(@Req() req: Request, @Query('status') status?: ExceptionStatus) {
     const tenantId = (req.headers['x-tenant-id'] as string) || 'default-tenant';
     return this.exceptionService.getExceptions(tenantId, status);
   }
@@ -28,7 +25,7 @@ export class ExceptionController {
   async resolveException(
     @Param('id') id: string,
     @Body() dto: ResolveExceptionDto,
-    @Req() req: Request
+    @Req() req: Request,
   ) {
     const tenantId = (req.headers['x-tenant-id'] as string) || 'default-tenant';
     const userId = (req.headers['x-user-id'] as string) || 'system-user';

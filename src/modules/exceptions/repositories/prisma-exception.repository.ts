@@ -2,22 +2,27 @@ import { Injectable } from '@nestjs/common';
 import { Prisma, Exception } from '@prisma/client';
 
 import { PrismaService } from '../../../core/prisma/prisma.service';
-import { ExceptionEntity, ExceptionStatus, ExceptionType, ResolutionAction, ExceptionHistoryEntry } from '../domain/exception.entity';
+import {
+  ExceptionEntity,
+  ExceptionStatus,
+  ExceptionType,
+  ResolutionAction,
+  ExceptionHistoryEntry,
+} from '../domain/exception.entity';
 import { IExceptionRepository } from '../domain/exception.repository.interface';
-
 
 @Injectable()
 export class PrismaExceptionRepository implements IExceptionRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  private toDomain(model: Exception & Record<string, any>): ExceptionEntity {
+  private toDomain(model: Exception & Record<string, unknown>): ExceptionEntity {
     return {
       id: model.id,
       tenantId: model.tenantId,
       type: model.type as ExceptionType,
       status: model.status as ExceptionStatus,
       context: {
-        ...(model.context as Record<string, any> || {}),
+        ...((model.context as Record<string, unknown>) || {}),
         amount: model.amount,
         severity: model.severity,
       },
@@ -43,7 +48,7 @@ export class PrismaExceptionRepository implements IExceptionRepository {
       status: entity.status,
       description: entity.reason,
       aiProposal: entity.aiRecommendation,
-      severity: "medium", // Default severity for now
+      severity: 'medium', // Default severity for now
       amount: Number(entity.context?.amount || 0),
       // Note: we can add context, evidence, etc to Prisma schema later if needed.
     };
@@ -60,11 +65,11 @@ export class PrismaExceptionRepository implements IExceptionRepository {
     const exception = await this.prisma.exception.findUnique({
       where: { id },
     });
-    
+
     if (!exception || exception.tenantId !== tenantId) {
       return null;
     }
-    
+
     return this.toDomain(exception);
   }
 
@@ -73,13 +78,13 @@ export class PrismaExceptionRepository implements IExceptionRepository {
     if (status) {
       whereClause.status = status;
     }
-    
+
     const exceptions = await this.prisma.exception.findMany({
       where: whereClause,
-      orderBy: { createdAt: 'desc' }
+      orderBy: { createdAt: 'desc' },
     });
-    
-    return exceptions.map(e => this.toDomain(e));
+
+    return exceptions.map((e) => this.toDomain(e));
   }
 
   async update(exception: ExceptionEntity): Promise<ExceptionEntity> {

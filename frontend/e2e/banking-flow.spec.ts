@@ -1,7 +1,9 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('Banking & Statement Ingestion Flow', () => {
-  test('should display connected bank accounts and simulate statement upload processing', async ({ page }) => {
+  test('should display connected bank accounts and simulate statement upload processing', async ({
+    page,
+  }) => {
     // 1. Visit Banking Page
     await page.goto('/banking');
     await expect(page.getByRole('heading', { name: /bank accounts/i })).toBeVisible();

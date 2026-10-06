@@ -37,7 +37,7 @@ describe('ProposeJournalEntryTool', () => {
     };
 
     const result = await tool.execute(input, validContext);
-    
+
     expect(result.success).toBe(true);
     expect(result.proposalId).toBeDefined();
     expect(auditService.log).toHaveBeenCalledTimes(2); // START and SUCCESS
@@ -83,8 +83,10 @@ describe('ProposeJournalEntryTool', () => {
     };
 
     await expect(tool.execute(input, validContext)).rejects.toThrow(/Debits must equal Credits/);
-    expect(auditService.log).toHaveBeenCalledWith(expect.objectContaining({
-      action: expect.stringContaining('FAILED'),
-    }));
+    expect(auditService.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: expect.stringContaining('FAILED'),
+      }),
+    );
   });
 });

@@ -43,25 +43,25 @@ export interface ExceptionEntity {
   tenantId: string;
   type: ExceptionType;
   status: ExceptionStatus;
-  
+
   // The context in which the exception occurred (e.g. transaction ID, invoice ID)
   context: Record<string, unknown>;
-  
+
   // Evidence for the exception (e.g. OCR text, mismatched fields)
   evidence: Record<string, unknown>;
-  
+
   // AI recommendation for resolution
   aiRecommendation: string;
-  
+
   // Confidence score from the AI model (0-100)
   confidence: number;
-  
+
   // Reason for the exception
   reason: string;
-  
+
   // Available actions for this specific exception
   availableActions: ResolutionAction[];
-  
+
   // History of the exception lifecycle
   history: ExceptionHistoryEntry[];
 
