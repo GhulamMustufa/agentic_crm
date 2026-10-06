@@ -4,8 +4,8 @@ import { CounterpartyController } from './controllers/counterparty.controller';
 import { COUNTERPARTY_REPOSITORY_TOKEN } from './domain/counterparty.repository.interface';
 import { PrismaCounterpartyRepository } from './repositories/prisma-counterparty.repository';
 import { CounterpartyService } from './services/counterparty.service';
-import { AuditModule } from '../audit/audit.module';
 import { PrismaModule } from '../../core/prisma/prisma.module';
+import { AuditModule } from '../audit/audit.module';
 
 @Module({
   imports: [AuditModule, PrismaModule],

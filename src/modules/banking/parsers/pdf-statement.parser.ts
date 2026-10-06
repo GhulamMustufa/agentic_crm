@@ -36,8 +36,11 @@ export class PdfStatementParser implements IStatementParser {
     // Convert to readable text
     const text = rawBuffer.toString('utf-8');
 
-    // 2. Extract Statement Period (e.g. "Statement Period: 2026-03-01 to 2026-03-31" or "Period: 03/01/2026 - 03/31/2026")
+    // 2. Extract Statement Period (English, Malay, Chinese)
     const periodMatch =
+      text.match(
+        /(?:Statement Period|Period|Tempoh Penyata|Tempoh|账单周期|对账周期|起止日期):\s*(\S+)\s*(?:to|-|hingga|至)\s*(\S+)/i,
+      ) ||
       text.match(/Statement Period:\s*(\S+)\s*(?:to|-)\s*(\S+)/i) ||
       text.match(/Period:\s*(\S+)\s*(?:to|-)\s*(\S+)/i);
 
@@ -52,9 +55,15 @@ export class PdfStatementParser implements IStatementParser {
       }
     }
 
-    // 3. Extract Starting and Ending Balances
-    const openingMatch = text.match(/(?:Starting|Opening|Beginning)\s+Balance:\s*([^\r\n]+)/i);
-    const closingMatch = text.match(/(?:Ending|Closing)\s+Balance:\s*([^\r\n]+)/i);
+    // 3. Extract Starting and Ending Balances (English, Malay, Chinese)
+    const openingMatch =
+      text.match(
+        /(?:Starting|Opening|Beginning|Baki Awal|Baki Pembukaan|期初|起始)\s*(?:Balance|Baki|余额)?:\s*([^\r\n]+)/i,
+      ) || text.match(/(?:Starting|Opening|Beginning)\s+Balance:\s*([^\r\n]+)/i);
+    const closingMatch =
+      text.match(
+        /(?:Ending|Closing|Baki Akhir|Baki Penutup|期末|截止)\s*(?:Balance|Baki|余额)?:\s*([^\r\n]+)/i,
+      ) || text.match(/(?:Ending|Closing)\s+Balance:\s*([^\r\n]+)/i);
 
     let openingBalanceCents = 0n;
     let closingBalanceCents = 0n;
@@ -76,13 +85,14 @@ export class PdfStatementParser implements IStatementParser {
     let totalCreditsCents = 0n;
 
     for (const line of lines) {
-      // Matches: YYYY-MM-DD | Description | $Amount or 03/15/2026  Vendor Name  -$120.00
+      // Matches: YYYY-MM-DD, DD/MM/YYYY, YYYY.MM.DD, or YYYY年MM月DD日
+      // Amount with -, +, $, RM, MYR, ¥, RMB, CNY, etc.
       const match =
         line.match(
-          /^(\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}\/\d{4})\s+(?:\|\s+)?(.+?)\s+(?:\|\s+)?([-$]?\(?[\d,]+(?:\.\d{2})?\)?)\s*$/,
+          /^(\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}\/\d{4}|\d{4}\.\d{2}\.\d{2}|\d{4}年\d{1,2}月\d{1,2}日?)\s+(?:\|\s+)?(.+?)\s+(?:\|\s+)?([-$+]*\(?(?:[$¥€£]|RM|MYR|CNY|RMB|SGD)?\s*[\d,]+(?:\.\d{2})?\)?[-\s]*(?:DR|CR)?)$/i,
         ) ||
         line.match(
-          /^(\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}\/\d{4})\s{2,}(.+?)\s{2,}([-$]?\(?[\d,]+(?:\.\d{2})?\)?)$/,
+          /^(\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}\/\d{4}|\d{4}\.\d{2}\.\d{2}|\d{4}年\d{1,2}月\d{1,2}日?)\s{2,}(.+?)\s{2,}([-$+]*\(?(?:[$¥€£]|RM|MYR|CNY|RMB|SGD)?\s*[\d,]+(?:\.\d{2})?\)?[-\s]*(?:DR|CR)?)$/i,
         );
 
       if (match) {

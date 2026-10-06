@@ -1,5 +1,4 @@
 import { Injectable } from '@nestjs/common';
-import type { Tenant, TenantMembership, TenantSettings } from '@prisma/client';
 
 import { ConflictError, NotFoundError } from '../../../core/errors/app-error';
 import { PrismaService } from '../../../core/prisma/prisma.service';
@@ -10,6 +9,7 @@ import type {
   TenantSettingsEntity,
 } from '../domain/tenant.entity';
 import type { ITenantRepository } from '../domain/tenant.repository.interface';
+import type { Tenant, TenantMembership, TenantSettings } from '@prisma/client';
 
 @Injectable()
 export class PrismaTenantRepository implements ITenantRepository {

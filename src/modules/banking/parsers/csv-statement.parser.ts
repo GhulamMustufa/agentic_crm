@@ -12,16 +12,31 @@ export function parseMonetaryCents(val: string): bigint {
   if (!val || val.trim() === '') {
     return 0n;
   }
-  const clean = val.replace(/[$,\s]/g, '').trim();
+  // Strip currency symbols: $, RM, MYR, ¥, RMB, CNY, SGD, EUR, GBP, 元, etc.
+  let clean = val.replace(/[$¥€£元]|(?:MYR|RMB|RM|CNY|SGD|USD)\.?/gi, '').trim();
+  clean = clean.replace(/[,\s]/g, '').trim();
   if (clean === '') {
     return 0n;
   }
 
   // Check accounting parenthesis for negative: (100.50) -> -10050
   const isParenNegative = clean.startsWith('(') && clean.endsWith(')');
-  const unsigned = isParenNegative ? clean.slice(1, -1) : clean;
-  const isMinusNegative = unsigned.startsWith('-');
-  const numStr = isMinusNegative ? unsigned.slice(1) : unsigned;
+  let unsigned = isParenNegative ? clean.slice(1, -1) : clean;
+  // Check trailing minus or DR: e.g. 100.50- or 100.50DR
+  const isMinusNegative =
+    unsigned.startsWith('-') || unsigned.endsWith('-') || unsigned.toUpperCase().endsWith('DR');
+  if (unsigned.endsWith('-')) {
+    unsigned = unsigned.slice(0, -1);
+  } else if (unsigned.toUpperCase().endsWith('DR')) {
+    unsigned = unsigned.slice(0, -2);
+  } else if (unsigned.toUpperCase().endsWith('CR')) {
+    unsigned = unsigned.slice(0, -2);
+  }
+  const numStr = isMinusNegative
+    ? unsigned.startsWith('-')
+      ? unsigned.slice(1)
+      : unsigned
+    : unsigned;
 
   if (!/^\d+(\.\d+)?$/.test(numStr)) {
     throw new ValidationError(`Invalid monetary amount format: '${val}'`);
@@ -42,12 +57,47 @@ export function normalizeDate(dateStr: string): string {
   if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
     return trimmed;
   }
-  // Format MM/DD/YYYY or M/D/YYYY
+  // Format Chinese: YYYY年MM月DD日 or YYYY年M月D日
+  const cnMatch = trimmed.match(/^(\d{4})年(\d{1,2})月(\d{1,2})日?$/);
+  if (cnMatch) {
+    const [, y, m, d] = cnMatch;
+    if (y && m && d) {
+      return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+    }
+  }
+  // Format YYYY.MM.DD
+  const dotMatch = trimmed.match(/^(\d{4})\.(\d{1,2})\.(\d{1,2})$/);
+  if (dotMatch) {
+    const [, y, m, d] = dotMatch;
+    if (y && m && d) {
+      return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+    }
+  }
+  // Format YYYY/MM/DD
+  const slashYmdMatch = trimmed.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})$/);
+  if (slashYmdMatch) {
+    const [, y, m, d] = slashYmdMatch;
+    if (y && m && d) {
+      return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+    }
+  }
+  // Format DD/MM/YYYY or MM/DD/YYYY or D/M/YYYY
   const slashMatch = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
   if (slashMatch) {
-    const [, m, d, y] = slashMatch;
-    if (m && d && y) {
-      return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+    const [, p1, p2, y] = slashMatch;
+    if (p1 && p2 && y) {
+      const n1 = parseInt(p1, 10);
+      const n2 = parseInt(p2, 10);
+      // If first number > 12, it is definitely DD/MM/YYYY (e.g. 25/03/2026)
+      if (n1 > 12) {
+        return `${y}-${p2.padStart(2, '0')}-${p1.padStart(2, '0')}`;
+      }
+      // If second number > 12, it is MM/DD/YYYY (e.g. 03/25/2026)
+      if (n2 > 12) {
+        return `${y}-${p1.padStart(2, '0')}-${p2.padStart(2, '0')}`;
+      }
+      // Fallback for n1 <= 12 && n2 <= 12
+      return `${y}-${p1.padStart(2, '0')}-${p2.padStart(2, '0')}`;
     }
   }
   // Format DD-MM-YYYY
@@ -59,7 +109,7 @@ export function normalizeDate(dateStr: string): string {
     }
   }
   throw new ValidationError(
-    `Invalid date format in statement: '${dateStr}'. Expected YYYY-MM-DD or MM/DD/YYYY`,
+    `Invalid date format in statement: '${dateStr}'. Expected YYYY-MM-DD, DD/MM/YYYY, or YYYY年MM月DD日`,
   );
 }
 
@@ -109,16 +159,78 @@ export class CsvStatementParser implements IStatementParser {
     const headers = parseCsvLine(headerLine).map((h) => h.toLowerCase().replace(/['"]/g, ''));
 
     const dateColIdx = headers.findIndex(
-      (h) => h === 'date' || h === 'tx_date' || h === 'transaction date',
+      (h) =>
+        h === 'date' ||
+        h === 'tx_date' ||
+        h === 'transaction date' ||
+        h === 'tarikh' ||
+        h === 'tarikh transaksi' ||
+        h === '日期' ||
+        h === '交易日期' ||
+        h === '时间' ||
+        h === '交易时间',
     );
     const descColIdx = headers.findIndex(
-      (h) => h === 'description' || h === 'payee' || h === 'memo' || h === 'narrative',
+      (h) =>
+        h === 'description' ||
+        h === 'payee' ||
+        h === 'memo' ||
+        h === 'narrative' ||
+        h === 'butiran' ||
+        h === 'keterangan' ||
+        h === 'deskripsi' ||
+        h === 'huraian' ||
+        h === '描述' ||
+        h === '摘要' ||
+        h === '交易说明' ||
+        h === '对方户名' ||
+        h === '交易方' ||
+        h === '详情',
     );
-    const amountColIdx = headers.findIndex((h) => h === 'amount');
-    const debitColIdx = headers.findIndex((h) => h === 'debit' || h === 'withdrawal');
-    const creditColIdx = headers.findIndex((h) => h === 'credit' || h === 'deposit');
+    const amountColIdx = headers.findIndex(
+      (h) => h === 'amount' || h === 'amaun' || h === 'jumlah' || h === '金额' || h === '交易金额',
+    );
+    const debitColIdx = headers.findIndex(
+      (h) =>
+        h === 'debit' ||
+        h === 'withdrawal' ||
+        h === 'wang keluar' ||
+        h === 'keluar' ||
+        h === 'pengeluaran' ||
+        h === '支出' ||
+        h === '借' ||
+        h === '出账' ||
+        h === '扣款' ||
+        h.includes('debit') ||
+        h.includes('wang keluar') ||
+        h.includes('支出'),
+    );
+    const creditColIdx = headers.findIndex(
+      (h) =>
+        h === 'credit' ||
+        h === 'deposit' ||
+        h === 'wang masuk' ||
+        h === 'masuk' ||
+        h === '收入' ||
+        h === '贷' ||
+        h === '入账' ||
+        h === '存款' ||
+        h.includes('credit') ||
+        h.includes('wang masuk') ||
+        h.includes('收入'),
+    );
     const refColIdx = headers.findIndex(
-      (h) => h === 'reference' || h === 'ref' || h === 'check_number',
+      (h) =>
+        h === 'reference' ||
+        h === 'ref' ||
+        h === 'check_number' ||
+        h === 'rujukan' ||
+        h === 'no rujukan' ||
+        h === 'no cek' ||
+        h === '参考号' ||
+        h === '流水号' ||
+        h === '交易单号' ||
+        h === '凭证号',
     );
 
     if (dateColIdx === -1) {

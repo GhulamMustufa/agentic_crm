@@ -61,6 +61,13 @@ export class OrganizationController {
     return { data: result };
   }
 
+  @Get(':id/members')
+  @HttpCode(HttpStatus.OK)
+  async getMembers(@CurrentUser() user: TenantSessionContext, @Param('id') tenantId: string) {
+    const members = await this.orgService.getMembers(tenantId, user.userId);
+    return { data: members };
+  }
+
   @Get(':id/settings')
   @HttpCode(HttpStatus.OK)
   async getSettings(@CurrentUser() user: TenantSessionContext, @Param('id') tenantId: string) {

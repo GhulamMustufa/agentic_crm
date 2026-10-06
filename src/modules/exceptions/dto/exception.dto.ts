@@ -2,8 +2,8 @@ import { ExceptionType, ResolutionAction, ExceptionStatus } from '../domain/exce
 
 export interface CreateExceptionDto {
   type: ExceptionType;
-  context: Record<string, any>;
-  evidence: Record<string, any>;
+  context: Record<string, unknown>;
+  evidence: Record<string, unknown>;
   aiRecommendation: string;
   confidence: number;
   reason: string;
@@ -19,8 +19,8 @@ export interface ExceptionResponseDto {
   id: string;
   type: ExceptionType;
   status: ExceptionStatus;
-  context: Record<string, any>;
-  evidence: Record<string, any>;
+  context: Record<string, unknown>;
+  evidence: Record<string, unknown>;
   aiRecommendation: string;
   confidence: number;
   reason: string;

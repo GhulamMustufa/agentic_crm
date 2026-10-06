@@ -84,7 +84,14 @@ export class AiAccountantService {
       descUpper.includes('TRANSFER') ||
       descUpper.includes('XFER') ||
       descUpper.includes('SWEEP') ||
-      descUpper.includes('INTER-ACCOUNT');
+      descUpper.includes('INTER-ACCOUNT') ||
+      descUpper.includes('PINDAHAN') ||
+      descUpper.includes('DUITNOW') ||
+      descUpper.includes('JOMPAY') ||
+      descUpper.includes('FPX') ||
+      descUpper.includes('转账') ||
+      descUpper.includes('划转') ||
+      descUpper.includes('网银转账');
 
     if (isTransferPattern) {
       // Find matching counter-account
@@ -122,7 +129,11 @@ export class AiAccountantService {
       descUpper.includes('REFUND') ||
       descUpper.includes('RETURN') ||
       descUpper.includes('REVERSAL') ||
-      descUpper.includes('CHARGEBACK REVERSAL');
+      descUpper.includes('CHARGEBACK REVERSAL') ||
+      descUpper.includes('BAYAR BALIK') ||
+      descUpper.includes('PULANGAN') ||
+      descUpper.includes('退款') ||
+      descUpper.includes('冲正');
 
     if (isRefundPattern) {
       // Check if counterparty is recognized
@@ -314,7 +325,12 @@ export class AiAccountantService {
     // --- RULE E2: Unresolved Invoice Reference (Unmatched Payment) ---
     const hasInvoicePattern =
       /INV(?:OICE)?[-#\s]*\w+/i.test(transaction.rawDescription) ||
-      /BILL[-#\s]*\w+/i.test(transaction.rawDescription);
+      /BILL[-#\s]*\w+/i.test(transaction.rawDescription) ||
+      /INVOIS[-#\s]*\w+/i.test(transaction.rawDescription) ||
+      /RESIT[-#\s]*\w+/i.test(transaction.rawDescription) ||
+      /发票[-#\s]*\w+/i.test(transaction.rawDescription) ||
+      /账单[-#\s]*\w+/i.test(transaction.rawDescription) ||
+      /单据[-#\s]*\w+/i.test(transaction.rawDescription);
 
     if (hasInvoicePattern) {
       return {

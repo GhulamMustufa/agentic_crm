@@ -1,11 +1,11 @@
 import { Injectable } from '@nestjs/common';
-import type { User, UserSession } from '@prisma/client';
 
 import { ConflictError, NotFoundError } from '../../../core/errors/app-error';
 import { PrismaService } from '../../../core/prisma/prisma.service';
 
 import type { UserEntity, UserSessionEntity } from '../domain/user.entity';
 import type { IUserRepository } from '../domain/user.repository.interface';
+import type { User, UserSession } from '@prisma/client';
 
 @Injectable()
 export class PrismaUserRepository implements IUserRepository {

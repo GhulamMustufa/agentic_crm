@@ -130,4 +130,23 @@ describe('OrganizationService', () => {
       }),
     ).rejects.toThrow(AuthorizationError);
   });
+
+  it('should list all members of the organization for active members', async () => {
+    const tenant = await orgService.createOrganization(userId, {
+      legalName: 'Acme Corp',
+      slug: 'acme-corp',
+      baseCurrency: 'USD',
+      timezone: 'UTC',
+    });
+
+    await orgService.inviteMember(tenant.id, userId, {
+      email: 'member@example.com',
+      roleCode: 'AUDITOR',
+    });
+
+    const members = await orgService.getMembers(tenant.id, userId);
+    expect(members).toHaveLength(2);
+    expect(members.map((m) => m.roleCode)).toContain('OWNER');
+    expect(members.map((m) => m.roleCode)).toContain('AUDITOR');
+  });
 });

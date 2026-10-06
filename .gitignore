@@ -29,6 +29,8 @@ out/
 /tmp/
 /temp/
 *.pdf
+*.csv
+sample_statements/
 *.xlsx
 *.xls
 *.csv.gz

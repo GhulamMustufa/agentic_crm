@@ -23,7 +23,11 @@ import {
   updateTenantSettingsSchema,
 } from '../dto/organization.dto';
 
-import type { TenantEntity, TenantSettingsEntity } from '../domain/tenant.entity';
+import type {
+  TenantEntity,
+  TenantMembershipEntity,
+  TenantSettingsEntity,
+} from '../domain/tenant.entity';
 
 @Injectable()
 export class OrganizationService {
@@ -154,6 +158,14 @@ export class OrganizationService {
       email: targetUser.email,
       roleCode: membership.roleCode,
     };
+  }
+
+  async getMembers(tenantId: string, userId: string): Promise<TenantMembershipEntity[]> {
+    const membership = await this.tenantRepo.findMembership(tenantId, userId);
+    if (!membership || membership.status !== 'ACTIVE') {
+      throw new AuthorizationError('You do not belong to this organization');
+    }
+    return this.tenantRepo.listTenantMembers(tenantId);
   }
 
   async getSettings(tenantId: string, userId?: string): Promise<TenantSettingsEntity> {
