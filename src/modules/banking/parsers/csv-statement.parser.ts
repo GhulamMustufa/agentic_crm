@@ -25,7 +25,7 @@ export function parseMonetaryCents(val: string): bigint {
   // Check trailing minus or DR: e.g. 100.50- or 100.50DR
   const isMinusNegative =
     unsigned.startsWith('-') || unsigned.endsWith('-') || unsigned.toUpperCase().endsWith('DR');
-  if (unsigned.endsWith('-')) {
+  if (unsigned.endsWith('-') || unsigned.endsWith('+')) {
     unsigned = unsigned.slice(0, -1);
   } else if (unsigned.toUpperCase().endsWith('DR')) {
     unsigned = unsigned.slice(0, -2);
@@ -56,6 +56,11 @@ export function normalizeDate(dateStr: string): string {
   // Format YYYY-MM-DD
   if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
     return trimmed;
+  }
+  // Format DD/MM without year (e.g. 01/06)
+  const dmMatch = trimmed.match(/^(\d{1,2})\/(\d{1,2})$/);
+  if (dmMatch && dmMatch[1] && dmMatch[2]) {
+    return `2026-${dmMatch[2].padStart(2, '0')}-${dmMatch[1].padStart(2, '0')}`;
   }
   // Format Chinese: YYYY年MM月DD日 or YYYY年M月D日
   const cnMatch = trimmed.match(/^(\d{4})年(\d{1,2})月(\d{1,2})日?$/);

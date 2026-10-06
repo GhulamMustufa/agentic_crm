@@ -22,46 +22,6 @@ async function main() {
   });
   console.log(`Created/Found Tenant: ${tenant.legalName} (ID: ${tenant.id})`);
 
-  // 2. Create mock Exceptions
-  const exceptions = await Promise.all([
-    prisma.exception.create({
-      data: {
-        tenantId: tenant.id,
-        type: 'UNKNOWN_TRANSACTION',
-        severity: 'high',
-        description: 'Large wire transfer to an unrecognized offshore vendor.',
-        aiProposal:
-          'Recommend holding the transaction and requesting vendor W-8BEN and contract details before approving.',
-        status: 'OPEN',
-        amount: 250000.0,
-      },
-    }),
-    prisma.exception.create({
-      data: {
-        tenantId: tenant.id,
-        type: 'DUPLICATE',
-        severity: 'medium',
-        description: 'Possible duplicate SaaS subscription payment.',
-        aiProposal:
-          'This closely matches a payment made to Adobe Inc. on the 1st of the month. Recommend merging or rejecting.',
-        status: 'OPEN',
-        amount: 149.99,
-      },
-    }),
-    prisma.exception.create({
-      data: {
-        tenantId: tenant.id,
-        type: 'MISSING_RECEIPT',
-        severity: 'low',
-        description: 'Team dinner expense missing itemized receipt.',
-        aiProposal: 'Auto-email the employee to upload the receipt from the POS system.',
-        status: 'OPEN',
-        amount: 345.5,
-      },
-    }),
-  ]);
-
-  console.log(`Created ${exceptions.length} Exceptions.`);
   console.log('Database seeding complete! 🌱');
 }
 

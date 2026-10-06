@@ -1,3 +1,4 @@
+import { InjectQueue } from '@nestjs/bullmq';
 import {
   Controller,
   Post,
@@ -11,16 +12,15 @@ import {
   Inject,
 } from '@nestjs/common';
 import { Queue } from 'bullmq';
-import { InjectQueue } from '@nestjs/bullmq';
 
 import { AuthorizationError } from '../../../core/errors/app-error';
 import { CurrentUser } from '../../../core/security/decorators/auth.decorators';
 import { JwtAuthGuard } from '../../../core/security/guards/jwt-auth.guard';
-import { BankProcessingService } from '../services/bank-processing.service';
 import { OBJECT_STORAGE_TOKEN } from '../../../core/storage/storage.service';
-import type { IObjectStorage } from '../../../core/storage/storage.service';
+import { BankProcessingService } from '../services/bank-processing.service';
 
 import type { TenantSessionContext } from '../../../core/context/tenant-context.service';
+import type { IObjectStorage } from '../../../core/storage/storage.service';
 import type { BankTransactionStatus } from '../domain/bank-transaction.entity';
 import type { ExceptionSeverity, ExceptionStatus } from '../domain/exception-item.entity';
 import type { ProposalStatus } from '../domain/proposal.entity';
@@ -101,10 +101,7 @@ export class BankingController {
 
   @Post('statements/presigned-url')
   @HttpCode(HttpStatus.OK)
-  async getPresignedUrl(
-    @CurrentUser() user: TenantSessionContext,
-    @Body() dto: PresignedUrlInput,
-  ) {
+  async getPresignedUrl(@CurrentUser() user: TenantSessionContext, @Body() dto: PresignedUrlInput) {
     const tenantId = this.requireTenant(user);
     // Generate a unique key for the upload
     const objectKey = `tenants/${tenantId}/statements/${Date.now()}-${dto.fileName}`;
@@ -140,12 +137,33 @@ export class BankingController {
         },
       },
     );
-    
-    return { 
-      data: { 
+
+    return {
+      data: {
         jobId: job.id,
-        status: 'QUEUED' 
-      } 
+        status: 'QUEUED',
+      },
+    };
+  }
+
+  @Get('statements/jobs/:id')
+  @HttpCode(HttpStatus.OK)
+  async getJobStatus(@CurrentUser() user: TenantSessionContext, @Param('id') id: string) {
+    this.requireTenant(user);
+    const job = await this.statementQueue.getJob(id);
+    if (!job) {
+      return { data: { id, state: 'not_found' } };
+    }
+    const state = await job.getState();
+    const progress = job.progress;
+    return {
+      data: {
+        id: job.id,
+        state,
+        progress,
+        result: state === 'completed' ? serializeBigInt(job.returnvalue) : null,
+        failedReason: job.failedReason,
+      },
     };
   }
 

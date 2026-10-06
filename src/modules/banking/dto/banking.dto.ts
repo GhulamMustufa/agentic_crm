@@ -13,10 +13,16 @@ export type CreateBankAccountInput = z.input<typeof createBankAccountSchema>;
 export type CreateBankAccountDto = z.infer<typeof createBankAccountSchema>;
 
 export const uploadStatementSchema = z.object({
-  bankAccountId: z.string().uuid(),
+  bankAccountId: z.string().uuid().optional(),
   fileName: z.string().min(1).max(255),
   mimeType: z.enum(['text/csv', 'application/pdf', 'application/x-pdf']),
   content: z.string().min(10, 'Statement content is required'), // Raw CSV string or Base64 PDF
+  manualBankName: z.string().min(2).optional(),
+  manualAccountType: z.enum(['CHECKING', 'SAVINGS', 'CREDIT_CARD']).optional(),
+  manualAccountNumberLast4: z
+    .string()
+    .regex(/^\d{4}$/, 'Must be 4 digits')
+    .optional(),
 });
 
 export type UploadStatementInput = z.input<typeof uploadStatementSchema>;
@@ -31,10 +37,16 @@ export type PresignedUrlInput = z.input<typeof presignedUrlSchema>;
 export type PresignedUrlDto = z.infer<typeof presignedUrlSchema>;
 
 export const queueStatementUploadSchema = z.object({
-  bankAccountId: z.string().uuid(),
+  bankAccountId: z.string().uuid().optional(),
   fileName: z.string().min(1).max(255),
   mimeType: z.enum(['text/csv', 'application/pdf', 'application/x-pdf']),
   objectKey: z.string().min(5),
+  manualBankName: z.string().min(2).optional(),
+  manualAccountType: z.enum(['CHECKING', 'SAVINGS', 'CREDIT_CARD']).optional(),
+  manualAccountNumberLast4: z
+    .string()
+    .regex(/^\d{4}$/, 'Must be 4 digits')
+    .optional(),
 });
 
 export type QueueStatementUploadInput = z.input<typeof queueStatementUploadSchema>;

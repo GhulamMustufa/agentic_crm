@@ -398,8 +398,8 @@ model BankStatement {
   id                  String            @id @default(uuid())
   tenantId            String
   tenant              Tenant            @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  bankAccountId       String
-  bankAccount         BankAccount       @relation(fields: [bankAccountId], references: [id], onDelete: Restrict)
+  bankAccountId       String?
+  bankAccount         BankAccount?      @relation(fields: [bankAccountId], references: [id], onDelete: Restrict)
   sourceDocumentId    String?
   fileName            String
   fileSha256          String
@@ -452,7 +452,7 @@ model ReconciledTransaction {
   tenantId             String
   tenant               Tenant          @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   bankTransactionId    String          @unique
-  bankTransaction      BankTransaction @relation(fields: [bankTransactionId], references: [id], onDelete: Restrict)
+  bankTransaction      BankTransaction @relation(fields: [bankTransactionId], references: [id], onDelete: Cascade)
   journalEntryId       String
   journalEntry         JournalEntry    @relation(fields: [journalEntryId], references: [id], onDelete: Restrict)
   reconciliationMethod String // AUTO_HIGH_CONFIDENCE, HUMAN_APPROVED, MANUAL_MATCH
@@ -470,7 +470,7 @@ model Proposal {
   tenantId             String
   tenant               Tenant          @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   bankTransactionId    String
-  bankTransaction      BankTransaction @relation(fields: [bankTransactionId], references: [id], onDelete: Restrict)
+  bankTransaction      BankTransaction @relation(fields: [bankTransactionId], references: [id], onDelete: Cascade)
   invoiceId            String?
   counterpartyId       String?
   counterparty         Counterparty?   @relation(fields: [counterpartyId], references: [id], onDelete: SetNull)

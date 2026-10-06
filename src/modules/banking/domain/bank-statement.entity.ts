@@ -1,10 +1,10 @@
 export type BankStatementStatus =
-  'UPLOADED' | 'PROCESSING' | 'PARSED' | 'RECONCILED' | 'FAILED' | 'EXCEPTION';
+  'UPLOADED' | 'PROCESSING' | 'PARSED' | 'RECONCILED' | 'FAILED' | 'EXCEPTION' | 'NEEDS_REVIEW';
 
 export interface BankStatementEntity {
   id: string;
   tenantId: string;
-  bankAccountId: string;
+  bankAccountId: string | null;
   sourceDocumentId?: string;
   fileName: string;
   fileSha256: string;

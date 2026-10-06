@@ -104,8 +104,12 @@ export class UniversalAiProvider implements IAiProvider {
       temperature: 0.1,
     });
 
-    const content = response.choices[0]?.message?.content || '{}';
-    const parsed = JSON.parse(content);
+    const rawContent = response.choices[0]?.message?.content || '{}';
+    const cleanedContent = rawContent
+      .replace(/^```(?:json)?\s*/i, '')
+      .replace(/\s*```$/i, '')
+      .trim();
+    const parsed = JSON.parse(cleanedContent);
     const validated = request.schema.parse(parsed);
     const durationMs = Date.now() - start;
 
@@ -184,14 +188,14 @@ export class AiGatewayService {
   }
 
   getProvider(name?: string): IAiProvider {
-    const preferred = name || process.env.AI_PROVIDER;
+    const preferred = name || process.env.AI_PROVIDER || this.config?.get('AI_PROVIDER');
     let target = 'mock';
     if (preferred && this.providers.has(preferred)) {
       target = preferred;
-    } else if (this.providers.has('openai')) {
-      target = 'openai';
     } else if (this.providers.has('deepseek')) {
       target = 'deepseek';
+    } else if (this.providers.has('openai')) {
+      target = 'openai';
     } else if (this.providers.has('gemini')) {
       target = 'gemini';
     }
@@ -210,7 +214,21 @@ export class AiGatewayService {
     request: AiStructuredExtractionRequest<T>,
     providerOrder?: string[],
   ): Promise<{ data: T; confidence: number; durationMs: number; providerUsed: string }> {
-    const order = providerOrder || (this.providers.has('openai') ? ['openai', 'mock'] : ['mock']);
+    let order = providerOrder;
+    if (!order || order.length === 0) {
+      const candidates: string[] = [];
+      const envPreferred = process.env.AI_PROVIDER || this.config?.get('AI_PROVIDER');
+      if (envPreferred && this.providers.has(envPreferred)) {
+        candidates.push(envPreferred);
+      }
+      for (const p of ['deepseek', 'openai', 'gemini', 'mock']) {
+        if (this.providers.has(p) && !candidates.includes(p)) {
+          candidates.push(p);
+        }
+      }
+      order = candidates;
+    }
+
     let lastError: unknown;
 
     for (const providerName of order) {

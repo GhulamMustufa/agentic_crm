@@ -273,6 +273,12 @@ export class PrismaBankingRepository implements IBankingRepository {
     return this.toBankStatementEntity(created);
   }
 
+  async deleteBankStatement(tenantId: string, id: string): Promise<void> {
+    await this.prisma.bankStatement.deleteMany({
+      where: { tenantId, id },
+    });
+  }
+
   async findBankStatementById(tenantId: string, id: string): Promise<BankStatementEntity | null> {
     const item = await this.prisma.bankStatement.findUnique({
       where: { id },

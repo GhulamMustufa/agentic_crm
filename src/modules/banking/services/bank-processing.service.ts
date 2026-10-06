@@ -168,16 +168,19 @@ export class BankProcessingService {
     }
     const dto = parseResult.data;
 
-    // 1. Validate Bank Account
-    const bankAccount = await this.bankingRepo.findBankAccountById(tenantId, dto.bankAccountId);
-    if (!bankAccount) {
-      throw new NotFoundError('Bank Account', dto.bankAccountId);
+    // 1. Validate Bank Account (if provided)
+    let bankAccount: BankAccountEntity | null = null;
+    if (dto.bankAccountId) {
+      bankAccount = await this.bankingRepo.findBankAccountById(tenantId, dto.bankAccountId);
+      if (!bankAccount) {
+        throw new NotFoundError('Bank Account', dto.bankAccountId);
+      }
     }
 
-    const lockKey = `${tenantId}:${dto.bankAccountId}`;
+    const lockKey = `${tenantId}:${dto.bankAccountId || 'unassigned'}`;
     if (this.processingLocks.has(lockKey)) {
       throw new ConflictError(
-        `Concurrent statement processing already in progress for bank account ${bankAccount.accountName}`,
+        `Concurrent statement processing already in progress for bank account ${bankAccount?.accountName || 'unassigned'}`,
       );
     }
     this.processingLocks.add(lockKey);
@@ -187,19 +190,24 @@ export class BankProcessingService {
       const fileSha256 = computeSha256(dto.content);
       const existingByHash = await this.bankingRepo.findBankStatementByHash(tenantId, fileSha256);
       if (existingByHash) {
-        // Flag Duplicate Statement Exception
-        const exception = await this.bankingRepo.createExceptionItem({
-          tenantId,
-          entityType: 'STATEMENT',
-          entityId: existingByHash.id,
-          exceptionType: 'DUPLICATE_STATEMENT',
-          severity: 'HIGH',
-          reason: `Bank statement with identical cryptographic hash (${fileSha256}) was previously uploaded on ${existingByHash.createdAt.toISOString()}`,
-          evidence: [{ fileSha256, previousStatementId: existingByHash.id }],
-        });
-        throw new ConflictError(
-          `Duplicate statement rejected: file matches existing statement ${existingByHash.id} (Exception: ${exception.id})`,
-        );
+        if (existingByHash.status !== 'FAILED') {
+          // Flag Duplicate Statement Exception
+          const exception = await this.bankingRepo.createExceptionItem({
+            tenantId,
+            entityType: 'STATEMENT',
+            entityId: existingByHash.id,
+            exceptionType: 'DUPLICATE_STATEMENT',
+            severity: 'HIGH',
+            reason: `Bank statement with identical cryptographic hash (${fileSha256}) was previously uploaded on ${existingByHash.createdAt.toISOString()}`,
+            evidence: [{ fileSha256, previousStatementId: existingByHash.id }],
+          });
+          throw new ConflictError(
+            `Duplicate statement rejected: file matches existing statement ${existingByHash.id} (Exception: ${exception.id})`,
+          );
+        } else {
+          // Delete the previously failed statement to allow a clean retry without unique constraint collision
+          await this.bankingRepo.deleteBankStatement(tenantId, existingByHash.id);
+        }
       }
 
       // 3. Document Extraction (CSV or PDF)
@@ -214,7 +222,7 @@ export class BankProcessingService {
         // Create temporary statement record in FAILED state for auditing
         const failedStatement = await this.bankingRepo.createBankStatement({
           tenantId,
-          bankAccountId: bankAccount.id,
+          bankAccountId: bankAccount?.id || null,
           fileName: dto.fileName,
           fileSha256,
           mimeType: dto.mimeType,
@@ -251,31 +259,64 @@ export class BankProcessingService {
         );
       }
 
-      // 4. Period Collision Detection
-      const existingByPeriod = await this.bankingRepo.findBankStatementByPeriod(
-        tenantId,
-        bankAccount.id,
-        parsedData.startDate,
-        parsedData.endDate,
-      );
-      if (existingByPeriod) {
-        const exc = await this.bankingRepo.createExceptionItem({
-          tenantId,
-          entityType: 'STATEMENT',
-          entityId: existingByPeriod.id,
-          exceptionType: 'DUPLICATE_STATEMENT',
-          severity: 'HIGH',
-          reason: `Statement covering period ${parsedData.startDate} to ${parsedData.endDate} already exists for bank account ${bankAccount.accountName}`,
-        });
-        throw new ConflictError(
-          `Statement period (${parsedData.startDate} to ${parsedData.endDate}) already uploaded for this account. Exception: ${exc.id}`,
-        );
+      // 3.5 Auto-provision Bank Account if missing
+      if (!bankAccount) {
+        const targetBankName = dto.manualBankName || parsedData.bankName;
+        const targetAcctLast4 = dto.manualAccountNumberLast4 || parsedData.accountNumberLast4;
+        const targetAcctType = dto.manualAccountType || parsedData.accountType || 'CHECKING';
+
+        if (targetBankName && targetAcctLast4) {
+          const accounts = await this.listBankAccounts(tenantId);
+          bankAccount = accounts.find((a) => a.accountNumberLast4 === targetAcctLast4) || null;
+
+          if (!bankAccount) {
+            // Auto-create
+            const ledgerRes = await this.ledgerService.listAccounts(tenantId);
+            const cashAccount =
+              ledgerRes.find((a) => a.accountCode === '1010' || a.subClassification === 'CASH') ||
+              ledgerRes[0];
+            if (cashAccount) {
+              bankAccount = await this.createBankAccount(tenantId, userId, {
+                ledgerAccountId: cashAccount.id,
+                accountName: `${targetBankName} ${targetAcctType}`,
+                institutionName: targetBankName,
+                accountType: targetAcctType as 'CHECKING' | 'SAVINGS' | 'CREDIT_CARD',
+                currency: 'USD',
+                accountNumberLast4: targetAcctLast4,
+              });
+            }
+          }
+        }
       }
 
-      // 5. Create Bank Statement in PROCESSING state (Atomic lock against concurrent workers)
+      // 4. Period Collision Detection
+      if (bankAccount) {
+        const existingByPeriod = await this.bankingRepo.findBankStatementByPeriod(
+          tenantId,
+          bankAccount.id,
+          parsedData.startDate,
+          parsedData.endDate,
+        );
+        if (existingByPeriod) {
+          const exc = await this.bankingRepo.createExceptionItem({
+            tenantId,
+            entityType: 'STATEMENT',
+            entityId: existingByPeriod.id,
+            exceptionType: 'DUPLICATE_STATEMENT',
+            severity: 'HIGH',
+            reason: `Statement covering period ${parsedData.startDate} to ${parsedData.endDate} already exists for bank account ${bankAccount.accountName}`,
+          });
+          throw new ConflictError(
+            `Statement period (${parsedData.startDate} to ${parsedData.endDate}) already uploaded for this account. Exception: ${exc.id}`,
+          );
+        }
+      }
+
+      // 5. Create Bank Statement in PROCESSING state (or NEEDS_REVIEW if no bank account)
+      const statementStatus = bankAccount ? 'PROCESSING' : 'NEEDS_REVIEW';
       const statement = await this.bankingRepo.createBankStatement({
         tenantId,
-        bankAccountId: bankAccount.id,
+        bankAccountId: bankAccount?.id || null,
         fileName: dto.fileName,
         fileSha256,
         mimeType: dto.mimeType,
@@ -285,8 +326,27 @@ export class BankProcessingService {
         closingBalanceCents: parsedData.closingBalanceCents,
         totalDebitsCents: parsedData.totalDebitsCents,
         totalCreditsCents: parsedData.totalCreditsCents,
-        status: 'PROCESSING',
+        status: statementStatus,
       });
+
+      if (!bankAccount) {
+        await this.bankingRepo.createExceptionItem({
+          tenantId,
+          entityType: 'STATEMENT',
+          entityId: statement.id,
+          exceptionType: 'UNASSIGNED_STATEMENT',
+          severity: 'HIGH',
+          reason:
+            'Could not automatically determine the bank account for this statement. Please review and assign manually.',
+        });
+        // We stop here if it needs review. The transactions are not extracted into the ledger yet.
+        return {
+          statement,
+          transactions: [],
+          proposals: [],
+          exceptions: [],
+        };
+      }
 
       // Archive raw document to Object Storage (Neon S3)
       if (this.storage) {
@@ -802,6 +862,12 @@ export class BankProcessingService {
     const unreconciled = transactions.filter(
       (t) => t.status === 'UNRECONCILED' || t.status === 'PROPOSED',
     );
+
+    if (!statement.bankAccountId) {
+      throw new Error(
+        `Cannot run AI classification on statement ${statementId} because it has no assigned bank account.`,
+      );
+    }
 
     const bankAccount = await this.bankingRepo.findBankAccountById(
       tenantId,

@@ -13,6 +13,9 @@ export interface ParsedStatementResult {
   totalDebitsCents: bigint;
   totalCreditsCents: bigint;
   transactions: ParsedTransactionLine[];
+  bankName?: string;
+  accountType?: 'CHECKING' | 'SAVINGS' | 'CREDIT_CARD';
+  accountNumberLast4?: string;
 }
 
 export interface IStatementParser {

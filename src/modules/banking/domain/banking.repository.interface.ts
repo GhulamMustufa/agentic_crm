@@ -32,7 +32,7 @@ export interface CreateBankAccountInput {
 
 export interface CreateBankStatementInput {
   tenantId: string;
-  bankAccountId: string;
+  bankAccountId: string | null;
   sourceDocumentId?: string;
   fileName: string;
   fileSha256: string;
@@ -117,6 +117,7 @@ export interface IBankingRepository {
     errorMessage?: string,
   ): Promise<BankStatementEntity>;
   incrementStatementRetryCount(tenantId: string, id: string): Promise<BankStatementEntity>;
+  deleteBankStatement(tenantId: string, id: string): Promise<void>;
 
   // Bank Transactions
   createBankTransactions(inputs: CreateBankTransactionInput[]): Promise<BankTransactionEntity[]>;

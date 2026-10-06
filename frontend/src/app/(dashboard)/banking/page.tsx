@@ -15,6 +15,7 @@ import {
   ArrowRight,
   RefreshCw,
   Landmark,
+  Sparkles,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -102,6 +103,13 @@ export default function BankingPage() {
   >('CHECKING');
   const [newLast4, setNewLast4] = React.useState('4092');
 
+  // Manual Bank Selection for Upload
+  const [manualBankName, setManualBankName] = React.useState('');
+  const [manualAccountType, setManualAccountType] = React.useState<
+    'CHECKING' | 'SAVINGS' | 'CREDIT_CARD'
+  >('CHECKING');
+  const [manualLast4, setManualLast4] = React.useState('');
+
   // Upload State
   const [isDragging, setIsDragging] = React.useState(false);
   const [isUploading, setIsUploading] = React.useState(false);
@@ -120,7 +128,8 @@ export default function BankingPage() {
       const list = response.data || [];
       setAccounts(list);
       if (list.length > 0) {
-        setSelectedAccountId(list[0].id);
+        // Default to auto-detect (empty string) to encourage the new flow
+        setSelectedAccountId('');
       }
     } catch (err) {
       console.error('Failed to load bank accounts:', err);
@@ -184,72 +193,107 @@ export default function BankingPage() {
   };
 
   const handleFileProcess = async (file: File) => {
-    if (!selectedAccountId && accounts.length === 0) {
-      toast.error('Please add a bank account first before uploading statements.');
-      return;
-    }
-
-    const targetAccountId = selectedAccountId || accounts[0]?.id;
-    if (!targetAccountId) {
-      toast.error('Please select a target bank account.');
-      return;
-    }
+    const targetAccountId = selectedAccountId || undefined;
 
     setIsUploading(true);
     setProcessingStage('uploading');
     setUploadProgress(15);
 
     try {
-      let content = '';
       const isPdf = file.name.endsWith('.pdf') || file.type.includes('pdf');
       const mimeType = isPdf ? ('application/pdf' as const) : ('text/csv' as const);
 
-      if (isPdf) {
-        // Read as Base64 data URL and strip header
-        const base64Data = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => {
-            const raw = reader.result as string;
-            const base64 = raw.split(',')[1] || '';
-            resolve(base64);
-          };
-          reader.onerror = reject;
-          reader.readAsDataURL(file);
-        });
-        content = base64Data;
-      } else {
-        // Read as text
-        content = await file.text();
-      }
+      // 1. Get presigned URL
+      const presignedRes = await apiClient.post<{ data: { url: string; objectKey: string } }>(
+        '/banking/statements/presigned-url',
+        {
+          fileName: file.name,
+          mimeType,
+        },
+      );
+      const { url, objectKey } = presignedRes.data;
 
-      setProcessingStage('extracting');
-      setUploadProgress(45);
+      setProcessingStage('uploading');
+      setUploadProgress(30);
 
-      // Send to backend
-      const response = await apiClient.post<{ data: UploadResult }>('/banking/statements/upload', {
-        bankAccountId: targetAccountId,
-        fileName: file.name,
-        mimeType,
-        content,
+      // 2. Upload directly to S3 (Neon Object Storage)
+      const s3Res = await fetch(url, {
+        method: 'PUT',
+        body: file,
+        headers: {
+          'Content-Type': mimeType,
+        },
       });
 
+      if (!s3Res.ok) {
+        throw new Error('Failed to upload file to storage bucket');
+      }
+
       setProcessingStage('classifying');
-      setUploadProgress(75);
+      setUploadProgress(50);
 
-      setTimeout(() => {
-        setProcessingStage('reconciling');
-        setUploadProgress(90);
-      }, 300);
+      // 3. Queue the job
+      const payload: any = {
+        fileName: file.name,
+        mimeType,
+        objectKey,
+      };
+      if (targetAccountId && targetAccountId !== 'NEW_MANUAL') {
+        payload.bankAccountId = targetAccountId;
+      } else if (targetAccountId === 'NEW_MANUAL') {
+        payload.manualBankName = manualBankName.trim();
+        payload.manualAccountType = manualAccountType;
+        payload.manualAccountNumberLast4 = manualLast4.trim();
+      }
 
-      setTimeout(() => {
-        setProcessingStage('complete');
-        setUploadProgress(100);
-        setUploadResult(response.data);
-        loadAccounts(); // Refresh balances
-        toast.success('Statement uploaded successfully');
-      }, 700);
-    } catch (err) {
+      const queueRes = await apiClient.post<{ data: { jobId: string; status: string } }>(
+        '/banking/statements/queue-upload',
+        payload,
+      );
+
+      const jobId = queueRes.data.jobId;
+      setProcessingStage('extracting');
+
+      // 4. Poll for job completion
+      let attempts = 0;
+      let completed = false;
+      while (attempts < 120 && !completed) {
+        // 120 * 3s = 6 minutes max
+        attempts++;
+        const statusRes = await apiClient.get<{
+          data: { id: string; state: string; result: UploadResult | null; failedReason?: string };
+        }>(`/banking/statements/jobs/${jobId}`);
+        const { state, result, failedReason } = statusRes.data;
+
+        if (state === 'completed' && result) {
+          setProcessingStage('complete');
+          setUploadProgress(100);
+          setUploadResult(result);
+          loadAccounts(); // Refresh balances
+          toast.success('Statement uploaded and parsed successfully');
+          completed = true;
+          break;
+        } else if (state === 'failed') {
+          throw new Error(failedReason || 'Job failed during background processing');
+        } else if (state === 'active') {
+          setProcessingStage('extracting');
+          // Increment progress bar to simulate AI thinking
+          setUploadProgress((prev) => Math.min(prev + Math.random() * 5, 95));
+        } else if (state === 'waiting' || state === 'delayed') {
+          setProcessingStage('reconciling');
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+      }
+
+      if (!completed) {
+        throw new Error('Polling timed out. The document is still processing in the background.');
+      }
+    } catch (err: any) {
       setProcessingStage('error');
+      const errorMessage =
+        err?.response?.data?.message || err?.message || 'Statement processing failed';
+      toast.error(errorMessage);
       console.error(err);
     } finally {
       setIsUploading(false);
@@ -420,6 +464,30 @@ export default function BankingPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
+                  <TableRow
+                    className={`cursor-pointer transition-colors ${
+                      !selectedAccountId || selectedAccountId === 'NEW_MANUAL'
+                        ? 'bg-muted/70 font-medium'
+                        : 'hover:bg-muted/30'
+                    }`}
+                    onClick={() => setSelectedAccountId('')}
+                  >
+                    <TableCell colSpan={4}>
+                      <div className="font-medium flex items-center gap-2">
+                        <Sparkles className="w-4 h-4 text-purple-500" />
+                        Auto-detect from statement
+                        {!selectedAccountId && (
+                          <Badge variant="secondary" className="text-[10px] h-4 px-1">
+                            Selected
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-1">
+                        Let AI read the PDF and automatically assign or create the bank account, or
+                        provide details manually below.
+                      </div>
+                    </TableCell>
+                  </TableRow>
                   {accounts.map((acc) => {
                     const balanceNum = Number(acc.currentBalanceCents || 0) / 100;
                     const isSelected = selectedAccountId === acc.id;
@@ -477,25 +545,77 @@ export default function BankingPage() {
                   Upload bank statements (PDF or CSV) to trigger the live AI ingestion pipeline.
                 </CardDescription>
               </div>
-              {accounts.length > 0 && (
-                <div className="text-right">
-                  <span className="text-xs text-muted-foreground block">Target Account:</span>
-                  <select
-                    className="text-xs font-semibold bg-transparent border-b border-input focus:outline-none"
-                    value={selectedAccountId}
-                    onChange={(e) => setSelectedAccountId(e.target.value)}
-                  >
+              <div className="text-right">
+                <span className="text-xs text-muted-foreground block">Target Account:</span>
+                <select
+                  className="text-xs font-semibold bg-transparent border-b border-input focus:outline-none"
+                  value={selectedAccountId}
+                  onChange={(e) => setSelectedAccountId(e.target.value)}
+                >
+                  <option value="">Auto-Detect from Statement</option>
+                  <option value="NEW_MANUAL">Provide Manual Details</option>
+                  <optgroup label="Existing Accounts">
                     {accounts.map((a) => (
                       <option key={a.id} value={a.id}>
                         {a.accountName} (•••• {a.accountNumberLast4})
                       </option>
                     ))}
-                  </select>
-                </div>
-              )}
+                  </optgroup>
+                </select>
+              </div>
             </div>
           </CardHeader>
           <CardContent className="space-y-6">
+            {/* Manual Bank Details (Shown if 'Provide Manual Details' is selected) */}
+            {selectedAccountId === 'NEW_MANUAL' && !isUploading && (
+              <div className="p-4 bg-muted/30 rounded-lg space-y-4 border border-input text-sm">
+                <div className="font-medium">Manual Bank Details</div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="space-y-1">
+                    <Label htmlFor="manualBankName" className="text-xs">
+                      Bank Name
+                    </Label>
+                    <Input
+                      id="manualBankName"
+                      size={1}
+                      className="h-8 text-xs"
+                      value={manualBankName}
+                      onChange={(e) => setManualBankName(e.target.value)}
+                      placeholder="e.g. JPMorgan Chase"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="manualAccountType" className="text-xs">
+                      Account Type
+                    </Label>
+                    <select
+                      id="manualAccountType"
+                      className="flex h-8 w-full rounded-md border border-input bg-background px-2 py-1 text-xs"
+                      value={manualAccountType}
+                      onChange={(e) => setManualAccountType(e.target.value as any)}
+                    >
+                      <option value="CHECKING">Checking</option>
+                      <option value="SAVINGS">Savings</option>
+                      <option value="CREDIT_CARD">Credit Card</option>
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="manualLast4" className="text-xs">
+                      Last 4 Digits
+                    </Label>
+                    <Input
+                      id="manualLast4"
+                      maxLength={4}
+                      className="h-8 text-xs"
+                      value={manualLast4}
+                      onChange={(e) => setManualLast4(e.target.value.replace(/\D/g, ''))}
+                      placeholder="e.g. 4092"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Hidden File Input */}
             <input
               ref={fileInputRef}

@@ -119,6 +119,13 @@ export class InMemoryBankingRepository implements IBankingRepository {
     return { ...statement };
   }
 
+  async deleteBankStatement(tenantId: string, id: string): Promise<void> {
+    const stmt = this.statements.get(id);
+    if (stmt && stmt.tenantId === tenantId) {
+      this.statements.delete(id);
+    }
+  }
+
   async findBankStatementById(tenantId: string, id: string): Promise<BankStatementEntity | null> {
     const stmt = this.statements.get(id);
     if (!stmt || stmt.tenantId !== tenantId) {

@@ -1,7 +1,7 @@
+import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
-import { BullModule } from '@nestjs/bullmq';
 
 import { AiModule } from './core/ai/ai.module';
 import { ConfigModule } from './core/config/config.module';

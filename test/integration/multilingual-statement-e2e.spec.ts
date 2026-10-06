@@ -7,13 +7,15 @@ import {
 } from '../../src/modules/banking/parsers/csv-statement.parser';
 import { PdfStatementParser } from '../../src/modules/banking/parsers/pdf-statement.parser';
 
+import type { AiStatementParser } from '../../src/modules/banking/parsers/ai-statement.parser';
+
 describe('Multilingual & Multi-Currency Engine (Malaysia MYR & China CNY)', () => {
   let csvParser: CsvStatementParser;
   let pdfParser: PdfStatementParser;
 
   beforeAll(() => {
     csvParser = new CsvStatementParser();
-    pdfParser = new PdfStatementParser();
+    pdfParser = new PdfStatementParser({} as unknown as AiStatementParser);
   });
 
   describe('Monetary & Date Normalization', () => {
