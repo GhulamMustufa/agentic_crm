@@ -1,0 +1,5 @@
+{
+  "{src,test}/**/*.ts": ["prettier --write", "cross-env ESLINT_USE_FLAT_CONFIG=false eslint --fix"],
+  "frontend/src/**/*.{ts,tsx}": ["prettier --write"],
+  "*.{json,md,css}": ["prettier --write"]
+}

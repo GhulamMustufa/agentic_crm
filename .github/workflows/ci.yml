@@ -11,9 +11,32 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  quality-gate:
-    name: Lint, Typecheck, Format & Security Audit
+  backend-ci:
+    name: Backend CI (Lint, Types, Unit & E2E Tests, Build)
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: agentic_business_os
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/agentic_business_os?schema=public&sslmode=disable
+      JWT_SECRET: ci-secret-jwt-signing-key-minimum-32-chars-long
+      JWT_REFRESH_SECRET: ci-refresh-jwt-signing-key-minimum-32-chars
+      STORAGE_DRIVER: local
+      AI_DEFAULT_PROVIDER: mock
 
     steps:
       - name: Checkout Code
@@ -37,12 +60,63 @@ jobs:
       - name: Strict TypeScript Compilation
         run: npm run typecheck
 
-      - name: Run Test Suites
+      - name: Generate Prisma Client
+        run: npx prisma generate
+
+      - name: Apply Database Schema to Test Database
+        run: npx prisma db push --skip-generate
+
+      - name: Run Test Suites (Unit & Master Integration E2E)
         run: npm run test
 
-      - name: Execute Build
+      - name: Execute NestJS Backend Production Build
         run: npm run build
 
       - name: Dependency Security Audit
         run: npm audit --audit-level=high
         continue-on-error: true
+
+  frontend-ci:
+    name: Frontend CI (Lint, Types, Next.js Build, Playwright E2E)
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Frontend Dependencies
+        run: npm ci
+
+      - name: Static Code Analysis (ESLint)
+        run: npm run lint
+
+      - name: Strict TypeScript Compilation
+        run: npx tsc --noEmit
+
+      - name: Execute Next.js Production Build
+        run: npm run build
+
+      - name: Install Playwright Browsers & OS Dependencies
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Playwright Browser E2E Tests
+        run: npm run test:e2e
+
+      - name: Upload Playwright Test Artifacts on Failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: frontend/playwright-report/
+          retention-days: 7
