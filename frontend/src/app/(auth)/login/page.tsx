@@ -7,6 +7,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import * as z from 'zod';
 import { Bot, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter } from '@/components/ui/card';
@@ -26,13 +27,12 @@ type LoginFormValues = z.infer<typeof loginSchema>;
 export default function LoginPage() {
   const router = useRouter();
   const [isLoading, setIsLoading] = React.useState(false);
-  const [serverError, setServerError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     if (typeof window !== 'undefined') {
       const urlParams = new URLSearchParams(window.location.search);
       if (urlParams.get('expired') === 'true') {
-        setServerError('Your session has expired. Please sign in again.');
+        toast.error('Your session has expired. Please sign in again.');
         // Clean up the URL
         window.history.replaceState({}, '', '/login');
       }
@@ -53,7 +53,6 @@ export default function LoginPage() {
 
   async function onSubmit(data: LoginFormValues) {
     setIsLoading(true);
-    setServerError(null);
 
     try {
       // 1. Authenticate
@@ -85,9 +84,8 @@ export default function LoginPage() {
         router.push('/');
       }
     } catch (err: unknown) {
-      const msg =
-        err instanceof Error ? err.message : 'Invalid email or password. Please try again.';
-      setServerError(msg);
+      // API client will automatically show the error toast
+      console.error(err);
     } finally {
       setIsLoading(false);
     }
@@ -127,12 +125,6 @@ export default function LoginPage() {
                 <p className="text-sm text-destructive font-medium">{errors.password.message}</p>
               )}
             </div>
-
-            {serverError && (
-              <div className="p-3 text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-md">
-                {serverError}
-              </div>
-            )}
 
             <Button type="submit" className="w-full" disabled={isLoading}>
               {isLoading ? (

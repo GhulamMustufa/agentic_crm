@@ -28,7 +28,7 @@ type RegisterFormValues = z.infer<typeof registerSchema>;
 export default function RegisterPage() {
   const router = useRouter();
   const [isLoading, setIsLoading] = React.useState(false);
-  const [serverError, setServerError] = React.useState<string | null>(null);
+  const [isLoading, setIsLoading] = React.useState(false);
 
   const {
     register,
@@ -46,7 +46,6 @@ export default function RegisterPage() {
 
   async function onSubmit(data: RegisterFormValues) {
     setIsLoading(true);
-    setServerError(null);
 
     try {
       const res = await apiClient.post<{
@@ -63,8 +62,8 @@ export default function RegisterPage() {
       authStorage.setAuthSession(res.data.tokens, res.data.user);
       router.push('/setup');
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Registration failed. Please try again.';
-      setServerError(msg);
+      // API client will automatically show the error toast
+      console.error(err);
     } finally {
       setIsLoading(false);
     }
@@ -121,12 +120,6 @@ export default function RegisterPage() {
                 <p className="text-sm text-destructive font-medium">{errors.password.message}</p>
               )}
             </div>
-
-            {serverError && (
-              <div className="p-3 text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-md">
-                {serverError}
-              </div>
-            )}
 
             <Button type="submit" className="w-full" disabled={isLoading}>
               {isLoading ? (

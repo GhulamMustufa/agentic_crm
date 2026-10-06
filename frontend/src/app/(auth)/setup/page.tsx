@@ -26,7 +26,6 @@ type SetupFormValues = z.infer<typeof setupSchema>;
 export default function SetupPage() {
   const router = useRouter();
   const [isLoading, setIsLoading] = React.useState(false);
-  const [serverError, setServerError] = React.useState<string | null>(null);
 
   const {
     register,
@@ -43,7 +42,6 @@ export default function SetupPage() {
 
   async function onSubmit(data: SetupFormValues) {
     setIsLoading(true);
-    setServerError(null);
 
     try {
       const slug =
@@ -77,9 +75,8 @@ export default function SetupPage() {
 
       router.push('/');
     } catch (err: unknown) {
-      const msg =
-        err instanceof Error ? err.message : 'Failed to set up workspace. Please try again.';
-      setServerError(msg);
+      // API client will automatically show the error toast
+      console.error(err);
     } finally {
       setIsLoading(false);
     }
@@ -135,12 +132,6 @@ export default function SetupPage() {
                 {...register('registrationNumber')}
               />
             </div>
-
-            {serverError && (
-              <div className="p-3 text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-md">
-                {serverError}
-              </div>
-            )}
 
             <Button type="submit" className="w-full" disabled={isLoading}>
               {isLoading ? (

@@ -16,6 +16,7 @@ import {
   RefreshCw,
   Landmark,
 } from 'lucide-react';
+import { toast } from 'sonner';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -100,7 +101,6 @@ export default function BankingPage() {
     'CHECKING' | 'SAVINGS' | 'CREDIT_CARD'
   >('CHECKING');
   const [newLast4, setNewLast4] = React.useState('4092');
-  const [accountFormError, setAccountFormError] = React.useState<string | null>(null);
 
   // Upload State
   const [isDragging, setIsDragging] = React.useState(false);
@@ -109,7 +109,6 @@ export default function BankingPage() {
   const [processingStage, setProcessingStage] = React.useState<
     'idle' | 'uploading' | 'extracting' | 'classifying' | 'reconciling' | 'complete' | 'error'
   >('idle');
-  const [uploadError, setUploadError] = React.useState<string | null>(null);
   const [uploadResult, setUploadResult] = React.useState<UploadResult | null>(null);
 
   const fileInputRef = React.useRef<HTMLInputElement>(null);
@@ -136,7 +135,6 @@ export default function BankingPage() {
 
   const handleCreateAccount = async (e: React.FormEvent) => {
     e.preventDefault();
-    setAccountFormError(null);
     setIsSubmittingAccount(true);
 
     try {
@@ -177,14 +175,9 @@ export default function BankingPage() {
       setAccounts((prev) => [created, ...prev]);
       setSelectedAccountId(created.id);
       setIsAddingAccount(false);
+      toast.success('Bank account created successfully');
     } catch (err) {
-      const msg =
-        err instanceof ApiError
-          ? err.message
-          : err instanceof Error
-            ? err.message
-            : 'Failed to create bank account';
-      setAccountFormError(msg);
+      console.error(err);
     } finally {
       setIsSubmittingAccount(false);
     }
@@ -192,17 +185,16 @@ export default function BankingPage() {
 
   const handleFileProcess = async (file: File) => {
     if (!selectedAccountId && accounts.length === 0) {
-      setUploadError('Please add a bank account first before uploading statements.');
+      toast.error('Please add a bank account first before uploading statements.');
       return;
     }
 
     const targetAccountId = selectedAccountId || accounts[0]?.id;
     if (!targetAccountId) {
-      setUploadError('Please select a target bank account.');
+      toast.error('Please select a target bank account.');
       return;
     }
 
-    setUploadError(null);
     setIsUploading(true);
     setProcessingStage('uploading');
     setUploadProgress(15);
@@ -254,16 +246,11 @@ export default function BankingPage() {
         setUploadProgress(100);
         setUploadResult(response.data);
         loadAccounts(); // Refresh balances
+        toast.success('Statement uploaded successfully');
       }, 700);
     } catch (err) {
       setProcessingStage('error');
-      const msg =
-        err instanceof ApiError
-          ? err.message
-          : err instanceof Error
-            ? err.message
-            : 'An unexpected error occurred during statement processing';
-      setUploadError(msg);
+      console.error(err);
     } finally {
       setIsUploading(false);
     }
@@ -327,12 +314,6 @@ export default function BankingPage() {
           </CardHeader>
           <CardContent>
             <form onSubmit={handleCreateAccount} className="space-y-4">
-              {accountFormError && (
-                <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-md text-sm text-destructive flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 shrink-0" />
-                  <span>{accountFormError}</span>
-                </div>
-              )}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div className="space-y-1">
                   <Label htmlFor="accountName">Account Name</Label>
@@ -523,16 +504,6 @@ export default function BankingPage() {
               className="hidden"
               onChange={handleFileInputChange}
             />
-
-            {uploadError && (
-              <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-lg text-sm text-destructive flex items-start gap-3">
-                <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
-                <div className="space-y-1">
-                  <p className="font-semibold">Statement Upload Failed</p>
-                  <p className="text-xs opacity-90">{uploadError}</p>
-                </div>
-              </div>
-            )}
 
             {!isUploading && processingStage !== 'complete' ? (
               <div
