@@ -1,9 +1,11 @@
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { BullModule } from '@nestjs/bullmq';
 
 import { AiModule } from './core/ai/ai.module';
 import { ConfigModule } from './core/config/config.module';
+import { AppConfigService } from './core/config/config.service';
 import { ContextModule } from './core/context/context.module';
 import { FeatureFlagModule } from './core/feature-flags/feature-flag.module';
 import { LoggingModule } from './core/logging/logging.module';
@@ -31,6 +33,15 @@ import { PayrollModule } from './modules/payroll/payroll.module';
         limit: 100,
       },
     ]),
+    BullModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [AppConfigService],
+      useFactory: (config: AppConfigService) => ({
+        connection: {
+          url: config.get('REDIS_URL'),
+        },
+      }),
+    }),
     ConfigModule,
     PrismaModule,
     LoggingModule,

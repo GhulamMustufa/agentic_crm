@@ -21,6 +21,11 @@ export interface IObjectStorage {
   hasObject(key: string): Promise<boolean>;
   deleteObject(key: string): Promise<void>;
   getPresignedUrl(key: string, expiresInSeconds?: number): Promise<string>;
+  getPresignedUploadUrl(
+    key: string,
+    contentType: string,
+    expiresInSeconds?: number,
+  ): Promise<string>;
 }
 
 export const OBJECT_STORAGE_TOKEN = Symbol('IObjectStorage');
@@ -62,6 +67,14 @@ export class MemoryStorageService implements IObjectStorage {
 
   async getPresignedUrl(key: string, _expiresInSeconds = 900): Promise<string> {
     return `https://mock-storage.local/${key}?mock-token=${Date.now()}`;
+  }
+
+  async getPresignedUploadUrl(
+    key: string,
+    _contentType: string,
+    _expiresInSeconds = 900,
+  ): Promise<string> {
+    return `https://mock-storage.local/upload/${key}?mock-token=${Date.now()}`;
   }
 
   clear(): void {
@@ -158,6 +171,19 @@ export class S3StorageService implements IObjectStorage {
     const command = new GetObjectCommand({
       Bucket: this.bucket,
       Key: key,
+    });
+    return await getSignedUrl(this.client, command, { expiresIn: expiresInSeconds });
+  }
+
+  async getPresignedUploadUrl(
+    key: string,
+    contentType: string,
+    expiresInSeconds = 900,
+  ): Promise<string> {
+    const command = new PutObjectCommand({
+      Bucket: this.bucket,
+      Key: key,
+      ContentType: contentType,
     });
     return await getSignedUrl(this.client, command, { expiresIn: expiresInSeconds });
   }

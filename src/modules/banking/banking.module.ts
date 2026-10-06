@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { BullModule } from '@nestjs/bullmq';
 
 import { PrismaModule } from '../../core/prisma/prisma.module';
 import { AuditModule } from '../audit/audit.module';
@@ -12,15 +13,26 @@ import { PdfStatementParser } from './parsers/pdf-statement.parser';
 import { PrismaBankingRepository } from './repositories/prisma-banking.repository';
 import { AiAccountantService } from './services/ai-accountant.service';
 import { BankProcessingService } from './services/bank-processing.service';
+import { StatementProcessor } from './queues/statement.processor';
 
 @Module({
-  imports: [PrismaModule, LedgerModule, CounterpartyModule, InvoiceModule, AuditModule],
+  imports: [
+    PrismaModule,
+    LedgerModule,
+    CounterpartyModule,
+    InvoiceModule,
+    AuditModule,
+    BullModule.registerQueue({
+      name: 'statement-processing',
+    }),
+  ],
   controllers: [BankingController],
   providers: [
     BankProcessingService,
     AiAccountantService,
     CsvStatementParser,
     PdfStatementParser,
+    StatementProcessor,
     {
       provide: BANKING_REPOSITORY_TOKEN,
       useClass: PrismaBankingRepository,

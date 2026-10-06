@@ -22,6 +22,24 @@ export const uploadStatementSchema = z.object({
 export type UploadStatementInput = z.input<typeof uploadStatementSchema>;
 export type UploadStatementDto = z.infer<typeof uploadStatementSchema>;
 
+export const presignedUrlSchema = z.object({
+  fileName: z.string().min(1).max(255),
+  mimeType: z.enum(['text/csv', 'application/pdf', 'application/x-pdf']),
+});
+
+export type PresignedUrlInput = z.input<typeof presignedUrlSchema>;
+export type PresignedUrlDto = z.infer<typeof presignedUrlSchema>;
+
+export const queueStatementUploadSchema = z.object({
+  bankAccountId: z.string().uuid(),
+  fileName: z.string().min(1).max(255),
+  mimeType: z.enum(['text/csv', 'application/pdf', 'application/x-pdf']),
+  objectKey: z.string().min(5),
+});
+
+export type QueueStatementUploadInput = z.input<typeof queueStatementUploadSchema>;
+export type QueueStatementUploadDto = z.infer<typeof queueStatementUploadSchema>;
+
 export const correctProposalSchema = z.object({
   debitAccountId: z.string().uuid().optional(),
   creditAccountId: z.string().uuid().optional(),

@@ -8,12 +8,17 @@ import {
   UseGuards,
   HttpCode,
   HttpStatus,
+  Inject,
 } from '@nestjs/common';
+import { Queue } from 'bullmq';
+import { InjectQueue } from '@nestjs/bullmq';
 
 import { AuthorizationError } from '../../../core/errors/app-error';
 import { CurrentUser } from '../../../core/security/decorators/auth.decorators';
 import { JwtAuthGuard } from '../../../core/security/guards/jwt-auth.guard';
 import { BankProcessingService } from '../services/bank-processing.service';
+import { OBJECT_STORAGE_TOKEN } from '../../../core/storage/storage.service';
+import type { IObjectStorage } from '../../../core/storage/storage.service';
 
 import type { TenantSessionContext } from '../../../core/context/tenant-context.service';
 import type { BankTransactionStatus } from '../domain/bank-transaction.entity';
@@ -22,6 +27,8 @@ import type { ProposalStatus } from '../domain/proposal.entity';
 import type {
   CreateBankAccountInput,
   UploadStatementInput,
+  PresignedUrlInput,
+  QueueStatementUploadInput,
   CorrectProposalInput,
   RejectProposalInput,
   ResolveExceptionInput,
@@ -43,7 +50,11 @@ function serializeBigInt(obj: unknown): unknown {
 @UseGuards(JwtAuthGuard)
 @Controller('api/v1/banking')
 export class BankingController {
-  constructor(private readonly bankProcessingService: BankProcessingService) {}
+  constructor(
+    private readonly bankProcessingService: BankProcessingService,
+    @Inject(OBJECT_STORAGE_TOKEN) private readonly storageService: IObjectStorage,
+    @InjectQueue('statement-processing') private readonly statementQueue: Queue,
+  ) {}
 
   private requireTenant(user: TenantSessionContext): string {
     if (!user.tenantId) {
@@ -86,6 +97,56 @@ export class BankingController {
       dto,
     );
     return { data: serializeBigInt(result) };
+  }
+
+  @Post('statements/presigned-url')
+  @HttpCode(HttpStatus.OK)
+  async getPresignedUrl(
+    @CurrentUser() user: TenantSessionContext,
+    @Body() dto: PresignedUrlInput,
+  ) {
+    const tenantId = this.requireTenant(user);
+    // Generate a unique key for the upload
+    const objectKey = `tenants/${tenantId}/statements/${Date.now()}-${dto.fileName}`;
+    const url = await this.storageService.getPresignedUploadUrl(objectKey, dto.mimeType, 900);
+    return {
+      data: {
+        url,
+        objectKey,
+      },
+    };
+  }
+
+  @Post('statements/queue-upload')
+  @HttpCode(HttpStatus.ACCEPTED)
+  async queueUpload(
+    @CurrentUser() user: TenantSessionContext,
+    @Body() dto: QueueStatementUploadInput,
+  ) {
+    const tenantId = this.requireTenant(user);
+    // Queue the job
+    const job = await this.statementQueue.add(
+      'process-statement',
+      {
+        tenantId,
+        userId: user.userId,
+        dto,
+      },
+      {
+        attempts: 3,
+        backoff: {
+          type: 'exponential',
+          delay: 5000,
+        },
+      },
+    );
+    
+    return { 
+      data: { 
+        jobId: job.id,
+        status: 'QUEUED' 
+      } 
+    };
   }
 
   @Get('statements')
