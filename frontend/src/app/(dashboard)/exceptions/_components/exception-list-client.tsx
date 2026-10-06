@@ -5,11 +5,12 @@ import {
   Check,
   AlertTriangle,
   FileQuestion,
-  HelpCircle,
   ChevronRight,
   Building2,
   UploadCloud,
   CheckCircle2,
+  Bot,
+  HelpCircle,
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
@@ -25,9 +26,6 @@ import {
   getPendingExceptions,
   resolveException,
 } from '@/lib/api/exceptions';
-
-// Bot icon import was missing in previous file
-import { Bot } from 'lucide-react';
 
 export function ExceptionListClient({ initialData }: { initialData: ExceptionItem[] }) {
   const queryClient = useQueryClient();
@@ -54,11 +52,9 @@ export function ExceptionListClient({ initialData }: { initialData: ExceptionIte
 
       queryClient.setQueryData<ExceptionItem[]>(exceptionKeys.lists(), (old) => {
         if (!old) return [];
-        const filtered = old.filter((item) => item.id !== id);
-        return filtered;
+        return old.filter((item) => item.id !== id);
       });
 
-      // Select next item
       const currentList = queryClient.getQueryData<ExceptionItem[]>(exceptionKeys.lists()) || [];
       if (currentList.length > 0) {
         setSelectedId(currentList[0].id);
@@ -72,8 +68,7 @@ export function ExceptionListClient({ initialData }: { initialData: ExceptionIte
       if (context?.previousData) {
         queryClient.setQueryData(exceptionKeys.lists(), context.previousData);
       }
-      // If there's a toast library, show error
-      console.error('Failed to approve transaction proposal. Please try again.');
+      console.error('Failed to resolve exception item:', err);
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: exceptionKeys.all });
@@ -92,9 +87,12 @@ export function ExceptionListClient({ initialData }: { initialData: ExceptionIte
     switch (type) {
       case 'unrecognized_vendor':
       case 'UNKNOWN_TRANSACTION':
+      case 'AMBIGUOUS_TRANSACTION':
         return <Building2 className="w-4 h-4 text-orange-500" />;
       case 'ambiguous_category':
       case 'DUPLICATE':
+      case 'DUPLICATE_STATEMENT':
+      case 'DUPLICATE_TRANSACTION':
         return <AlertTriangle className="w-4 h-4 text-amber-500" />;
       case 'missing_receipt':
       case 'MISSING_RECEIPT':
@@ -108,22 +106,27 @@ export function ExceptionListClient({ initialData }: { initialData: ExceptionIte
     switch (type) {
       case 'unrecognized_vendor':
       case 'UNKNOWN_TRANSACTION':
-        return 'Unknown Transaction';
+        return 'Unknown Vendor';
+      case 'AMBIGUOUS_TRANSACTION':
+        return 'Ambiguous Transaction';
       case 'ambiguous_category':
+        return 'Ambiguous Category';
       case 'DUPLICATE':
-        return 'Duplicate Transaction';
+      case 'DUPLICATE_STATEMENT':
+      case 'DUPLICATE_TRANSACTION':
+        return 'Duplicate Entry';
       case 'missing_receipt':
       case 'MISSING_RECEIPT':
         return 'Missing Receipt';
       default:
-        return 'Exception';
+        return 'Exception Item';
     }
   };
 
   if (isLoading && exceptions.length === 0) {
     return (
       <div className="flex flex-col h-[calc(100vh-8rem)] pt-12 items-center justify-center">
-        <p className="text-muted-foreground animate-pulse">Loading exceptions...</p>
+        <p className="text-muted-foreground animate-pulse">Loading exception center...</p>
       </div>
     );
   }
@@ -151,17 +154,25 @@ export function ExceptionListClient({ initialData }: { initialData: ExceptionIte
         {exceptions.map((exc) => (
           <Card
             key={exc.id}
-            className={`cursor-pointer transition-colors hover:bg-muted/50 ${selectedId === exc.id ? 'border-primary shadow-sm bg-primary/5 dark:bg-primary/10' : ''}`}
+            className={`cursor-pointer transition-colors hover:bg-muted/50 ${
+              selectedId === exc.id
+                ? 'border-primary shadow-sm bg-primary/5 dark:bg-primary/10'
+                : ''
+            }`}
             onClick={() => setSelectedId(exc.id)}
           >
             <CardContent className="p-4 flex gap-3">
               <div className="mt-0.5 shrink-0">{getTypeIcon(exc.type)}</div>
               <div className="flex-1 min-w-0">
-                <div className="flex justify-between items-start mb-1">
-                  <span className="font-semibold truncate pr-2">{exc.description}</span>
-                  <span className="font-mono tabular-nums text-right font-medium whitespace-nowrap">
-                    {formatCurrency(exc.amount)}
+                <div className="flex justify-between items-start mb-1 gap-2">
+                  <span className="font-semibold text-sm line-clamp-2 leading-tight">
+                    {exc.description}
                   </span>
+                  {exc.amount > 0 && (
+                    <span className="font-mono tabular-nums text-right font-medium text-sm whitespace-nowrap">
+                      {formatCurrency(exc.amount)}
+                    </span>
+                  )}
                 </div>
                 <div className="flex justify-between items-center mt-2 text-xs">
                   <span className="text-muted-foreground">{getTypeLabel(exc.type)}</span>
@@ -179,11 +190,11 @@ export function ExceptionListClient({ initialData }: { initialData: ExceptionIte
       <div className="w-full md:w-2/3 flex flex-col min-h-0 bg-card border rounded-xl overflow-hidden shadow-sm">
         {selectedException ? (
           <>
-            <div className="p-6 border-b shrink-0 flex justify-between items-start">
-              <div>
+            <div className="p-6 border-b shrink-0 flex justify-between items-start gap-4">
+              <div className="space-y-1 min-w-0">
                 <div className="flex items-center gap-2 mb-2">
-                  <Badge variant="outline" className="capitalize">
-                    {selectedException.id}
+                  <Badge variant="outline" className="font-mono text-[11px]">
+                    EXC-{selectedException.id.slice(0, 8).toUpperCase()}
                   </Badge>
                   <Badge
                     variant={selectedException.severity === 'high' ? 'destructive' : 'secondary'}
@@ -191,12 +202,14 @@ export function ExceptionListClient({ initialData }: { initialData: ExceptionIte
                     {selectedException.severity} priority
                   </Badge>
                 </div>
-                <h2 className="text-2xl font-bold">{selectedException.description}</h2>
-                <div className="text-3xl font-mono tabular-nums font-light mt-2">
-                  {formatCurrency(selectedException.amount)}
-                </div>
+                <h2 className="text-xl font-bold leading-snug">{selectedException.description}</h2>
+                {selectedException.amount > 0 && (
+                  <div className="text-3xl font-mono tabular-nums font-light pt-1">
+                    {formatCurrency(selectedException.amount)}
+                  </div>
+                )}
               </div>
-              <div className="text-right text-sm text-muted-foreground">
+              <div className="text-right text-sm text-muted-foreground shrink-0">
                 <div>Transaction Date</div>
                 <div className="font-medium text-foreground tabular-nums">
                   {formatIsoDate(selectedException.date)}
@@ -217,19 +230,6 @@ export function ExceptionListClient({ initialData }: { initialData: ExceptionIte
                         <div>
                           <p className="text-sm leading-relaxed">{selectedException.aiProposal}</p>
 
-                          {selectedException.type === 'ambiguous_category' && (
-                            <div className="mt-4 p-3 bg-background rounded-md border text-sm grid grid-cols-2 gap-2">
-                              <div className="text-muted-foreground">Revenue</div>
-                              <div className="text-right font-mono tabular-nums font-medium text-emerald-600">
-                                +{formatCurrency(875.0)}
-                              </div>
-                              <div className="text-muted-foreground">Stripe Fees</div>
-                              <div className="text-right font-mono tabular-nums font-medium text-destructive">
-                                -{formatCurrency(25.0)}
-                              </div>
-                            </div>
-                          )}
-
                           {selectedException.type === 'missing_receipt' && (
                             <Button variant="outline" size="sm" className="mt-4">
                               <UploadCloud className="w-4 h-4 mr-2" /> Upload Receipt
@@ -243,11 +243,11 @@ export function ExceptionListClient({ initialData }: { initialData: ExceptionIte
 
                 <div>
                   <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-                    Context
+                    Exception Context
                   </h3>
                   <div className="text-sm text-muted-foreground">
-                    This transaction was imported via SVB Corporate Checking on Oct 06, 2026. No
-                    matching invoice or receipt was found in the system.
+                    This item requires review before final ledger posting. Approving this proposal
+                    will accept the AI decision, post journal entries, and resolve the exception.
                   </div>
                 </div>
               </div>
@@ -256,9 +256,6 @@ export function ExceptionListClient({ initialData }: { initialData: ExceptionIte
             <div className="p-4 border-t shrink-0 flex items-center justify-end gap-3 bg-muted/20">
               <Button variant="ghost" onClick={handleApprove}>
                 Skip for now
-              </Button>
-              <Button variant="outline">
-                <ChevronRight className="w-4 h-4 mr-2" /> Modify
               </Button>
               <Button
                 onClick={handleApprove}
