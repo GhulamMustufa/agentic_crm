@@ -33,18 +33,31 @@ export class AuditService {
     private readonly auditRepo: IAuditRepository,
   ) {}
 
-  private redactState(state: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
-    if (!state) {return state;}
+  private redactState(
+    state: Record<string, unknown> | undefined,
+  ): Record<string, unknown> | undefined {
+    if (!state) {
+      return state;
+    }
     const redacted = structuredClone(state);
-    const sensitiveKeys = ['password', 'ssn', 'routingNumber', 'accountNumber', 'salary', 'salaryRate'];
-    
-    const redactDeep = (obj: any) => {
-      if (!obj || typeof obj !== 'object') {return;}
+    const sensitiveKeys = [
+      'password',
+      'ssn',
+      'routingNumber',
+      'accountNumber',
+      'salary',
+      'salaryRate',
+    ];
+
+    const redactDeep = (obj: Record<string, unknown>) => {
       for (const key in obj) {
         if (sensitiveKeys.includes(key)) {
           obj[key] = '***REDACTED***';
-        } else if (typeof obj[key] === 'object') {
-          redactDeep(obj[key]);
+        } else {
+          const val = obj[key];
+          if (val && typeof val === 'object') {
+            redactDeep(val as Record<string, unknown>);
+          }
         }
       }
     };
