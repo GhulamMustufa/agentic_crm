@@ -1,9 +1,11 @@
+import { toast } from 'sonner';
 import { authStorage } from './auth-storage';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
 
 interface RequestOptions extends RequestInit {
   params?: Record<string, string | number | boolean>;
+  silent?: boolean;
 }
 
 export class ApiError extends Error {
@@ -16,6 +18,29 @@ export class ApiError extends Error {
     this.data = data;
     this.name = 'ApiError';
   }
+}
+
+function extractReadableError(errorData: unknown, status: number, statusText: string): string {
+  if (status >= 500) {
+    return 'An unexpected server error occurred. Our team has been notified.';
+  }
+
+  if (typeof errorData === 'object' && errorData !== null) {
+    const data = errorData as Record<string, unknown>;
+
+    if (Array.isArray(data.message)) {
+      return data.message.map((msg: string) => `• ${msg}`).join('\n');
+    }
+
+    if (typeof data.message === 'string') {
+      if (data.message.includes('P2002') || data.code === 'P2002') {
+        return 'This record already exists. Please use a different value.';
+      }
+      return data.message;
+    }
+  }
+
+  return statusText || 'An error occurred. Please try again.';
 }
 
 export const apiClient = {
@@ -67,12 +92,14 @@ export const apiClient = {
       try {
         errorData = await response.json();
       } catch {
-        errorData = { message: 'An unexpected error occurred' };
+        errorData = null;
       }
-      const message =
-        typeof errorData === 'object' && errorData !== null && 'message' in errorData
-          ? String((errorData as { message: unknown }).message)
-          : response.statusText;
+      
+      const message = extractReadableError(errorData, response.status, response.statusText);
+
+      if (response.status !== 401 && !options.silent) {
+        toast.error(message);
+      }
       throw new ApiError(message, response.status, errorData);
     }
 
