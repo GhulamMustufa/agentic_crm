@@ -45,6 +45,7 @@ export interface CreatePaymentInput {
 export interface IInvoiceRepository {
   // Invoices
   createInvoice(input: CreateInvoiceInput): Promise<InvoiceEntity>;
+  updateInvoice(tenantId: string, id: string, input: CreateInvoiceInput): Promise<InvoiceEntity>;
   findInvoiceById(tenantId: string, id: string): Promise<InvoiceEntity | null>;
   findInvoiceByNumber(
     tenantId: string,

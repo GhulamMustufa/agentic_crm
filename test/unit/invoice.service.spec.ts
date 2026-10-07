@@ -544,4 +544,80 @@ describe('InvoiceService (Phase 1 Accounting Invariants)', () => {
       ).rejects.toThrow(UnprocessableEntityError);
     });
   });
+
+  describe('Invoice Editing (Draft Updates & Immutability)', () => {
+    it('should allow modifying a DRAFT invoice and recalculating totals deterministically', async () => {
+      const invoice = await invoiceService.createInvoice(tenantId, {
+        counterpartyId: customerId,
+        invoiceType: 'INVOICE',
+        invoiceNumber: 'INV-EDITABLE-01',
+        issueDate: '2026-03-01',
+        dueDate: '2026-03-31',
+        currency: 'USD',
+        lines: [
+          {
+            accountId: revenueAccountId,
+            description: 'Initial Consulting',
+            quantity: 2,
+            unitCostCents: 10000n,
+          },
+        ],
+      });
+      expect(invoice.totalCents).toBe(20000n);
+
+      const updated = await invoiceService.updateInvoice(tenantId, userId, invoice.id, {
+        counterpartyId: customerId,
+        invoiceType: 'INVOICE',
+        invoiceNumber: 'INV-EDITED-01',
+        issueDate: '2026-03-02',
+        dueDate: '2026-04-02',
+        currency: 'USD',
+        taxCents: 1500n,
+        lines: [
+          {
+            accountId: revenueAccountId,
+            description: 'Updated Scope Services',
+            quantity: 5,
+            unitCostCents: 15000n, // 75,000 cents
+          },
+        ],
+      });
+
+      expect(updated.invoiceNumber).toBe('INV-EDITED-01');
+      expect(updated.subtotalCents).toBe(75000n);
+      expect(updated.taxCents).toBe(1500n);
+      expect(updated.totalCents).toBe(76500n);
+      expect(updated.lines).toHaveLength(1);
+      expect(updated.lines?.[0]?.description).toBe('Updated Scope Services');
+    });
+
+    it('should reject editing an invoice that has already been POSTED', async () => {
+      const invoice = await invoiceService.createInvoice(tenantId, {
+        counterpartyId: customerId,
+        invoiceType: 'INVOICE',
+        invoiceNumber: 'INV-POSTED-NO-EDIT',
+        issueDate: '2026-03-01',
+        dueDate: '2026-03-31',
+        currency: 'USD',
+        lines: [
+          { accountId: revenueAccountId, description: 'Work', quantity: 1, unitCostCents: 5000n },
+        ],
+      });
+      await invoiceService.postInvoice(tenantId, userId, invoice.id);
+
+      await expect(
+        invoiceService.updateInvoice(tenantId, userId, invoice.id, {
+          counterpartyId: customerId,
+          invoiceType: 'INVOICE',
+          invoiceNumber: 'INV-POSTED-ATTEMPT-EDIT',
+          issueDate: '2026-03-01',
+          dueDate: '2026-03-31',
+          currency: 'USD',
+          lines: [
+            { accountId: revenueAccountId, description: 'Work', quantity: 2, unitCostCents: 5000n },
+          ],
+        }),
+      ).rejects.toThrow(UnprocessableEntityError);
+    });
+  });
 });

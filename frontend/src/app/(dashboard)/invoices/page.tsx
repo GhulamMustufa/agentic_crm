@@ -18,6 +18,9 @@ import {
   Calendar,
   Receipt,
   BookOpen,
+  Edit2,
+  Ban,
+  Sparkles,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -100,13 +103,16 @@ export default function InvoicesPage() {
   const [invoices, setInvoices] = React.useState<InvoiceRecord[]>([]);
   const [loading, setLoading] = React.useState(true);
 
-  // Creation Modal State
+  // Creation / Editing Modal State
   const [isCreatingInvoice, setIsCreatingInvoice] = React.useState(false);
+  const [editingInvoiceId, setEditingInvoiceId] = React.useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [postingInvoiceId, setPostingInvoiceId] = React.useState<string | null>(null);
+  const [voidingInvoiceId, setVoidingInvoiceId] = React.useState<string | null>(null);
 
   // Dependencies
   const [counterparties, setCounterparties] = React.useState<Counterparty[]>([]);
+  const [bankStatementSuggestions, setBankStatementSuggestions] = React.useState<string[]>([]);
   const [ledgerAccounts, setLedgerAccounts] = React.useState<LedgerAccount[]>([]);
   const [isLoadingDeps, setIsLoadingDeps] = React.useState(false);
 
@@ -169,6 +175,38 @@ export default function InvoicesPage() {
         setFormLines((prev) =>
           prev.map((l) => (l.accountId ? l : { ...l, accountId: defaultRevenue.id })),
         );
+      }
+
+      // 3. Fetch bank statement transactions for suggestion pills
+      try {
+        const txRes = await apiClient.get<{
+          data: Array<{
+            normalizedPayee?: string;
+            rawDescription?: string;
+            rawPrimaryText?: string;
+            direction?: string;
+          }>;
+        }>('/banking/transactions');
+        const txList = txRes.data || [];
+        const suggestions = new Set<string>();
+        txList.forEach((t) => {
+          const name = (t.normalizedPayee || t.rawPrimaryText || t.rawDescription || '').trim();
+          if (
+            name &&
+            name.length > 2 &&
+            !name.toLowerCase().includes('wire fee') &&
+            !name.toLowerCase().includes('transfer') &&
+            !name.toLowerCase().includes('charge')
+          ) {
+            const clean = name.replace(/^[\s\*\-\/]+|[\s\*\-\/]+$/g, '');
+            if (clean.length > 2 && clean.length < 50) {
+              suggestions.add(clean);
+            }
+          }
+        });
+        setBankStatementSuggestions(Array.from(suggestions).slice(0, 8));
+      } catch {
+        // Silently catch if banking not yet uploaded or configured
       }
     } catch (err: any) {
       if (
@@ -258,6 +296,8 @@ export default function InvoicesPage() {
 
   // Sync default invoice number whenever type changes or modal opens
   React.useEffect(() => {
+    if (editingInvoiceId) return;
+
     const prefix = formType === 'INVOICE' ? 'INV' : 'BILL';
     const year = new Date().getFullYear();
     const count = invoices.length + 1;
@@ -421,10 +461,16 @@ export default function InvoicesPage() {
         })),
       };
 
-      const res = await apiClient.post<{ data: { id: string } }>('/invoices', payload);
-      const createdInvoice = res.data;
+      let targetInvoiceId = editingInvoiceId;
 
-      if (postImmediately && createdInvoice?.id) {
+      if (editingInvoiceId) {
+        await apiClient.put(`/invoices/${editingInvoiceId}`, payload);
+      } else {
+        const res = await apiClient.post<{ data: { id: string } }>('/invoices', payload);
+        targetInvoiceId = res.data?.id;
+      }
+
+      if (postImmediately && targetInvoiceId) {
         // Ensure fiscal period is open
         try {
           const year = new Date(issueDate).getFullYear() || 2026;
@@ -433,18 +479,25 @@ export default function InvoicesPage() {
           // Fiscal year might already exist
         }
 
-        await apiClient.post(`/invoices/${createdInvoice.id}/post`, {});
+        await apiClient.post(`/invoices/${targetInvoiceId}/post`, {});
         toast.success(
-          formType === 'INVOICE'
-            ? 'Customer invoice created and posted to General Ledger!'
-            : 'Vendor bill created and posted to General Ledger!',
+          editingInvoiceId
+            ? 'Draft invoice updated and posted to General Ledger!'
+            : formType === 'INVOICE'
+              ? 'Customer invoice created and posted to General Ledger!'
+              : 'Vendor bill created and posted to General Ledger!',
         );
       } else {
-        toast.success('Invoice draft saved successfully');
+        toast.success(
+          editingInvoiceId
+            ? 'Draft invoice updated successfully'
+            : 'Invoice draft saved successfully',
+        );
       }
 
       // Reset and refresh
       setIsCreatingInvoice(false);
+      setEditingInvoiceId(null);
       setNewCounterpartyName('');
       await fetchInvoices();
     } catch (err: any) {
@@ -460,13 +513,122 @@ export default function InvoicesPage() {
           window.location.href = '/login?expired=true';
         }, 1200);
       } else {
-        const msg = err?.data?.message || err?.message || 'Failed to create invoice';
+        const msg = err?.data?.message || err?.message || 'Failed to save invoice';
         toast.error(
-          typeof msg === 'string' ? msg : 'Invoice creation failed. Please check entries.',
+          typeof msg === 'string' ? msg : 'Invoice operation failed. Please check entries.',
         );
       }
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleOpenCreateInvoice = () => {
+    setEditingInvoiceId(null);
+    const prefix = formType === 'INVOICE' ? 'INV' : 'BILL';
+    const year = new Date().getFullYear();
+    const count = invoices.length + 1;
+    setInvoiceNumber(`${prefix}-${year}-${String(count).padStart(3, '0')}`);
+    setIssueDate(getTodayDate());
+    setDueDate(addDaysToDate(getTodayDate(), 30));
+    setTaxAmount(0);
+    setPostImmediately(true);
+    if (counterparties.length > 0) {
+      setCounterpartyMode('select');
+      setSelectedCounterpartyId(counterparties[0].id);
+    } else {
+      setCounterpartyMode('new');
+    }
+    setNewCounterpartyName('');
+    setIsCreatingInvoice(true);
+  };
+
+  const handleOpenEditDraft = async (invoiceId: string) => {
+    try {
+      setLoading(true);
+      const res = await apiClient.get<{
+        data: {
+          id: string;
+          invoiceNumber: string;
+          invoiceType: 'INVOICE' | 'BILL';
+          counterpartyId?: string;
+          issueDate: string;
+          dueDate: string;
+          taxCents?: string | number;
+          lines?: Array<{
+            description: string;
+            accountId: string;
+            quantity: number;
+            unitCostCents: string | number;
+          }>;
+        };
+      }>(`/invoices/${invoiceId}`);
+      const inv = res.data;
+      if (!inv) return;
+
+      setEditingInvoiceId(inv.id);
+      setFormType(inv.invoiceType || 'INVOICE');
+      if (inv.counterpartyId) {
+        setSelectedCounterpartyId(inv.counterpartyId);
+        setCounterpartyMode('select');
+      }
+      setInvoiceNumber(inv.invoiceNumber);
+      setIssueDate(inv.issueDate ? inv.issueDate.split('T')[0] : getTodayDate());
+      setDueDate(inv.dueDate ? inv.dueDate.split('T')[0] : addDaysToDate(getTodayDate(), 30));
+      setTaxAmount(Number(inv.taxCents || 0) / 100);
+      setPostImmediately(false);
+
+      if (inv.lines && inv.lines.length > 0) {
+        setFormLines(
+          inv.lines.map((l, idx: number) => ({
+            id: `line-${idx + 1}`,
+            description: l.description,
+            accountId: l.accountId,
+            quantity: Number(l.quantity) || 1,
+            unitPrice: Number(l.unitCostCents || 0) / 100,
+          })),
+        );
+      }
+      setIsCreatingInvoice(true);
+    } catch {
+      toast.error('Failed to load invoice for editing');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleVoidInvoice = async (invoiceId: string, invoiceNum: string) => {
+    const reason = window.prompt(
+      `Void Invoice ${invoiceNum}?\n\nThis will post an automated reversing journal entry to cancel out Accounts Receivable / Revenue in the General Ledger.\n\nPlease enter reason for voiding:`,
+      'Billed in error / cancelled by client',
+    );
+    if (!reason || !reason.trim()) return;
+
+    try {
+      setVoidingInvoiceId(invoiceId);
+      await apiClient.post(`/invoices/${invoiceId}/void`, { reason: reason.trim() });
+      toast.success(`Invoice ${invoiceNum} voided. Ledger reversing entry recorded.`);
+      await fetchInvoices();
+    } catch (err: unknown) {
+      const errorObj = err as { data?: { message?: string }; message?: string };
+      toast.error(errorObj?.data?.message || errorObj?.message || 'Failed to void invoice');
+    } finally {
+      setVoidingInvoiceId(null);
+    }
+  };
+
+  const handleSelectBankSuggestion = (suggestion: string) => {
+    const matched = counterparties.find(
+      (c) => c.legalName.toLowerCase() === suggestion.toLowerCase(),
+    );
+    if (matched) {
+      setCounterpartyMode('select');
+      setSelectedCounterpartyId(matched.id);
+      toast.info(`Matched existing client: "${matched.legalName}"`);
+    } else {
+      setCounterpartyMode('new');
+      setNewCounterpartyName(suggestion);
+      toast.info(`Selected "${suggestion}" from bank statement as new client`);
     }
   };
 
@@ -482,12 +644,18 @@ export default function InvoicesPage() {
       await apiClient.post(`/invoices/${invoiceId}/post`, {});
       toast.success('Invoice posted to General Ledger successfully');
       await fetchInvoices();
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const errorObj = err as {
+        status?: number;
+        statusCode?: number;
+        message?: string;
+        data?: { message?: string };
+      };
       if (
-        err?.status === 401 ||
-        err?.statusCode === 401 ||
-        err?.message?.includes('expired') ||
-        err?.message?.includes('UNAUTHORIZED')
+        errorObj?.status === 401 ||
+        errorObj?.statusCode === 401 ||
+        errorObj?.message?.includes('expired') ||
+        errorObj?.message?.includes('UNAUTHORIZED')
       ) {
         toast.error('Session expired. Redirecting to login...');
         authStorage.clearAuthSession();
@@ -495,7 +663,7 @@ export default function InvoicesPage() {
           window.location.href = '/login?expired=true';
         }, 1200);
       } else {
-        toast.error(err?.data?.message || err?.message || 'Failed to post invoice');
+        toast.error(errorObj?.data?.message || errorObj?.message || 'Failed to post invoice');
       }
     } finally {
       setPostingInvoiceId(null);
@@ -561,12 +729,7 @@ export default function InvoicesPage() {
             Refresh
           </Button>
           <Button
-            onClick={() => {
-              setIsCreatingInvoice(true);
-              if (counterparties.length === 0) {
-                loadDependencies();
-              }
-            }}
+            onClick={handleOpenCreateInvoice}
             className="cursor-pointer font-semibold shadow-md"
           >
             <Plus className="w-4 h-4 mr-2" />
@@ -575,7 +738,7 @@ export default function InvoicesPage() {
         </div>
       </div>
 
-      {/* Creation Modal Dialog Overlay */}
+      {/* Creation / Edit Modal Dialog Overlay */}
       {isCreatingInvoice && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 overflow-y-auto"
@@ -589,7 +752,8 @@ export default function InvoicesPage() {
               <div>
                 <h2 className="text-xl font-bold flex items-center gap-2">
                   <Receipt className="w-5 h-5 text-primary" />
-                  Create New {formType === 'INVOICE' ? 'Customer Invoice (AR)' : 'Vendor Bill (AP)'}
+                  {editingInvoiceId ? 'Edit Draft' : 'Create New'}{' '}
+                  {formType === 'INVOICE' ? 'Customer Invoice (AR)' : 'Vendor Bill (AP)'}
                 </h2>
                 <p className="text-sm text-muted-foreground mt-1">
                   Balanced double-entry journal entries will be generated against Accounts{' '}
@@ -683,6 +847,26 @@ export default function InvoicesPage() {
                         required={counterpartyMode === 'new' || counterparties.length === 0}
                       />
                       <Building className="w-4 h-4 text-muted-foreground absolute left-3 top-3" />
+                    </div>
+                  )}
+
+                  {/* Bank Statement Suggestions */}
+                  {bankStatementSuggestions.length > 0 && (
+                    <div className="pt-2 flex flex-wrap items-center gap-1.5">
+                      <span className="text-[11px] text-muted-foreground font-medium flex items-center gap-1">
+                        <Sparkles className="w-3 h-3 text-amber-500" /> From Bank Statement:
+                      </span>
+                      {bankStatementSuggestions.map((suggestion) => (
+                        <button
+                          key={suggestion}
+                          type="button"
+                          onClick={() => handleSelectBankSuggestion(suggestion)}
+                          className="text-[11px] bg-secondary/80 hover:bg-primary/15 text-foreground hover:text-primary px-2.5 py-0.5 rounded-full border border-border/60 transition-colors cursor-pointer"
+                          title={`Auto-fill "${suggestion}"`}
+                        >
+                          + {suggestion}
+                        </button>
+                      ))}
                     </div>
                   )}
                 </div>
@@ -958,12 +1142,22 @@ export default function InvoicesPage() {
                   {isSubmitting ? (
                     <>
                       <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Creating...
+                      {editingInvoiceId ? 'Saving Changes...' : 'Creating...'}
                     </>
                   ) : (
                     <>
-                      <Plus className="w-4 h-4 mr-2" />
-                      {postImmediately ? 'Create & Post Invoice' : 'Save as Draft'}
+                      {editingInvoiceId ? (
+                        <Edit2 className="w-4 h-4 mr-2" />
+                      ) : (
+                        <Plus className="w-4 h-4 mr-2" />
+                      )}
+                      {editingInvoiceId
+                        ? postImmediately
+                          ? 'Update & Post to Ledger'
+                          : 'Save Changes'
+                        : postImmediately
+                          ? 'Create & Post Invoice'
+                          : 'Save as Draft'}
                     </>
                   )}
                 </Button>
@@ -1107,12 +1301,7 @@ export default function InvoicesPage() {
               </p>
               <Button
                 size="lg"
-                onClick={() => {
-                  setIsCreatingInvoice(true);
-                  if (counterparties.length === 0) {
-                    loadDependencies();
-                  }
-                }}
+                onClick={handleOpenCreateInvoice}
                 className="cursor-pointer font-semibold shadow-lg hover:shadow-primary/20"
               >
                 <Plus className="w-4 h-4 mr-2" />
@@ -1155,24 +1344,57 @@ export default function InvoicesPage() {
                     <TableCell>{getStatusBadge(inv.status)}</TableCell>
                     <TableCell className="text-right">
                       {inv.status === 'DRAFT' ? (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handlePostDraftInvoice(inv.id, inv.issueDate)}
-                          disabled={postingInvoiceId === inv.id}
-                          className="h-8 text-xs text-primary cursor-pointer"
-                        >
-                          {postingInvoiceId === inv.id ? (
-                            <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
-                          ) : (
-                            <Send className="w-3.5 h-3.5 mr-1" />
-                          )}
-                          Post to Ledger
-                        </Button>
+                        <div className="flex items-center justify-end gap-1.5">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleOpenEditDraft(inv.id)}
+                            className="h-8 text-xs text-muted-foreground hover:text-foreground cursor-pointer"
+                          >
+                            <Edit2 className="w-3.5 h-3.5 mr-1" />
+                            Edit
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handlePostDraftInvoice(inv.id, inv.issueDate)}
+                            disabled={postingInvoiceId === inv.id}
+                            className="h-8 text-xs text-primary cursor-pointer"
+                          >
+                            {postingInvoiceId === inv.id ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
+                            ) : (
+                              <Send className="w-3.5 h-3.5 mr-1" />
+                            )}
+                            Post to Ledger
+                          </Button>
+                        </div>
+                      ) : inv.status === 'POSTED' || inv.status === 'OVERDUE' ? (
+                        <div className="flex items-center justify-end gap-2">
+                          <span className="text-xs text-muted-foreground flex items-center gap-1">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                            In Ledger
+                          </span>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleVoidInvoice(inv.id, inv.invoiceNumber)}
+                            disabled={voidingInvoiceId === inv.id}
+                            className="h-7 text-xs text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 cursor-pointer"
+                            title="Void invoice to create reversing general ledger entry"
+                          >
+                            {voidingInvoiceId === inv.id ? (
+                              <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                            ) : (
+                              <Ban className="w-3 h-3 mr-1" />
+                            )}
+                            Void
+                          </Button>
+                        </div>
                       ) : (
                         <span className="text-xs text-muted-foreground flex items-center justify-end gap-1">
                           <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-                          In Ledger
+                          {inv.status}
                         </span>
                       )}
                     </TableCell>

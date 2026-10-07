@@ -71,6 +71,50 @@ export class InMemoryInvoiceRepository implements IInvoiceRepository {
     return { ...entity, lines: [...lines] };
   }
 
+  async updateInvoice(
+    tenantId: string,
+    id: string,
+    input: CreateInvoiceInput,
+  ): Promise<InvoiceEntity> {
+    const existing = this.invoices.get(id);
+    if (!existing || existing.tenantId !== tenantId) {
+      throw new NotFoundError('Invoice', id);
+    }
+
+    const lines = input.lines.map((l) => ({
+      id: uuidv4(),
+      tenantId,
+      invoiceId: id,
+      accountId: l.accountId,
+      lineNumber: l.lineNumber,
+      description: l.description,
+      quantity: l.quantity,
+      unitCostCents: l.unitCostCents,
+      totalCents: l.totalCents,
+      createdAt: new Date(),
+    }));
+
+    const updated: InvoiceEntity = {
+      ...existing,
+      counterpartyId: input.counterpartyId,
+      invoiceType: input.invoiceType,
+      invoiceNumber: input.invoiceNumber.trim(),
+      issueDate: input.issueDate,
+      dueDate: input.dueDate,
+      currency: input.currency.toUpperCase(),
+      subtotalCents: input.subtotalCents,
+      taxCents: input.taxCents,
+      totalCents: input.totalCents,
+      amountDueCents: input.amountDueCents,
+      updatedAt: new Date(),
+      version: existing.version + 1,
+      lines,
+    };
+
+    this.invoices.set(id, updated);
+    return { ...updated, lines: [...lines] };
+  }
+
   async findInvoiceById(tenantId: string, id: string): Promise<InvoiceEntity | null> {
     const item = this.invoices.get(id);
     if (!item || item.tenantId !== tenantId) {

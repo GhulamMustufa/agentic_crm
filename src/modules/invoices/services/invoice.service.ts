@@ -17,9 +17,11 @@ import {
 } from '../domain/invoice.repository.interface';
 import {
   type CreateInvoiceInput,
+  type UpdateInvoiceInput,
   type RecordPaymentInput,
   type VoidInvoiceInput,
   createInvoiceSchema,
+  updateInvoiceSchema,
   recordPaymentSchema,
   voidInvoiceSchema,
 } from '../dto/invoice.dto';
@@ -88,6 +90,88 @@ export class InvoiceService {
       amountDueCents: totalCents,
       lines: computedLines,
     });
+  }
+
+  async updateInvoice(
+    tenantId: string,
+    userId: string,
+    invoiceId: string,
+    rawDto: UpdateInvoiceInput,
+  ): Promise<InvoiceEntity> {
+    const existing = await this.invoiceRepo.findInvoiceById(tenantId, invoiceId);
+    if (!existing) {
+      throw new NotFoundError('Invoice', invoiceId);
+    }
+
+    if (existing.status !== 'DRAFT') {
+      throw new UnprocessableEntityError(
+        `Cannot edit invoice in status '${existing.status}'. Only DRAFT invoices can be edited. Void the invoice to reverse ledger entries.`,
+      );
+    }
+
+    const parseResult = updateInvoiceSchema.safeParse(rawDto);
+    if (!parseResult.success) {
+      throw new ValidationError(
+        'Invoice validation failed',
+        parseResult.error.errors.map((e) => ({ field: e.path.join('.'), message: e.message })),
+      );
+    }
+    const dto = parseResult.data;
+
+    // Verify counterparty
+    const counterparty = await this.counterpartyRepo.findById(tenantId, dto.counterpartyId);
+    if (!counterparty) {
+      throw new NotFoundError('Counterparty', dto.counterpartyId);
+    }
+
+    // Deterministic monetary computation for line items
+    let subtotalCents = 0n;
+    const computedLines = dto.lines.map((line, idx) => {
+      const quantityUnits = BigInt(Math.round(line.quantity * 10000));
+      const lineTotal = (quantityUnits * line.unitCostCents) / 10000n;
+      subtotalCents += lineTotal;
+      return {
+        accountId: line.accountId,
+        lineNumber: idx + 1,
+        description: line.description,
+        quantity: line.quantity,
+        unitCostCents: line.unitCostCents,
+        totalCents: lineTotal,
+      };
+    });
+
+    const taxCents = dto.taxCents || 0n;
+    const totalCents = subtotalCents + taxCents;
+
+    const updated = await this.invoiceRepo.updateInvoice(tenantId, invoiceId, {
+      tenantId,
+      counterpartyId: dto.counterpartyId,
+      invoiceType: dto.invoiceType,
+      invoiceNumber: dto.invoiceNumber,
+      issueDate: dto.issueDate,
+      dueDate: dto.dueDate,
+      currency: dto.currency,
+      subtotalCents,
+      taxCents,
+      totalCents,
+      amountDueCents: totalCents,
+      lines: computedLines,
+    });
+
+    await this.auditService.recordEvent({
+      tenantId,
+      action: 'INVOICE_UPDATED',
+      entityType: 'INVOICE',
+      entityId: invoiceId,
+      actorType: 'USER',
+      actorId: userId,
+      newState: {
+        totalCents: totalCents.toString(),
+        linesCount: computedLines.length,
+      },
+    });
+
+    return updated;
   }
 
   async postInvoice(tenantId: string, userId: string, invoiceId: string): Promise<InvoiceEntity> {

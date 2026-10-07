@@ -2,6 +2,7 @@ import {
   Controller,
   Post,
   Get,
+  Put,
   Param,
   Body,
   Query,
@@ -17,7 +18,12 @@ import { InvoiceService } from '../services/invoice.service';
 
 import type { TenantSessionContext } from '../../../core/context/tenant-context.service';
 import type { InvoiceType, InvoiceStatus } from '../domain/invoice.entity';
-import type { CreateInvoiceDto, RecordPaymentDto, VoidInvoiceDto } from '../dto/invoice.dto';
+import type {
+  CreateInvoiceDto,
+  UpdateInvoiceDto,
+  RecordPaymentDto,
+  VoidInvoiceDto,
+} from '../dto/invoice.dto';
 
 function serializeBigInt(obj: unknown): unknown {
   if (typeof obj === 'bigint') {
@@ -52,6 +58,18 @@ export class InvoiceController {
   async createInvoice(@CurrentUser() user: TenantSessionContext, @Body() dto: CreateInvoiceDto) {
     const tenantId = this.requireTenant(user);
     const invoice = await this.invoiceService.createInvoice(tenantId, dto);
+    return { data: serializeBigInt(invoice) };
+  }
+
+  @Put(':id')
+  @HttpCode(HttpStatus.OK)
+  async updateInvoice(
+    @CurrentUser() user: TenantSessionContext,
+    @Param('id') id: string,
+    @Body() dto: UpdateInvoiceDto,
+  ) {
+    const tenantId = this.requireTenant(user);
+    const invoice = await this.invoiceService.updateInvoice(tenantId, user.userId, id, dto);
     return { data: serializeBigInt(invoice) };
   }
 

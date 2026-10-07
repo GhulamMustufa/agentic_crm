@@ -26,6 +26,10 @@ export const createInvoiceSchema = z.object({
 export type CreateInvoiceInput = z.input<typeof createInvoiceSchema>;
 export type CreateInvoiceDto = z.infer<typeof createInvoiceSchema>;
 
+export const updateInvoiceSchema = createInvoiceSchema;
+export type UpdateInvoiceInput = z.input<typeof updateInvoiceSchema>;
+export type UpdateInvoiceDto = z.infer<typeof updateInvoiceSchema>;
+
 const paymentAllocationInputSchema = z.object({
   invoiceId: z.string().uuid(),
   allocatedAmountCents: z

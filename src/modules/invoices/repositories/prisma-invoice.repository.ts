@@ -193,6 +193,90 @@ export class PrismaInvoiceRepository implements IInvoiceRepository {
     }
   }
 
+  async updateInvoice(
+    tenantId: string,
+    id: string,
+    input: CreateInvoiceInput,
+  ): Promise<InvoiceEntity> {
+    await this.ensureTenantExists(tenantId);
+
+    const existing = await this.prisma.invoice.findFirst({
+      where: { id, tenantId },
+    });
+    if (!existing) {
+      throw new NotFoundError('Invoice', id);
+    }
+
+    if (
+      existing.invoiceNumber.toLowerCase() !== input.invoiceNumber.trim().toLowerCase() ||
+      existing.counterpartyId !== input.counterpartyId ||
+      existing.invoiceType !== input.invoiceType
+    ) {
+      const duplicate = await this.findInvoiceByNumber(
+        tenantId,
+        input.counterpartyId,
+        input.invoiceType,
+        input.invoiceNumber,
+      );
+      if (duplicate && duplicate.id !== id) {
+        throw new ConflictError(
+          `Invoice number '${input.invoiceNumber}' already exists for this counterparty`,
+        );
+      }
+    }
+
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        await tx.invoiceLine.deleteMany({
+          where: { invoiceId: id, tenantId },
+        });
+
+        const updated = await tx.invoice.update({
+          where: { id },
+          data: {
+            counterpartyId: input.counterpartyId,
+            invoiceType: input.invoiceType,
+            invoiceNumber: input.invoiceNumber.trim(),
+            issueDate: new Date(input.issueDate),
+            dueDate: new Date(input.dueDate),
+            currency: input.currency.toUpperCase(),
+            subtotalCents: input.subtotalCents,
+            taxCents: input.taxCents,
+            totalCents: input.totalCents,
+            amountDueCents: input.amountDueCents,
+            version: { increment: 1 },
+            lines: {
+              create: input.lines.map((l) => ({
+                tenantId,
+                accountId: l.accountId,
+                lineNumber: l.lineNumber,
+                description: l.description,
+                quantity: l.quantity,
+                unitCostCents: l.unitCostCents,
+                totalCents: l.totalCents,
+              })),
+            },
+          },
+          include: {
+            lines: {
+              orderBy: { lineNumber: 'asc' },
+            },
+            counterparty: true,
+          },
+        });
+
+        return this.toInvoiceEntity(updated);
+      });
+    } catch (err: unknown) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        throw new ConflictError(
+          `Invoice number '${input.invoiceNumber}' already exists for this counterparty`,
+        );
+      }
+      throw err;
+    }
+  }
+
   async findInvoiceById(tenantId: string, id: string): Promise<InvoiceEntity | null> {
     const item = await this.prisma.invoice.findUnique({
       where: { id },
