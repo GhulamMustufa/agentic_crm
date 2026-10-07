@@ -21,6 +21,7 @@
     "frontend:test": "npm --prefix frontend run test:e2e",
     "build:all": "npm run build && npm run frontend:build",
     "validate": "npm run typecheck && npm run build:all && npm run test",
+    "clean:banking": "tsx scripts/clean-banking-data.ts",
     "prepare": "husky"
   },
   "prisma": {

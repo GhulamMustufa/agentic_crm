@@ -465,7 +465,7 @@ CREATE INDEX idx_bank_accounts_tenant ON bank_accounts (tenant_id, is_active);
 
 #### `bank_statements`
 
-- **Why it exists:** Master record for an ingested PDF or CSV statement artifact. Enforces period deduplication and mathematical checksums.
+- **Why it exists:** Master record for an ingested PDF or CSV statement artifact. Enforces period deduplication, mathematical checksums, and parser lineage tracking.
 
 ```sql
 CREATE TABLE bank_statements (
@@ -481,6 +481,17 @@ CREATE TABLE bank_statements (
     total_credits_cents BIGINT NOT NULL DEFAULT 0,
     file_sha256 VARCHAR(64) NOT NULL,
     status VARCHAR(30) NOT NULL DEFAULT 'UPLOADED', -- UPLOADED, PARSED, RECONCILED, EXTRACTION_FAILED
+    page_count INT NOT NULL DEFAULT 1,
+    extraction_mode VARCHAR(30) NOT NULL DEFAULT 'NATIVE_TEXT',
+    bank_detected VARCHAR(100),
+    format_detected VARCHAR(100),
+    parser_version VARCHAR(50),
+    bank_adapter_version VARCHAR(50),
+    extraction_prompt_version VARCHAR(50),
+    ai_model_version VARCHAR(50),
+    validation_status VARCHAR(30) NOT NULL DEFAULT 'UNVALIDATED',
+    reprocessing_of_id UUID,
+    metadata JSONB,
     created_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
     CONSTRAINT uq_statement_file_hash UNIQUE (tenant_id, file_sha256),
@@ -492,7 +503,7 @@ CREATE INDEX idx_bank_statements_lookup ON bank_statements (tenant_id, bank_acco
 
 #### `bank_transactions`
 
-- **Why it exists:** Extracted line items from a bank statement. Contains unique deduplication hashes to prevent double-posting.
+- **Why it exists:** Extracted line items from a bank statement. Preserves exact source sequence, multi-line narrative, running balances, and confidence metrics for reconciliation.
 
 ```sql
 CREATE TABLE bank_transactions (
@@ -500,18 +511,41 @@ CREATE TABLE bank_transactions (
     tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT,
     bank_statement_id UUID NOT NULL REFERENCES bank_statements(id) ON DELETE CASCADE,
     bank_account_id UUID NOT NULL REFERENCES bank_accounts(id) ON DELETE RESTRICT,
+    page_number INT NOT NULL DEFAULT 1,
+    source_sequence INT NOT NULL DEFAULT 1,
+    source_row_index INT,
     transaction_date DATE NOT NULL,
+    value_date DATE,
+    direction VARCHAR(10) NOT NULL DEFAULT 'DEBIT', -- 'DEBIT' or 'CREDIT'
     amount_cents BIGINT NOT NULL, -- Negative for debits/withdrawals, positive for credits/deposits
-    raw_description VARCHAR(500) NOT NULL,
+    signed_amount_cents BIGINT NOT NULL DEFAULT 0,
+    running_balance_cents BIGINT,
+    raw_description VARCHAR(1000) NOT NULL,
+    raw_primary_text VARCHAR(1000),
+    raw_continuation_text TEXT,
+    raw_reference_text VARCHAR(500),
+    bank_reference VARCHAR(150),
+    counterparty_account VARCHAR(100),
+    normalized_description VARCHAR(500),
     normalized_payee VARCHAR(255),
     reference_number VARCHAR(100),
-    transaction_hash VARCHAR(64) NOT NULL, -- SHA-256(tenant_id + account_id + date + amount + description)
+    category_suggestion VARCHAR(100),
+    extraction_method VARCHAR(50) NOT NULL DEFAULT 'DETERMINISTIC',
+    extraction_confidence NUMERIC(3, 2) NOT NULL DEFAULT 1.0,
+    entity_resolution_confidence NUMERIC(3, 2),
+    accounting_confidence NUMERIC(3, 2),
+    risk_level VARCHAR(20) NOT NULL DEFAULT 'LOW',
+    source_evidence JSONB,
+    transaction_fingerprint VARCHAR(128),
+    transaction_hash VARCHAR(64) NOT NULL, -- SHA-256(tenant_id + account_id + date + amount + description [+ sequence])
     status VARCHAR(30) NOT NULL DEFAULT 'UNRECONCILED', -- UNRECONCILED, PROPOSED, MATCHED, RECONCILED, EXCLUDED
-    created_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
-    CONSTRAINT uq_transaction_hash UNIQUE (tenant_id, bank_account_id, transaction_hash)
+    created_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp()
 );
 CREATE INDEX idx_bank_transactions_tenant_status ON bank_transactions (tenant_id, status, transaction_date DESC);
 CREATE INDEX idx_bank_transactions_statement ON bank_transactions (bank_statement_id);
+CREATE INDEX idx_bank_transactions_hash ON bank_transactions (tenant_id, bank_account_id, transaction_hash);
+CREATE INDEX idx_bank_transactions_statement_seq ON bank_transactions (bank_statement_id, source_sequence);
+CREATE INDEX idx_bank_transactions_statement_page ON bank_transactions (bank_statement_id, page_number);
 ```
 
 #### `reconciled_transactions`

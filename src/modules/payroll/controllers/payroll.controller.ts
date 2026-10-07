@@ -30,6 +30,9 @@ function serializeBigInt(obj: unknown): unknown {
   if (typeof obj === 'bigint') {
     return obj.toString();
   }
+  if (obj instanceof Date) {
+    return obj.toISOString();
+  }
   if (Array.isArray(obj)) {
     return obj.map(serializeBigInt);
   }

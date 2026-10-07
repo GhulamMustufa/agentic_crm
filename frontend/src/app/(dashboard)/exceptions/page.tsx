@@ -7,6 +7,8 @@ import { Button } from '@/components/ui/button';
 import { ExceptionListClient } from './_components/exception-list-client';
 
 export default function ExceptionsPage() {
+  const [searchTerm, setSearchTerm] = React.useState('');
+
   return (
     <div className="flex flex-col h-[calc(100vh-8rem)]">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6 shrink-0">
@@ -20,14 +22,15 @@ export default function ExceptionsPage() {
             <Input
               type="search"
               placeholder="Search exceptions..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
               className="pl-8 bg-background"
             />
           </div>
-          <Button variant="outline">Filter</Button>
         </div>
       </div>
 
-      <ExceptionListClient initialData={[]} />
+      <ExceptionListClient searchTerm={searchTerm} />
     </div>
   );
 }

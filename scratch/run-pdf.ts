@@ -6,11 +6,11 @@ import * as fs from 'fs';
 async function bootstrap() {
   const app = await NestFactory.createApplicationContext(AppModule);
   const pdfParser = app.get(PdfStatementParser);
-  
+
   const files = [
     '/Users/mac/.gemini/antigravity-ide/brain/d44abbed-46c7-4efe-a0d2-9be9c276e091/.user_uploaded/media_1791274283259.pdf',
     '/Users/mac/.gemini/antigravity-ide/brain/d44abbed-46c7-4efe-a0d2-9be9c276e091/.user_uploaded/media_1791274516280.pdf',
-    '/Users/mac/.gemini/antigravity-ide/brain/d44abbed-46c7-4efe-a0d2-9be9c276e091/.user_uploaded/media_1791274763670.pdf'
+    '/Users/mac/.gemini/antigravity-ide/brain/d44abbed-46c7-4efe-a0d2-9be9c276e091/.user_uploaded/media_1791274763670.pdf',
   ];
 
   for (const file of files) {

@@ -395,28 +395,39 @@ model BankAccount {
 }
 
 model BankStatement {
-  id                  String            @id @default(uuid())
-  tenantId            String
-  tenant              Tenant            @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  bankAccountId       String?
-  bankAccount         BankAccount?      @relation(fields: [bankAccountId], references: [id], onDelete: Restrict)
-  sourceDocumentId    String?
-  fileName            String
-  fileSha256          String
-  mimeType            String
-  statementStartDate  DateTime
-  statementEndDate    DateTime
-  openingBalanceCents BigInt
-  closingBalanceCents BigInt
-  totalDebitsCents    BigInt            @default(0)
-  totalCreditsCents   BigInt            @default(0)
-  status              String            @default("UPLOADED") // UPLOADED, PROCESSING, PARSED, RECONCILED, FAILED, EXCEPTION
-  retryCount          Int               @default(0)
-  errorMessage        String?
-  createdAt           DateTime          @default(now())
-  updatedAt           DateTime          @updatedAt
-  version             Int               @default(1)
-  transactions        BankTransaction[]
+  id                      String            @id @default(uuid())
+  tenantId                String
+  tenant                  Tenant            @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  bankAccountId           String?
+  bankAccount             BankAccount?      @relation(fields: [bankAccountId], references: [id], onDelete: Restrict)
+  sourceDocumentId        String?
+  fileName                String
+  fileSha256              String
+  mimeType                String
+  statementStartDate      DateTime
+  statementEndDate        DateTime
+  openingBalanceCents     BigInt
+  closingBalanceCents     BigInt
+  totalDebitsCents        BigInt            @default(0)
+  totalCreditsCents       BigInt            @default(0)
+  pageCount               Int               @default(1)
+  extractionMode          String            @default("NATIVE_TEXT") // NATIVE_TEXT, OCR, HYBRID, CSV
+  bankDetected            String?           // MAYBANK, MAYBANK_ISLAMIC, CIMB, RHB, GENERIC
+  formatDetected          String?           // V1, V2, CUSTOM
+  parserVersion           String            @default("2.0.0")
+  bankAdapterVersion      String?
+  extractionPromptVersion String?
+  aiModelVersion          String?
+  validationStatus        String            @default("PENDING") // PENDING, BALANCED, RECONCILIATION_FAILED, CONFLICT
+  reprocessingOfId        String?
+  metadata                Json?
+  status                  String            @default("UPLOADED") // UPLOADED, PROCESSING, PARSED, RECONCILED, FAILED, EXCEPTION
+  retryCount              Int               @default(0)
+  errorMessage            String?
+  createdAt               DateTime          @default(now())
+  updatedAt               DateTime          @updatedAt
+  version                 Int               @default(1)
+  transactions            BankTransaction[]
 
   @@unique([tenantId, fileSha256])
   @@unique([tenantId, bankAccountId, statementStartDate, statementEndDate])
@@ -424,27 +435,49 @@ model BankStatement {
 }
 
 model BankTransaction {
-  id                    String                 @id @default(uuid())
-  tenantId              String
-  tenant                Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  bankStatementId       String
-  bankStatement         BankStatement          @relation(fields: [bankStatementId], references: [id], onDelete: Cascade)
-  bankAccountId         String
-  bankAccount           BankAccount            @relation(fields: [bankAccountId], references: [id], onDelete: Restrict)
-  transactionDate       DateTime
-  amountCents           BigInt
-  rawDescription        String
-  normalizedPayee       String?
-  referenceNumber       String?
-  transactionHash       String
-  status                String                 @default("UNRECONCILED") // UNRECONCILED, PROPOSED, MATCHED, RECONCILED, EXCLUDED, FLAGGED
-  createdAt             DateTime               @default(now())
-  reconciledTransaction ReconciledTransaction?
-  proposals             Proposal[]
+  id                         String                 @id @default(uuid())
+  tenantId                   String
+  tenant                     Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  bankStatementId            String
+  bankStatement              BankStatement          @relation(fields: [bankStatementId], references: [id], onDelete: Cascade)
+  bankAccountId              String
+  bankAccount                BankAccount            @relation(fields: [bankAccountId], references: [id], onDelete: Restrict)
+  pageNumber                 Int                    @default(1)
+  sourceSequence             Int                    @default(1)
+  sourceRowIndex             Int                    @default(0)
+  transactionDate            DateTime
+  valueDate                  DateTime?
+  direction                  String                 @default("DEBIT") // DEBIT or CREDIT
+  amountCents                BigInt
+  signedAmountCents          BigInt                 @default(0)
+  runningBalanceCents        BigInt?
+  rawDescription             String
+  rawPrimaryText             String?
+  rawContinuationText        String?
+  rawReferenceText           String?
+  bankReference              String?
+  counterpartyAccount        String?
+  normalizedPayee            String?
+  normalizedDescription      String?
+  categorySuggestion         String?
+  extractionMethod           String                 @default("NATIVE_LAYOUT") // NATIVE_LAYOUT, OCR, ADAPTER, CSV
+  extractionConfidence       Float                  @default(1.0)
+  entityResolutionConfidence Float?
+  accountingConfidence       Float?
+  riskLevel                  String                 @default("LOW") // LOW, MEDIUM, HIGH
+  sourceEvidence             Json?
+  transactionFingerprint     String?
+  referenceNumber            String?
+  transactionHash            String
+  status                     String                 @default("UNRECONCILED") // UNRECONCILED, PROPOSED, MATCHED, RECONCILED, EXCLUDED, FLAGGED
+  createdAt                  DateTime               @default(now())
+  reconciledTransaction      ReconciledTransaction?
+  proposals                  Proposal[]
 
-  @@unique([tenantId, bankAccountId, transactionHash])
+  @@index([bankStatementId, sourceSequence])
+  @@index([tenantId, bankAccountId, transactionHash])
   @@index([tenantId, status, transactionDate])
-  @@index([bankStatementId])
+  @@index([bankStatementId, pageNumber])
 }
 
 model ReconciledTransaction {

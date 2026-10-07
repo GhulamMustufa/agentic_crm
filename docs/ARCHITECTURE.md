@@ -334,6 +334,169 @@ sequenceDiagram
     end
 ```
 
+### 12.1 Multi-Bank Document Inspection & Layout Isolation Pipeline
+
+To ingest bank statements across diverse Malaysian and global financial institutions (e.g. Maybank, Maybank Islamic, CIMB, Public Bank, RHB, Hong Leong), the system processes incoming PDFs through a modular layout-aware architecture:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                       PDF DOCUMENT INGESTION WORKFLOW                       │
+│                                                                             │
+│  1. DocumentInspectorService:                                               │
+│     • Header signature & EOF verification (%PDF-, %%EOF)                   │
+│     • Encryption & security checks (/Encrypt detection)                     │
+│     • Text extractability & density metrics (chars / page)                  │
+│     • Institution identification (Maybank, CIMB, Public Bank, RHB, etc.)   │
+│     • Account number & statement date detection                             │
+│     • Extraction mode recommendation (NATIVE_TEXT vs OCR_ASSISTED)          │
+│                                                                             │
+│  2. LayoutExtractorService:                                                 │
+│     • Page-by-page token and line preservation                              │
+│     • Recurring boilerplate isolation (PIDM, disclaimer, bank address)      │
+│     • Table transaction zone extraction without cross-page pollution        │
+│                                                                             │
+│  3. BankAdapterRegistry & Candidate Architecture:                           │
+│     • Dynamically resolves specialized adapters (Maybank, CIMB, RHB, etc.)  │
+│     • Maps layouts to canonical BankTransactionCandidate instances           │
+│     • Preserves signed amounts, sourceSequences, and raw primary narratives │
+│     • Fallback to GenericBankAdapter & AI Vision when needed                │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+#### Canonical Transaction Candidate Architecture
+
+To ensure strict decoupling between diverse document layouts and the General Ledger / database entities, all bank-specific adapters emit normalized [`BankTransactionCandidate`](file:///Users/mac/Desktop/projects/agentic_crm/src/modules/banking/domain/bank-transaction-candidate.ts) records:
+
+```ts
+export interface BankTransactionCandidate {
+  sourceSequence: number;
+  pageNumber: number;
+  sourceRowIndex?: number;
+  transactionDate: string; // YYYY-MM-DD
+  valueDate?: string; // YYYY-MM-DD
+  direction: 'DEBIT' | 'CREDIT';
+  amountCents: bigint; // Signed: negative for debit/outflow, positive for credit/inflow
+  signedAmountCents: bigint;
+  runningBalanceCents?: bigint;
+  rawPrimaryText: string;
+  rawContinuationText?: string;
+  rawReferenceText?: string;
+  bankReference?: string;
+  counterpartyAccount?: string;
+  description: string;
+  normalizedPayee?: string;
+  referenceNumber?: string;
+  categorySuggestion?: string;
+  extractionMethod: 'DETERMINISTIC_LAYOUT' | 'BANK_ADAPTER' | 'AI_VISION';
+  extractionConfidence: number;
+  riskLevel: 'LOW' | 'MEDIUM' | 'HIGH';
+  sourceEvidence?: Record<string, unknown>;
+}
+```
+
+### 12.2 Maybank & Maybank Islamic Multi-Line FSM Adapter
+
+Malaysian bank statements—most notably Malayan Banking Berhad (Maybank) and Maybank Islamic Berhad—present distinct formatting characteristics:
+
+1. **Trilingual Column Headers:** Malay, Chinese, and English headers (`URUSNIAGA AKAUN / 戶口進支項 / ACCOUNT TRANSACTIONS`, `TARIKH MASUK / ENTRY DATE`, `NILAI TARIKH / VALUE DATE`).
+2. **Partial Dates & Year Resolution:** Transaction rows only print partial dates (`DD/MM`). The statement year must be resolved deterministically from the statement metadata block (`STATEMENT DATE : DD/MM/YY`).
+3. **Trailing Sign Notation:** Debits and withdrawals append trailing minus signs (`1,500.00-`), while credits append trailing plus signs or omit signs (`1,500.00+`, `.70+`).
+4. **Multi-line Continuations:** A single financial transaction spans 2 to 4 physical rows in the statement table:
+   - Row 1 (Primary): `01/06 TRANSFER FR A/C 1,500.00- 12,363.00`
+   - Row 2 (Payee): `KATERING SELERA RAK*` (ending in asterisk)
+   - Row 3 (Narration): `Selera katerin`
+   - Row 4 (Reference): `11113408564547` (14-digit DuitNow transaction reference)
+
+To parse this structure with 100% mathematical integrity and zero hallucination, [`MaybankAdapter`](file:///Users/mac/Desktop/projects/agentic_crm/src/modules/banking/parsers/adapters/maybank.adapter.ts) executes a deterministic Finite State Machine (FSM):
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                   MAYBANK MULTI-LINE FINITE STATE MACHINE                   │
+│                                                                             │
+│   [ Table Line Ingestion ]                                                  │
+│              │                                                              │
+│              ▼                                                              │
+│      Is Header / Disclaimer? ──── YES ───► [ Discard / Skip ]               │
+│              │ NO                                                           │
+│              ▼                                                              │
+│      Matches Primary Line? ────── YES ───► 1. Flush & Finalize Prior Tx     │
+│   (DD/MM [DD/MM] Desc Amt Bal)             2. Start New Active Tx Candidate │
+│              │ NO                          3. Parse Trailing Sign Amount    │
+│              ▼                                                              │
+│      Active Tx In Progress? ───── YES ───► 1. Append Continuation Line      │
+│              │                             2. Extract Payee if ends in '*'  │
+│              │                             3. Extract 14-16 Digit DuitNow ID│
+│              ▼ NO                                                           │
+│      [ Skip Out-of-Band Noise ]                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 12.3 Additional Malaysian Bank Adapters (Dual-Amount & Columnar Layouts)
+
+Beyond Maybank's trilingual single-amount layout with trailing signs, major Malaysian banks utilize dual-column and multi-column formats where Debits and Credits occupy distinct columns. To parse these deterministically without AI hallucination, specialized adapters implement running balance delta verification:
+
+$$\Delta = \text{Balance}_{\text{current}} - \text{Balance}_{\text{previous}}$$
+
+- If $\Delta < 0$, the row is strictly a **DEBIT** of $|\Delta|$.
+- If $\Delta > 0$, the row is strictly a **CREDIT** of $|\Delta|$.
+
+| Bank Adapter                                                                                                                        | Primary Features                                           | Header Signals & Balances                                                                        | Reference Extraction                                             |
+| :---------------------------------------------------------------------------------------------------------------------------------- | :--------------------------------------------------------- | :----------------------------------------------------------------------------------------------- | :--------------------------------------------------------------- |
+| [`CimbAdapter`](file:///Users/mac/Desktop/projects/agentic_crm/src/modules/banking/parsers/adapters/cimb.adapter.ts)                | Dual-column (Money Out / Money In), multi-line payee       | `WANG KELUAR (DR)`, `WANG MASUK (CR)`, `BAKI / BALANCE`, `OPENING BALANCE`, `CLOSING BALANCE`    | DuitNow / Instant Transfer references (`REF: ...`, 14–18 digits) |
+| [`PublicBankAdapter`](file:///Users/mac/Desktop/projects/agentic_crm/src/modules/banking/parsers/adapters/public-bank.adapter.ts)   | 6-column table with dedicated cheque number column         | `PARTICULARS`, `CHQ NO`, `DEBIT`, `CREDIT`, `BALANCE`, `BALANCE B/F`, `BALANCE C/F`              | 6-digit cheque numbers (`CHQ NO`), PB transaction IDs            |
+| [`RhbAdapter`](file:///Users/mac/Desktop/projects/agentic_crm/src/modules/banking/parsers/adapters/rhb.adapter.ts)                  | Dual-column debit/credit, multi-line narrative attachments | `DESCRIPTION / BUTIRAN`, `DEBIT (RM)`, `CREDIT (RM)`, `BALANCE (RM)`, `OPENING BALANCE`          | Inward remittance & DuitNow references (`REF: ...`, `TRN: ...`)  |
+| [`HongLeongAdapter`](file:///Users/mac/Desktop/projects/agentic_crm/src/modules/banking/parsers/adapters/hong-leong.adapter.ts)     | Dual-column withdrawals and deposits                       | `WITHDRAWALS (DR)`, `DEPOSITS (CR)`, `BALANCE`, `BALANCE B/F`, `BALANCE C/F`                     | Hong Leong reference codes (`HLB...`, 12–18 digits)              |
+| [`AmBankAdapter`](file:///Users/mac/Desktop/projects/agentic_crm/src/modules/banking/parsers/adapters/ambank.adapter.ts)            | Dual-column debit/credit, continuous running balances      | `AMBANK (M) BERHAD`, `DEBIT`, `CREDIT`, `BALANCE`, `OPENING BALANCE`, `CLOSING BALANCE`          | `REF: ...`, `CHQ: ...`, 14–18 digit DuitNow identifiers          |
+| [`BankIslamAdapter`](file:///Users/mac/Desktop/projects/agentic_crm/src/modules/banking/parsers/adapters/bank-islam.adapter.ts)     | Islamic banking terminology, dual-column Malay tables      | `BANK ISLAM MALAYSIA`, `TARIKH`, `BUTIRAN`, `DEBIT`, `KREDIT`, `BAKI`, `BAKI AWAL`, `BAKI AKHIR` | `NO. RUJUKAN: ...`, `REF: ...`, DuitNow IDs                      |
+| [`GenericBankAdapter`](file:///Users/mac/Desktop/projects/agentic_crm/src/modules/banking/parsers/adapters/generic-bank.adapter.ts) | Universal fallback (Alliance, Affin, UOB, OCBC, Future)    | Adaptive pipe and whitespace parsing, dual & single-column amounts, balance reconciliation       | Flexible regex extraction (`REF`, `CHQ`, invoice numbers)        |
+
+### 12.4 Deterministic Financial Validation Engine & Zero-Tolerance Gates (Phase 6)
+
+Financial statements ingested by the platform pass through a zero-tolerance deterministic mathematical gate in [`StatementValidationService`](file:///Users/mac/Desktop/projects/agentic_crm/src/modules/banking/services/statement-validation.service.ts) before any transaction lines or accounting proposals can be committed to the database.
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                 DETERMINISTIC FINANCIAL VALIDATION ENGINE                   │
+│                                                                             │
+│   Parsed Statement (Opening, Closing, Stated Totals, Candidate Rows)        │
+│                                     │                                       │
+│                                     ▼                                       │
+│      [ Gate 1: Checksum Equation ]                                          │
+│      Opening + Σ(Credits) - Σ(Debits) == Closing ?                          │
+│         ├─ NO ──► Reject (CHECKSUM_MISMATCH, CRITICAL)                      │
+│         └─ YES                                                              │
+│                                     │                                       │
+│                                     ▼                                       │
+│      [ Gate 2: Continuous Step-by-Step Running Balance ]                     │
+│      For each row i: Balance[i] == Balance[i-1] + Amount[i] ?                │
+│         ├─ NO ──► Reject (RUNNING_BALANCE_BREAK, CRITICAL)                  │
+│         └─ YES                                                              │
+│                                     │                                       │
+│                                     ▼                                       │
+│      [ Gate 3: Header Summation & Boundary Integrity ]                      │
+│      Σ(Debits) == HeaderTotalDebits && Σ(Credits) == HeaderTotalCredits ?    │
+│      Dates in statement period bounds ?                                     │
+│         ├─ NO ──► Reject / Flag (SUMMATION_MISMATCH / DATE_OUT_OF_BOUNDS)   │
+│         └─ YES                                                              │
+│                                     │                                       │
+│                                     ▼                                       │
+│      [ Ingestion Approved: Commit Statement & Persist Transactions ]        │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+#### Zero-Tolerance Rules & Exception Routing
+
+1. **Master Mathematical Checksum:**
+   $$\text{OpeningBalanceCents} + \sum \text{CreditsCents} - \sum \text{DebitsCents} \equiv \text{ClosingBalanceCents}$$
+   - Any difference ($\ne 0\text{ cents}$) halts processing immediately with a `CRITICAL` severity violation.
+2. **Step Progression Continuity:**
+   $$\text{Balance}_i \equiv \text{Balance}_{i-1} + \text{Amount}_i \quad \forall i \in [1, N]$$
+   - Detects torn rows, skipped pages, OCR truncation, or missing intermediate transactions. The exact step number, page number, and delta are isolated.
+3. **Automated Exception Center Isolation:**
+   - If any `CRITICAL` or `HIGH` validation error occurs, the statement is saved with status `FAILED`.
+   - A `RECONCILIATION_EXCEPTION` item is created in the Exception Center with complete structured audit evidence (line evidence, delta in cents, page location).
+   - **Zero Transactions Persisted:** Not a single unverified transaction is written to `bank_transactions`, preserving downstream GL posting and double-entry invariants without requiring rollbacks.
+
 ---
 
 ## 13. AI Agent Architecture

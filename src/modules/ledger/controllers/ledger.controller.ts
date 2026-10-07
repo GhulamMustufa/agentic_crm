@@ -26,6 +26,9 @@ function serializeBigInt(obj: unknown): unknown {
   if (typeof obj === 'bigint') {
     return obj.toString();
   }
+  if (obj instanceof Date) {
+    return obj.toISOString();
+  }
   if (Array.isArray(obj)) {
     return obj.map(serializeBigInt);
   }
@@ -132,7 +135,7 @@ export class LedgerController {
   @HttpCode(HttpStatus.OK)
   async getTrialBalance(
     @CurrentUser() user: TenantSessionContext,
-    @Query('periodId') periodId: string,
+    @Query('periodId') periodId?: string,
   ) {
     const tenantId = this.requireTenant(user);
     const report = await this.ledgerService.getTrialBalance(tenantId, periodId);
@@ -143,7 +146,7 @@ export class LedgerController {
   @HttpCode(HttpStatus.OK)
   async getProfitAndLoss(
     @CurrentUser() user: TenantSessionContext,
-    @Query('periodId') periodId: string,
+    @Query('periodId') periodId?: string,
   ) {
     const tenantId = this.requireTenant(user);
     const report = await this.ledgerService.getProfitAndLoss(tenantId, periodId);

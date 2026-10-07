@@ -43,6 +43,17 @@ export interface CreateBankStatementInput {
   closingBalanceCents: bigint;
   totalDebitsCents: bigint;
   totalCreditsCents: bigint;
+  pageCount?: number;
+  extractionMode?: string;
+  bankDetected?: string;
+  formatDetected?: string;
+  parserVersion?: string;
+  bankAdapterVersion?: string;
+  extractionPromptVersion?: string;
+  aiModelVersion?: string;
+  validationStatus?: string;
+  reprocessingOfId?: string;
+  metadata?: Record<string, unknown>;
   status?: BankStatementStatus;
 }
 
@@ -53,7 +64,28 @@ export interface CreateBankTransactionInput {
   transactionDate: string;
   amountCents: bigint;
   rawDescription: string;
+  pageNumber?: number;
+  sourceSequence?: number;
+  sourceRowIndex?: number;
+  valueDate?: string;
+  direction?: 'DEBIT' | 'CREDIT';
+  signedAmountCents?: bigint;
+  runningBalanceCents?: bigint;
+  rawPrimaryText?: string;
+  rawContinuationText?: string;
+  rawReferenceText?: string;
+  bankReference?: string;
+  counterpartyAccount?: string;
   normalizedPayee?: string;
+  normalizedDescription?: string;
+  categorySuggestion?: string;
+  extractionMethod?: string;
+  extractionConfidence?: number;
+  entityResolutionConfidence?: number;
+  accountingConfidence?: number;
+  riskLevel?: 'LOW' | 'MEDIUM' | 'HIGH';
+  sourceEvidence?: Record<string, unknown>;
+  transactionFingerprint?: string;
   referenceNumber?: string;
   transactionHash: string;
 }

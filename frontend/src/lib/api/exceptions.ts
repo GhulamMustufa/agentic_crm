@@ -13,6 +13,7 @@ export type ExceptionType =
   | 'missing_receipt'
   | 'UNKNOWN_TRANSACTION'
   | 'DUPLICATE'
+  | 'DUPLICATE_TRANSACTION'
   | 'MISSING_RECEIPT'
   | 'OUT_OF_BALANCE_TRANSACTION'
   | 'DUPLICATE_STATEMENT'
@@ -50,8 +51,10 @@ interface RawExceptionDto {
 
 export async function getPendingExceptions(): Promise<ExceptionItem[]> {
   try {
-    const res = await apiClient.get<{ data: RawExceptionDto[] }>('/banking/exceptions');
-    const list = res.data || [];
+    const res = await apiClient.get<{ data: RawExceptionDto[] }>('/banking/exceptions', {
+      params: { status: 'OPEN' },
+    });
+    const list = (res.data || []).filter((item) => !item.status || item.status === 'OPEN');
 
     return list.map((item) => {
       const rawType = (item.exceptionType || item.type || 'UNKNOWN_TRANSACTION') as ExceptionType;
@@ -62,7 +65,11 @@ export async function getPendingExceptions(): Promise<ExceptionItem[]> {
       if (Array.isArray(item.evidence) && item.evidence[0]) {
         amountCentsVal = (item.evidence[0].amountCents ?? item.evidence[0].amount) as
           number | string;
-      } else if (item.evidence && typeof item.evidence === 'object') {
+      } else if (
+        item.evidence &&
+        typeof item.evidence === 'object' &&
+        !Array.isArray(item.evidence)
+      ) {
         amountCentsVal = (item.evidence.amountCents ?? item.evidence.amount) as number | string;
       }
 
@@ -71,10 +78,17 @@ export async function getPendingExceptions(): Promise<ExceptionItem[]> {
           number | string;
       }
 
-      const amount =
+      let amount =
         amountCentsVal != null && !isNaN(Number(amountCentsVal))
           ? Math.abs(Number(amountCentsVal) / 100)
           : 0;
+
+      if (amount === 0 && item.reason) {
+        const match = item.reason.match(/\$(-?\d+(?:\.\d+)?)/);
+        if (match && match[1]) {
+          amount = Math.abs(parseFloat(match[1]));
+        }
+      }
 
       // 2. Robust Date Extraction
       let rawDate: string | undefined = item.createdAt;
@@ -83,6 +97,7 @@ export async function getPendingExceptions(): Promise<ExceptionItem[]> {
       } else if (
         item.evidence &&
         typeof item.evidence === 'object' &&
+        !Array.isArray(item.evidence) &&
         item.evidence.transactionDate
       ) {
         rawDate = String(item.evidence.transactionDate);

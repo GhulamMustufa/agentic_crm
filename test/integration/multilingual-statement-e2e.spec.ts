@@ -95,6 +95,150 @@ describe('Multilingual & Multi-Currency Engine (Malaysia MYR & China CNY)', () =
       expect(result.transactions[0]?.amountCents).toBe(850000n);
       expect(result.transactions[1]?.amountCents).toBe(-30000n);
     });
+
+    it('parses CIMB Bank dual-column PDF statement end-to-end', async () => {
+      const pdfText = [
+        '%PDF-1.4',
+        'CIMB BANK BERHAD',
+        'PENYATA AKAUN / ACCOUNT STATEMENT',
+        'STATEMENT PERIOD: 01/06/2026 TO 30/06/2026',
+        'OPENING BALANCE: 25,000.00',
+        'CLOSING BALANCE: 29,800.00',
+        '',
+        'TARIKH / DATE | BUTIRAN / DESCRIPTION | WANG KELUAR (DR) | WANG MASUK (CR) | BAKI / BALANCE',
+        '05/06/2026 | DUITNOW QR TRANSFER | 200.00 | | 24,800.00',
+        'REF: DNT123456789012',
+        '15/06/2026 | BAYARAN PELANGGAN INV-88 | | 5,000.00 | 29,800.00',
+        '%%EOF',
+      ].join('\n');
+
+      const result = await pdfParser.parse(Buffer.from(pdfText, 'utf-8'));
+      expect(result.startDate).toBe('2026-06-01');
+      expect(result.endDate).toBe('2026-06-30');
+      expect(result.openingBalanceCents).toBe(2500000n);
+      expect(result.closingBalanceCents).toBe(2980000n);
+      expect(result.transactions).toHaveLength(2);
+      expect(result.transactions[0]?.amountCents).toBe(-20000n);
+      expect(result.transactions[0]?.description).toContain('DUITNOW');
+      expect(result.transactions[1]?.amountCents).toBe(500000n);
+      expect(result.transactions[1]?.description).toContain('BAYARAN PELANGGAN');
+    });
+
+    it('parses Public Bank 6-column PDF statement with cheque numbers end-to-end', async () => {
+      const pdfText = [
+        '%PDF-1.4',
+        'PUBLIC BANK BERHAD',
+        'STATEMENT OF ACCOUNT',
+        'DATE: 30/06/2026',
+        'BALANCE B/F 15,000.00',
+        'DATE | PARTICULARS | CHQ NO | DEBIT | CREDIT | BALANCE',
+        '02/06/2026 | SUPPLIER PAYMENT | 654321 | 3,200.00 | | 11,800.00',
+        '10/06/2026 | CUSTOMER DIRECT DEPOSIT | | | 6,500.00 | 18,300.00',
+        'BALANCE C/F 18,300.00',
+        '%%EOF',
+      ].join('\n');
+
+      const result = await pdfParser.parse(Buffer.from(pdfText, 'utf-8'));
+      expect(result.openingBalanceCents).toBe(1500000n);
+      expect(result.closingBalanceCents).toBe(1830000n);
+      expect(result.transactions).toHaveLength(2);
+      expect(result.transactions[0]?.amountCents).toBe(-320000n);
+      expect(result.transactions[0]?.referenceNumber).toBe('654321');
+      expect(result.transactions[1]?.amountCents).toBe(650000n);
+    });
+
+    it('parses RHB Bank dual-column PDF statement end-to-end', async () => {
+      const pdfText = [
+        '%PDF-1.4',
+        'RHB BANK BERHAD',
+        'CURRENT ACCOUNT STATEMENT',
+        'STATEMENT PERIOD: 01/06/2026 TO 30/06/2026',
+        'OPENING BALANCE: 40,000.00',
+        'CLOSING BALANCE: 38,500.00',
+        'DATE | DESCRIPTION / BUTIRAN | DEBIT (RM) | CREDIT (RM) | BALANCE (RM)',
+        '08/06/2026 | OFFICE RENTAL MENARA RHB | 1,500.00 | | 38,500.00',
+        'RECIPIENT: MENARA REALTY SDN BHD',
+        '%%EOF',
+      ].join('\n');
+
+      const result = await pdfParser.parse(Buffer.from(pdfText, 'utf-8'));
+      expect(result.openingBalanceCents).toBe(4000000n);
+      expect(result.closingBalanceCents).toBe(3850000n);
+      expect(result.transactions).toHaveLength(1);
+      expect(result.transactions[0]?.amountCents).toBe(-150000n);
+      expect(result.transactions[0]?.description).toContain('OFFICE RENTAL');
+      expect(result.transactions[0]?.description).toContain('MENARA REALTY');
+    });
+
+    it('parses Hong Leong Bank dual-column PDF statement end-to-end', async () => {
+      const pdfText = [
+        '%PDF-1.4',
+        'HONG LEONG BANK BERHAD',
+        'STATEMENT OF ACCOUNT',
+        'STATEMENT PERIOD: 01/06/2026 TO 30/06/2026',
+        'Balance B/F 12,000.00',
+        'DATE | TRANSACTION DETAILS | WITHDRAWALS (DR) | DEPOSITS (CR) | BALANCE',
+        '12/06/2026 | CLIENT SETTLEMENT INV-990 | | 8,000.00 | 20,000.00',
+        'REF: HLB9988776655',
+        'Balance C/F 20,000.00',
+        '%%EOF',
+      ].join('\n');
+
+      const result = await pdfParser.parse(Buffer.from(pdfText, 'utf-8'));
+      expect(result.openingBalanceCents).toBe(1200000n);
+      expect(result.closingBalanceCents).toBe(2000000n);
+      expect(result.transactions).toHaveLength(1);
+      expect(result.transactions[0]?.amountCents).toBe(800000n);
+      expect(result.transactions[0]?.referenceNumber).toBe('HLB9988776655');
+    });
+
+    it('parses AmBank dual-column PDF statement end-to-end', async () => {
+      const pdfText = [
+        '%PDF-1.4',
+        'AMBANK (M) BERHAD',
+        'CURRENT ACCOUNT STATEMENT',
+        'STATEMENT PERIOD: 01/06/2026 TO 30/06/2026',
+        'OPENING BALANCE: 50,000.00',
+        'CLOSING BALANCE: 56,650.00',
+        'DATE | DESCRIPTION | DEBIT | CREDIT | BALANCE',
+        '02/06/2026 | DUITNOW QR TRANSFER | 350.00 | | 49,650.00',
+        'REF: AMB9876543210',
+        '20/06/2026 | CLIENT SETTLEMENT | | 7,000.00 | 56,650.00',
+        '%%EOF',
+      ].join('\n');
+
+      const result = await pdfParser.parse(Buffer.from(pdfText, 'utf-8'));
+      expect(result.openingBalanceCents).toBe(5000000n);
+      expect(result.closingBalanceCents).toBe(5665000n);
+      expect(result.transactions).toHaveLength(2);
+      expect(result.transactions[0]?.amountCents).toBe(-35000n);
+      expect(result.transactions[0]?.referenceNumber).toBe('AMB9876543210');
+      expect(result.transactions[1]?.amountCents).toBe(700000n);
+    });
+
+    it('parses Bank Islam Islamic format PDF statement end-to-end', async () => {
+      const pdfText = [
+        '%PDF-1.4',
+        'BANK ISLAM MALAYSIA BERHAD',
+        'PENYATA AKAUN / ACCOUNT STATEMENT',
+        'TEMPOH PENYATA: 01/06/2026 HINGGA 30/06/2026',
+        'BAKI AWAL: 30,000.00',
+        'BAKI AKHIR: 37,350.00',
+        'TARIKH | BUTIRAN | DEBIT | KREDIT | BAKI',
+        '05/06/2026 | DUITNOW QR PAYMENT | 150.00 | | 29,850.00',
+        'NO. RUJUKAN: BIMB123456789012',
+        '25/06/2026 | BAYARAN DITERIMA INV-990 | | 7,500.00 | 37,350.00',
+        '%%EOF',
+      ].join('\n');
+
+      const result = await pdfParser.parse(Buffer.from(pdfText, 'utf-8'));
+      expect(result.openingBalanceCents).toBe(3000000n);
+      expect(result.closingBalanceCents).toBe(3735000n);
+      expect(result.transactions).toHaveLength(2);
+      expect(result.transactions[0]?.amountCents).toBe(-15000n);
+      expect(result.transactions[0]?.referenceNumber).toBe('BIMB123456789012');
+      expect(result.transactions[1]?.amountCents).toBe(750000n);
+    });
   });
 
   describe('Chinese Bank Statement (中文 & CNY/RMB)', () => {

@@ -1,8 +1,9 @@
 import * as crypto from 'crypto';
 
-import { Inject, Injectable, Optional, forwardRef } from '@nestjs/common';
+import { Inject, Injectable, Optional, forwardRef, Logger } from '@nestjs/common';
 
 import { AiAccountantService } from './ai-accountant.service';
+import { StatementValidationService } from './statement-validation.service';
 import {
   ConflictError,
   NotFoundError,
@@ -23,6 +24,7 @@ import { LedgerService } from '../../ledger/services/ledger.service';
 import {
   BANKING_REPOSITORY_TOKEN,
   type IBankingRepository,
+  type CreateBankTransactionInput,
 } from '../domain/banking.repository.interface';
 import {
   createBankAccountSchema,
@@ -60,13 +62,17 @@ export function computeTransactionHash(
   date: string,
   amountCents: bigint,
   description: string,
+  sourceSequence?: number,
 ): string {
-  const payload = `${tenantId}:${bankAccountId}:${date}:${amountCents.toString()}:${description.trim()}`;
+  const seqPart = sourceSequence !== undefined ? `:${sourceSequence}` : '';
+  const payload = `${tenantId}:${bankAccountId}:${date}:${amountCents.toString()}:${description.trim()}${seqPart}`;
   return crypto.createHash('sha256').update(payload).digest('hex');
 }
 
 @Injectable()
 export class BankProcessingService {
+  private readonly validationService: StatementValidationService;
+
   constructor(
     @Inject(BANKING_REPOSITORY_TOKEN)
     private readonly bankingRepo: IBankingRepository,
@@ -85,10 +91,16 @@ export class BankProcessingService {
     @Inject(forwardRef(() => PdfStatementParser))
     private readonly pdfParser: PdfStatementParser,
     @Optional()
+    @Inject(forwardRef(() => StatementValidationService))
+    validationService?: StatementValidationService,
+    @Optional()
     @Inject(OBJECT_STORAGE_TOKEN)
     private readonly storage?: IObjectStorage,
-  ) {}
+  ) {
+    this.validationService = validationService ?? new StatementValidationService();
+  }
 
+  private readonly logger = new Logger(BankProcessingService.name);
   private readonly processingLocks = new Set<string>();
 
   // --- Bank Account Management ---
@@ -259,6 +271,70 @@ export class BankProcessingService {
         );
       }
 
+      // 3.25 Deterministic Financial Validation Engine (Phase 6)
+      const validation = this.validationService.validate(parsedData);
+      if (!validation.isValid) {
+        const failedStatement = await this.bankingRepo.createBankStatement({
+          tenantId,
+          bankAccountId: bankAccount?.id || null,
+          fileName: dto.fileName,
+          fileSha256,
+          mimeType: dto.mimeType,
+          statementStartDate: parsedData.startDate || new Date().toISOString(),
+          statementEndDate: parsedData.endDate || new Date().toISOString(),
+          openingBalanceCents: parsedData.openingBalanceCents,
+          closingBalanceCents: parsedData.closingBalanceCents,
+          totalDebitsCents: parsedData.totalDebitsCents,
+          totalCreditsCents: parsedData.totalCreditsCents,
+          pageCount: parsedData.pageCount || 1,
+          extractionMode: parsedData.extractionMode || 'NATIVE_TEXT',
+          bankDetected: parsedData.bankDetected || dto.manualBankName,
+          formatDetected: parsedData.formatDetected,
+          parserVersion: parsedData.parserVersion || '2.0.0',
+          metadata: {
+            ...parsedData.metadata,
+            validationIssues: validation.issues,
+            validationAudit: validation.auditEvidence,
+          },
+          status: 'FAILED',
+        });
+
+        const exc = await this.bankingRepo.createExceptionItem({
+          tenantId,
+          entityType: 'STATEMENT',
+          entityId: failedStatement.id,
+          exceptionType: 'RECONCILIATION_EXCEPTION',
+          severity: 'HIGH',
+          reason: `Financial reconciliation validation failed: ${validation.failureSummary}`,
+          evidence: [validation.auditEvidence, ...validation.issues],
+        });
+
+        await this.bankingRepo.updateBankStatementStatus(
+          tenantId,
+          failedStatement.id,
+          'FAILED',
+          validation.failureSummary || 'Financial checksum mismatch',
+        );
+
+        await this.auditService.recordEvent({
+          tenantId,
+          action: 'STATEMENT_RECONCILIATION_FAILED',
+          entityType: 'STATEMENT',
+          entityId: failedStatement.id,
+          actorType: 'SYSTEM',
+          actorId: userId,
+          newState: {
+            reason: validation.failureSummary,
+            checksumDiscrepancyCents: validation.checksumDiscrepancyCents.toString(),
+            exceptionId: exc.id,
+          },
+        });
+
+        throw new ValidationError(
+          `Statement mathematical validation failed: ${validation.failureSummary} [Exception ${exc.id}]`,
+        );
+      }
+
       // 3.5 Auto-provision Bank Account if missing
       if (!bankAccount) {
         const targetBankName = dto.manualBankName || parsedData.bankName;
@@ -326,6 +402,16 @@ export class BankProcessingService {
         closingBalanceCents: parsedData.closingBalanceCents,
         totalDebitsCents: parsedData.totalDebitsCents,
         totalCreditsCents: parsedData.totalCreditsCents,
+        pageCount: parsedData.pageCount || 1,
+        extractionMode:
+          parsedData.extractionMode || (dto.mimeType === 'text/csv' ? 'CSV' : 'NATIVE_TEXT'),
+        bankDetected: parsedData.bankDetected || dto.manualBankName,
+        formatDetected: parsedData.formatDetected,
+        parserVersion: parsedData.parserVersion || '2.0.0',
+        metadata: {
+          ...parsedData.metadata,
+          validation: validation.auditEvidence,
+        },
         status: statementStatus,
       });
 
@@ -397,25 +483,25 @@ export class BankProcessingService {
       });
 
       // 6. Process Transactions & Duplicate Line Detection
-      const validLinesToPersist: Array<{
-        tenantId: string;
-        bankStatementId: string;
-        bankAccountId: string;
-        transactionDate: string;
-        amountCents: bigint;
-        rawDescription: string;
-        transactionHash: string;
-      }> = [];
+      const validLinesToPersist: Array<CreateBankTransactionInput> = [];
       const generatedExceptions: ExceptionItemEntity[] = [];
       const seenHashesInBatch = new Set<string>();
 
-      for (const line of parsedData.transactions) {
+      for (let idx = 0; idx < parsedData.transactions.length; idx++) {
+        const line = parsedData.transactions[idx]!;
+        const sourceSequence = line.sourceSequence !== undefined ? line.sourceSequence : idx + 1;
+        const pageNumber = line.pageNumber !== undefined ? line.pageNumber : 1;
+
+        // If line has an explicit source sequence (from a structured statement parser),
+        // we incorporate sourceSequence so legitimate same-day repeated transactions are preserved.
+        // For unsequenced CSV rows, we preserve original duplicate-row detection.
         const txHash = computeTransactionHash(
           tenantId,
           bankAccount.id,
           line.date,
           line.amountCents,
           line.description,
+          line.sourceSequence,
         );
 
         // Check duplicate transaction line (both in database and within current batch)
@@ -444,9 +530,28 @@ export class BankProcessingService {
           tenantId,
           bankStatementId: statement.id,
           bankAccountId: bankAccount.id,
+          pageNumber,
+          sourceSequence,
+          sourceRowIndex: line.sourceRowIndex ?? idx,
           transactionDate: line.date,
+          valueDate: line.valueDate,
+          direction: line.direction || (line.amountCents < 0n ? 'DEBIT' : 'CREDIT'),
           amountCents: line.amountCents,
+          signedAmountCents: line.amountCents,
+          runningBalanceCents: line.runningBalanceCents,
           rawDescription: line.description,
+          rawPrimaryText: line.rawPrimaryText || line.description,
+          rawContinuationText: line.rawContinuationText,
+          rawReferenceText: line.rawReferenceText,
+          bankReference: line.bankReference,
+          counterpartyAccount: line.counterpartyAccount,
+          normalizedPayee: undefined,
+          referenceNumber: line.referenceNumber,
+          extractionMethod:
+            line.extractionMethod || (dto.mimeType === 'text/csv' ? 'CSV' : 'NATIVE_LAYOUT'),
+          extractionConfidence: line.extractionConfidence ?? 1.0,
+          riskLevel: line.riskLevel || 'LOW',
+          sourceEvidence: line.sourceEvidence,
           transactionHash: txHash,
         });
       }
@@ -967,6 +1072,32 @@ export class BankProcessingService {
       dto.status,
       userId,
     );
+
+    // If the exception was generated for an accounting proposal, resolve the proposal accordingly
+    if (exc.entityType === 'PROPOSAL' && exc.entityId) {
+      const proposal = await this.bankingRepo.findProposalById(tenantId, exc.entityId);
+      if (proposal && proposal.status === 'PROPOSED') {
+        if (dto.status === 'RESOLVED') {
+          try {
+            await this.approveProposal(tenantId, userId, proposal.id);
+          } catch (gateErr) {
+            this.logger.warn(
+              `Could not auto-post proposal ${proposal.id} during exception approval: ${gateErr}`,
+            );
+          }
+        } else if (dto.status === 'DISMISSED') {
+          try {
+            await this.rejectProposal(tenantId, userId, proposal.id, {
+              reason: dto.resolutionNotes || 'Dismissed by supervisor in Exception Center',
+            });
+          } catch (gateErr) {
+            this.logger.warn(
+              `Could not reject proposal ${proposal.id} during exception dismissal: ${gateErr}`,
+            );
+          }
+        }
+      }
+    }
 
     await this.auditService.recordEvent({
       tenantId,

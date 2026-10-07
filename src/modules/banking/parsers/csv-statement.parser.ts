@@ -32,11 +32,15 @@ export function parseMonetaryCents(val: string): bigint {
   } else if (unsigned.toUpperCase().endsWith('CR')) {
     unsigned = unsigned.slice(0, -2);
   }
-  const numStr = isMinusNegative
+  let numStr = isMinusNegative
     ? unsigned.startsWith('-')
       ? unsigned.slice(1)
       : unsigned
     : unsigned;
+
+  if (numStr.startsWith('.')) {
+    numStr = '0' + numStr;
+  }
 
   if (!/^\d+(\.\d+)?$/.test(numStr)) {
     throw new ValidationError(`Invalid monetary amount format: '${val}'`);
@@ -101,8 +105,8 @@ export function normalizeDate(dateStr: string): string {
       if (n2 > 12) {
         return `${y}-${p1.padStart(2, '0')}-${p2.padStart(2, '0')}`;
       }
-      // Fallback for n1 <= 12 && n2 <= 12
-      return `${y}-${p1.padStart(2, '0')}-${p2.padStart(2, '0')}`;
+      // Default to Commonwealth / Malaysian DD/MM/YYYY when both are <= 12
+      return `${y}-${p2.padStart(2, '0')}-${p1.padStart(2, '0')}`;
     }
   }
   // Format DD-MM-YYYY

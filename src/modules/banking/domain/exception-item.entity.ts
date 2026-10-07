@@ -13,7 +13,9 @@ export type ExceptionType =
   | 'UNRECOGNIZED_VENDOR'
   | 'AI_TIMEOUT'
   | 'AI_FAILURE'
-  | 'UNASSIGNED_STATEMENT';
+  | 'UNASSIGNED_STATEMENT'
+  | 'RECONCILIATION_EXCEPTION'
+  | 'BALANCE_MISMATCH';
 
 export interface ExceptionItemEntity {
   id: string;

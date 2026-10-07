@@ -11,8 +11,11 @@ import {
   CheckCircle2,
   Bot,
   HelpCircle,
+  SkipForward,
+  XCircle,
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -27,23 +30,43 @@ import {
   resolveException,
 } from '@/lib/api/exceptions';
 
-export function ExceptionListClient({ initialData }: { initialData: ExceptionItem[] }) {
+export function ExceptionListClient({
+  initialData,
+  searchTerm = '',
+}: {
+  initialData?: ExceptionItem[];
+  searchTerm?: string;
+}) {
   const queryClient = useQueryClient();
-  const [selectedId, setSelectedId] = React.useState<string | null>(initialData[0]?.id || null);
+  const [selectedId, setSelectedId] = React.useState<string | null>(initialData?.[0]?.id || null);
 
-  const { data: exceptions = initialData, isLoading } = useQuery<ExceptionItem[]>({
+  const { data: exceptions = [], isLoading } = useQuery<ExceptionItem[]>({
     queryKey: exceptionKeys.lists(),
     queryFn: () => getPendingExceptions(),
-    initialData,
+    initialData: initialData && initialData.length > 0 ? initialData : undefined,
   });
 
-  React.useEffect(() => {
-    if ((!selectedId || !exceptions.some((e) => e.id === selectedId)) && exceptions.length > 0) {
-      setSelectedId(exceptions[0].id);
-    }
-  }, [exceptions, selectedId]);
+  const filteredExceptions = React.useMemo(() => {
+    if (!searchTerm.trim()) return exceptions;
+    const term = searchTerm.toLowerCase();
+    return exceptions.filter(
+      (e) =>
+        e.description.toLowerCase().includes(term) ||
+        e.type.toLowerCase().includes(term) ||
+        e.aiProposal.toLowerCase().includes(term),
+    );
+  }, [exceptions, searchTerm]);
 
-  // Optimistic Mutation
+  React.useEffect(() => {
+    if (
+      (!selectedId || !filteredExceptions.some((e) => e.id === selectedId)) &&
+      filteredExceptions.length > 0
+    ) {
+      setSelectedId(filteredExceptions[0].id);
+    }
+  }, [filteredExceptions, selectedId]);
+
+  // Optimistic Mutation: Approve
   const resolveMutation = useMutation({
     mutationFn: (id: string) => resolveException(id, 'APPROVE'),
     onMutate: async (id: string) => {
@@ -64,11 +87,51 @@ export function ExceptionListClient({ initialData }: { initialData: ExceptionIte
 
       return { previousData };
     },
+    onSuccess: () => {
+      toast.success('Proposal approved and exception resolved.');
+    },
     onError: (err, id, context) => {
       if (context?.previousData) {
         queryClient.setQueryData(exceptionKeys.lists(), context.previousData);
       }
+      toast.error('Failed to resolve exception.');
       console.error('Failed to resolve exception item:', err);
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: exceptionKeys.all });
+    },
+  });
+
+  // Optimistic Mutation: Dismiss
+  const dismissMutation = useMutation({
+    mutationFn: (id: string) => resolveException(id, 'REJECT'),
+    onMutate: async (id: string) => {
+      await queryClient.cancelQueries({ queryKey: exceptionKeys.lists() });
+      const previousData = queryClient.getQueryData<ExceptionItem[]>(exceptionKeys.lists());
+
+      queryClient.setQueryData<ExceptionItem[]>(exceptionKeys.lists(), (old) => {
+        if (!old) return [];
+        return old.filter((item) => item.id !== id);
+      });
+
+      const currentList = queryClient.getQueryData<ExceptionItem[]>(exceptionKeys.lists()) || [];
+      if (currentList.length > 0) {
+        setSelectedId(currentList[0].id);
+      } else {
+        setSelectedId(null);
+      }
+
+      return { previousData };
+    },
+    onSuccess: () => {
+      toast.success('Exception dismissed.');
+    },
+    onError: (err, id, context) => {
+      if (context?.previousData) {
+        queryClient.setQueryData(exceptionKeys.lists(), context.previousData);
+      }
+      toast.error('Failed to dismiss exception.');
+      console.error('Failed to dismiss exception item:', err);
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: exceptionKeys.all });
@@ -81,6 +144,24 @@ export function ExceptionListClient({ initialData }: { initialData: ExceptionIte
     if (selectedId) {
       resolveMutation.mutate(selectedId);
     }
+  };
+
+  const handleDismiss = () => {
+    if (selectedId) {
+      dismissMutation.mutate(selectedId);
+    }
+  };
+
+  const handleSkip = () => {
+    if (!selectedId || filteredExceptions.length === 0) return;
+    if (filteredExceptions.length === 1) {
+      toast.info('This is the only pending exception in the queue.');
+      return;
+    }
+    const currentIndex = filteredExceptions.findIndex((e) => e.id === selectedId);
+    const nextIndex = (currentIndex + 1) % filteredExceptions.length;
+    setSelectedId(filteredExceptions[nextIndex].id);
+    toast.info(`Skipped to next item (${nextIndex + 1} of ${filteredExceptions.length})`);
   };
 
   const getTypeIcon = (type: ExceptionType) => {
@@ -151,25 +232,27 @@ export function ExceptionListClient({ initialData }: { initialData: ExceptionIte
     <div className="flex flex-col md:flex-row gap-6 flex-1 min-h-0">
       {/* Left Pane: List */}
       <div className="w-full md:w-1/3 flex flex-col gap-3 overflow-y-auto pr-1">
-        {exceptions.map((exc) => (
-          <Card
+        {filteredExceptions.map((exc) => (
+          <div
             key={exc.id}
-            className={`cursor-pointer transition-colors hover:bg-muted/50 ${
-              selectedId === exc.id
-                ? 'border-primary shadow-sm bg-primary/5 dark:bg-primary/10'
-                : ''
-            }`}
+            role="button"
+            tabIndex={0}
             onClick={() => setSelectedId(exc.id)}
+            className={`w-full shrink-0 text-left p-4 rounded-xl border transition-all cursor-pointer ${
+              selectedId === exc.id
+                ? 'border-primary bg-primary/10 shadow-sm ring-1 ring-primary'
+                : 'border-border bg-card hover:bg-muted/50'
+            }`}
           >
-            <CardContent className="p-4 flex gap-3">
+            <div className="flex items-start gap-3">
               <div className="mt-0.5 shrink-0">{getTypeIcon(exc.type)}</div>
               <div className="flex-1 min-w-0">
                 <div className="flex justify-between items-start mb-1 gap-2">
-                  <span className="font-semibold text-sm line-clamp-2 leading-tight">
+                  <span className="font-semibold text-sm line-clamp-2 leading-tight text-foreground">
                     {exc.description}
                   </span>
                   {exc.amount > 0 && (
-                    <span className="font-mono tabular-nums text-right font-medium text-sm whitespace-nowrap">
+                    <span className="font-mono tabular-nums text-right font-medium text-sm whitespace-nowrap text-foreground shrink-0">
                       {formatCurrency(exc.amount)}
                     </span>
                   )}
@@ -181,8 +264,8 @@ export function ExceptionListClient({ initialData }: { initialData: ExceptionIte
                   </span>
                 </div>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         ))}
       </div>
 
@@ -253,18 +336,38 @@ export function ExceptionListClient({ initialData }: { initialData: ExceptionIte
               </div>
             </div>
 
-            <div className="p-4 border-t shrink-0 flex items-center justify-end gap-3 bg-muted/20">
-              <Button variant="ghost" onClick={handleApprove}>
-                Skip for now
-              </Button>
+            <div className="p-4 border-t shrink-0 flex items-center justify-between gap-3 bg-muted/20">
               <Button
-                onClick={handleApprove}
-                disabled={resolveMutation.isPending}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                variant="outline"
+                size="sm"
+                onClick={handleDismiss}
+                disabled={dismissMutation.isPending || resolveMutation.isPending}
+                className="text-muted-foreground hover:text-destructive hover:border-destructive"
               >
-                <Check className="w-4 h-4 mr-2" />
-                {resolveMutation.isPending ? 'Approving...' : 'Approve Proposal'}
+                <XCircle className="w-4 h-4 mr-2" />
+                {dismissMutation.isPending ? 'Dismissing...' : 'Dismiss'}
               </Button>
+
+              <div className="flex items-center gap-3">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleSkip}
+                  disabled={dismissMutation.isPending || resolveMutation.isPending}
+                >
+                  <SkipForward className="w-4 h-4 mr-2" />
+                  Skip for now
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={handleApprove}
+                  disabled={resolveMutation.isPending || dismissMutation.isPending}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                >
+                  <Check className="w-4 h-4 mr-2" />
+                  {resolveMutation.isPending ? 'Approving...' : 'Approve Proposal'}
+                </Button>
+              </div>
             </div>
           </>
         ) : (

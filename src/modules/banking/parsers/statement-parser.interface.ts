@@ -1,8 +1,24 @@
 export interface ParsedTransactionLine {
   date: string; // YYYY-MM-DD
-  amountCents: bigint; // Negative for debits/withdrawals, positive for credits/deposits
+  amountCents: bigint; // Signed: Negative for debits/withdrawals, positive for credits/deposits
   description: string;
   referenceNumber?: string;
+  pageNumber?: number;
+  sourceSequence?: number;
+  sourceRowIndex?: number;
+  valueDate?: string;
+  direction?: 'DEBIT' | 'CREDIT';
+  signedAmountCents?: bigint;
+  runningBalanceCents?: bigint;
+  rawPrimaryText?: string;
+  rawContinuationText?: string;
+  rawReferenceText?: string;
+  bankReference?: string;
+  counterpartyAccount?: string;
+  extractionMethod?: string;
+  extractionConfidence?: number;
+  riskLevel?: 'LOW' | 'MEDIUM' | 'HIGH';
+  sourceEvidence?: Record<string, unknown>;
 }
 
 export interface ParsedStatementResult {
@@ -16,6 +32,12 @@ export interface ParsedStatementResult {
   bankName?: string;
   accountType?: 'CHECKING' | 'SAVINGS' | 'CREDIT_CARD';
   accountNumberLast4?: string;
+  pageCount?: number;
+  extractionMode?: string;
+  bankDetected?: string;
+  formatDetected?: string;
+  parserVersion?: string;
+  metadata?: Record<string, unknown>;
 }
 
 export interface IStatementParser {

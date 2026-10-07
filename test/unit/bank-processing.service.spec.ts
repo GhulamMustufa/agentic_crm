@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 import { AiGatewayService } from '../../src/core/ai/ai-gateway.service';
 import {
@@ -43,6 +43,8 @@ describe('BankProcessingService - AI Accountant Workflow', () => {
   let ledgerService: LedgerService;
   let counterpartyService: CounterpartyService;
   let invoiceService: InvoiceService;
+  let pdfParser: PdfStatementParser;
+  let csvParser: CsvStatementParser;
 
   const tenantId = 'tenant-bank-001';
   const userId = 'user-bank-001';
@@ -66,8 +68,8 @@ describe('BankProcessingService - AI Accountant Workflow', () => {
 
     const aiGateway = new AiGatewayService();
     aiAccountantService = new AiAccountantService(aiGateway);
-    const csvParser = new CsvStatementParser();
-    const pdfParser = new PdfStatementParser({} as unknown as AiStatementParser);
+    csvParser = new CsvStatementParser();
+    pdfParser = new PdfStatementParser({} as unknown as AiStatementParser);
 
     bankProcessingService = new BankProcessingService(
       bankingRepo,
@@ -211,6 +213,69 @@ describe('BankProcessingService - AI Accountant Workflow', () => {
     const dupTxExc = exceptions.find((e) => e.exceptionType === 'DUPLICATE_TRANSACTION');
     expect(dupTxExc).toBeDefined();
     expect(dupTxExc?.reason).toContain('Client Retainer Fee');
+  });
+
+  it('should preserve legitimate repeated transactions on the same day when sourceSequence is provided', async () => {
+    vi.spyOn(pdfParser, 'parse').mockResolvedValueOnce({
+      startDate: '2026-03-01',
+      endDate: '2026-03-31',
+      openingBalanceCents: 1000000n,
+      closingBalanceCents: 990000n,
+      totalDebitsCents: 10000n,
+      totalCreditsCents: 0n,
+      pageCount: 1,
+      extractionMode: 'NATIVE_LAYOUT',
+      bankDetected: 'MAYBANK_ISLAMIC',
+      transactions: [
+        {
+          date: '2026-03-05',
+          description: 'Grab Transport Kuala Lumpur',
+          amountCents: -5000n,
+          pageNumber: 1,
+          sourceSequence: 1,
+          sourceRowIndex: 0,
+          runningBalanceCents: 995000n,
+          rawPrimaryText: 'Grab Transport Kuala Lumpur',
+          bankReference: 'GRAB-001',
+        },
+        {
+          date: '2026-03-05',
+          description: 'Grab Transport Kuala Lumpur',
+          amountCents: -5000n,
+          pageNumber: 1,
+          sourceSequence: 2,
+          sourceRowIndex: 1,
+          runningBalanceCents: 990000n,
+          rawPrimaryText: 'Grab Transport Kuala Lumpur',
+          bankReference: 'GRAB-002',
+        },
+      ],
+    });
+
+    const result = await bankProcessingService.processStatementUpload(tenantId, userId, {
+      bankAccountId: operatingBankAccountId,
+      fileName: 'maybank_grab_rides.pdf',
+      mimeType: 'application/pdf',
+      content: '%PDF-1.4 mock content %%EOF',
+    });
+
+    // Both legitimate repeated transactions must be preserved!
+    expect(result.transactions.length).toBe(2);
+    expect(result.transactions[0]?.sourceSequence).toBe(1);
+    expect(result.transactions[1]?.sourceSequence).toBe(2);
+    expect(result.transactions[0]?.bankReference).toBe('GRAB-001');
+    expect(result.transactions[1]?.bankReference).toBe('GRAB-002');
+    expect(result.transactions[0]?.pageNumber).toBe(1);
+    expect(result.transactions[1]?.pageNumber).toBe(1);
+    expect(result.statement.pageCount).toBe(1);
+    expect(result.statement.bankDetected).toBe('MAYBANK_ISLAMIC');
+
+    // No duplicate transaction exception should be created
+    const exceptions = await bankProcessingService.listExceptions(tenantId);
+    const dupExc = exceptions.find(
+      (e) => e.exceptionType === 'DUPLICATE_TRANSACTION' && e.reason.includes('Grab Transport'),
+    );
+    expect(dupExc).toBeUndefined();
   });
 
   // =========================================================================
@@ -597,5 +662,65 @@ describe('BankProcessingService - AI Accountant Workflow', () => {
 
     // No ledger entry posted
     expect(rejected.postedJournalEntryId).toBeUndefined();
+  });
+
+  // =========================================================================
+  // 15. DETERMINISTIC FINANCIAL VALIDATION GATE (PHASE 6)
+  // =========================================================================
+  it('should reject statement when mathematical checksum fails, mark FAILED, and route to Exception Center', async () => {
+    // Mock pdfParser to return a statement with a broken checksum
+    // Opening 1,000,000 + Credits 0 - Debits 5,000 = 995,000 cents
+    // But closing balance is reported as 950,000 cents (diff: -45,000 cents)
+    vi.spyOn(pdfParser, 'parse').mockResolvedValueOnce({
+      startDate: '2026-03-01',
+      endDate: '2026-03-31',
+      openingBalanceCents: 1000000n,
+      closingBalanceCents: 950000n, // Tampered / mismatched closing balance!
+      totalDebitsCents: 5000n,
+      totalCreditsCents: 0n,
+      pageCount: 1,
+      extractionMode: 'NATIVE_LAYOUT',
+      bankDetected: 'CIMB',
+      transactions: [
+        {
+          date: '2026-03-05',
+          description: 'Payment to Vendor ABC',
+          amountCents: -5000n,
+          pageNumber: 1,
+          sourceSequence: 1,
+          runningBalanceCents: 995000n,
+          rawPrimaryText: 'Payment to Vendor ABC',
+        },
+      ],
+    });
+
+    await expect(
+      bankProcessingService.processStatementUpload(tenantId, userId, {
+        bankAccountId: operatingBankAccountId,
+        fileName: 'corrupted_checksum.pdf',
+        mimeType: 'application/pdf',
+        content: '%PDF-1.4 mock corrupted %%EOF',
+      }),
+    ).rejects.toThrow(ValidationError);
+
+    // Verify statement was saved in FAILED status
+    const statements = await bankProcessingService.listStatements(tenantId, operatingBankAccountId);
+    const failed = statements.find((s) => s.fileName === 'corrupted_checksum.pdf');
+    expect(failed).toBeDefined();
+    expect(failed?.status).toBe('FAILED');
+    expect(failed?.metadata?.validationIssues).toBeDefined();
+
+    // Verify Exception Center received RECONCILIATION_EXCEPTION
+    const exceptions = await bankProcessingService.listExceptions(tenantId);
+    const recExc = exceptions.find(
+      (e) => e.exceptionType === 'RECONCILIATION_EXCEPTION' && e.entityId === failed?.id,
+    );
+    expect(recExc).toBeDefined();
+    expect(recExc?.severity).toBe('HIGH');
+    expect(recExc?.reason).toContain('Mathematical checksum failed');
+
+    // Critical invariant: ZERO bank transactions must be persisted
+    const txs = await bankingRepo.listTransactionsByStatementId(tenantId, failed!.id);
+    expect(txs.length).toBe(0);
   });
 });

@@ -109,6 +109,17 @@ export class InMemoryBankingRepository implements IBankingRepository {
       closingBalanceCents: input.closingBalanceCents,
       totalDebitsCents: input.totalDebitsCents,
       totalCreditsCents: input.totalCreditsCents,
+      pageCount: input.pageCount || 1,
+      extractionMode: input.extractionMode || 'NATIVE_TEXT',
+      bankDetected: input.bankDetected,
+      formatDetected: input.formatDetected,
+      parserVersion: input.parserVersion || '2.0.0',
+      bankAdapterVersion: input.bankAdapterVersion,
+      extractionPromptVersion: input.extractionPromptVersion,
+      aiModelVersion: input.aiModelVersion,
+      validationStatus: input.validationStatus || 'PENDING',
+      reprocessingOfId: input.reprocessingOfId,
+      metadata: input.metadata,
       status: input.status || 'UPLOADED',
       retryCount: 0,
       createdAt: new Date(),
@@ -218,10 +229,32 @@ export class InMemoryBankingRepository implements IBankingRepository {
         tenantId: input.tenantId,
         bankStatementId: input.bankStatementId,
         bankAccountId: input.bankAccountId,
+        pageNumber: input.pageNumber || 1,
+        sourceSequence: input.sourceSequence || 1,
+        sourceRowIndex: input.sourceRowIndex || 0,
         transactionDate: input.transactionDate,
+        valueDate: input.valueDate,
+        direction: input.direction || (input.amountCents < 0n ? 'DEBIT' : 'CREDIT'),
         amountCents: input.amountCents,
+        signedAmountCents:
+          input.signedAmountCents !== undefined ? input.signedAmountCents : input.amountCents,
+        runningBalanceCents: input.runningBalanceCents,
         rawDescription: input.rawDescription,
+        rawPrimaryText: input.rawPrimaryText,
+        rawContinuationText: input.rawContinuationText,
+        rawReferenceText: input.rawReferenceText,
+        bankReference: input.bankReference,
+        counterpartyAccount: input.counterpartyAccount,
         normalizedPayee: input.normalizedPayee,
+        normalizedDescription: input.normalizedDescription,
+        categorySuggestion: input.categorySuggestion,
+        extractionMethod: input.extractionMethod || 'NATIVE_LAYOUT',
+        extractionConfidence: input.extractionConfidence ?? 1.0,
+        entityResolutionConfidence: input.entityResolutionConfidence,
+        accountingConfidence: input.accountingConfidence,
+        riskLevel: input.riskLevel || 'LOW',
+        sourceEvidence: input.sourceEvidence,
+        transactionFingerprint: input.transactionFingerprint,
         referenceNumber: input.referenceNumber,
         transactionHash: input.transactionHash,
         status: 'UNRECONCILED',
@@ -267,6 +300,7 @@ export class InMemoryBankingRepository implements IBankingRepository {
   ): Promise<BankTransactionEntity[]> {
     return Array.from(this.transactions.values())
       .filter((t) => t.tenantId === tenantId && t.bankStatementId === statementId)
+      .sort((a, b) => a.sourceSequence - b.sourceSequence)
       .map((t) => ({ ...t }));
   }
 

@@ -70,7 +70,7 @@ export type RejectProposalDto = z.infer<typeof rejectProposalSchema>;
 
 export const resolveExceptionSchema = z.object({
   status: z.enum(['RESOLVED', 'DISMISSED']),
-  resolutionNotes: z.string().min(5).max(500),
+  resolutionNotes: z.string().min(1).max(500).optional().default('Resolved by supervisor'),
 });
 
 export type ResolveExceptionInput = z.input<typeof resolveExceptionSchema>;

@@ -513,14 +513,39 @@ export class LedgerService {
    * Generates a Trial Balance report for an accounting period.
    * Invariant: Total Debits must equal Total Credits.
    */
-  async getTrialBalance(tenantId: string, periodId: string): Promise<TrialBalanceReport> {
-    const period = await this.ledgerRepo.findPeriodById(tenantId, periodId);
+  async getTrialBalance(tenantId: string, periodId?: string): Promise<TrialBalanceReport> {
+    let targetPeriodId = periodId;
+    if (!targetPeriodId) {
+      const today = new Date().toISOString().split('T')[0]!;
+      const currentPeriod = await this.ledgerRepo.findPeriodByDate(tenantId, today);
+      targetPeriodId = currentPeriod?.id;
+    }
+
+    if (!targetPeriodId) {
+      return {
+        tenantId,
+        periodId: '',
+        items: [],
+        totalDebitCents: 0n,
+        totalCreditCents: 0n,
+        isBalanced: true,
+      };
+    }
+
+    const period = await this.ledgerRepo.findPeriodById(tenantId, targetPeriodId);
     if (!period) {
-      throw new NotFoundError('Accounting Period', periodId);
+      return {
+        tenantId,
+        periodId: targetPeriodId,
+        items: [],
+        totalDebitCents: 0n,
+        totalCreditCents: 0n,
+        isBalanced: true,
+      };
     }
 
     const accounts = await this.ledgerRepo.listAccounts(tenantId);
-    const balances = await this.ledgerRepo.listBalancesForPeriod(tenantId, periodId);
+    const balances = await this.ledgerRepo.listBalancesForPeriod(tenantId, targetPeriodId);
     const balanceMap = new Map(balances.map((b) => [b.accountId, b]));
 
     const items: TrialBalanceItem[] = [];
@@ -567,7 +592,7 @@ export class LedgerService {
 
     return {
       tenantId,
-      periodId,
+      periodId: targetPeriodId,
       items,
       totalDebitCents: totalDebitSum,
       totalCreditCents: totalCreditSum,
@@ -579,9 +604,28 @@ export class LedgerService {
    * Generates a Profit & Loss (Income Statement) report.
    * Net Income = Total Revenues - Total Expenses.
    */
-  async getProfitAndLoss(tenantId: string, periodId: string): Promise<ProfitAndLossReport> {
+  async getProfitAndLoss(tenantId: string, periodId?: string): Promise<ProfitAndLossReport> {
+    let targetPeriodId = periodId;
+    if (!targetPeriodId) {
+      const today = new Date().toISOString().split('T')[0]!;
+      const currentPeriod = await this.ledgerRepo.findPeriodByDate(tenantId, today);
+      targetPeriodId = currentPeriod?.id;
+    }
+
+    if (!targetPeriodId) {
+      return {
+        tenantId,
+        periodId: '',
+        revenues: [],
+        expenses: [],
+        totalRevenueCents: 0n,
+        totalExpenseCents: 0n,
+        netIncomeCents: 0n,
+      };
+    }
+
     const accounts = await this.ledgerRepo.listAccounts(tenantId);
-    const balances = await this.ledgerRepo.listBalancesForPeriod(tenantId, periodId);
+    const balances = await this.ledgerRepo.listBalancesForPeriod(tenantId, targetPeriodId);
     const balanceMap = new Map(balances.map((b) => [b.accountId, b]));
 
     const revenues: StatementLineItem[] = [];
@@ -615,7 +659,7 @@ export class LedgerService {
 
     return {
       tenantId,
-      periodId,
+      periodId: targetPeriodId,
       revenues,
       expenses,
       totalRevenueCents: totalRevenue,
@@ -628,9 +672,31 @@ export class LedgerService {
    * Generates a Balance Sheet as of a specified accounting period.
    * Invariant: Assets === Liabilities + Equity + Net Income.
    */
-  async getBalanceSheet(tenantId: string, asOfPeriodId: string): Promise<BalanceSheetReport> {
+  async getBalanceSheet(tenantId: string, asOfPeriodId?: string): Promise<BalanceSheetReport> {
+    let targetPeriodId = asOfPeriodId;
+    if (!targetPeriodId) {
+      const today = new Date().toISOString().split('T')[0]!;
+      const currentPeriod = await this.ledgerRepo.findPeriodByDate(tenantId, today);
+      targetPeriodId = currentPeriod?.id;
+    }
+
+    if (!targetPeriodId) {
+      return {
+        tenantId,
+        asOfPeriodId: '',
+        assets: [],
+        liabilities: [],
+        equity: [],
+        totalAssetsCents: 0n,
+        totalLiabilitiesCents: 0n,
+        totalEquityCents: 0n,
+        retainedEarningsCents: 0n,
+        isBalanced: true,
+      };
+    }
+
     const accounts = await this.ledgerRepo.listAccounts(tenantId);
-    const balances = await this.ledgerRepo.listBalancesForPeriod(tenantId, asOfPeriodId);
+    const balances = await this.ledgerRepo.listBalancesForPeriod(tenantId, targetPeriodId);
     const balanceMap = new Map(balances.map((b) => [b.accountId, b]));
 
     const assets: StatementLineItem[] = [];
@@ -673,7 +739,7 @@ export class LedgerService {
     }
 
     // Compute Net Income for current period to reflect in retained earnings
-    const pnl = await this.getProfitAndLoss(tenantId, asOfPeriodId);
+    const pnl = await this.getProfitAndLoss(tenantId, targetPeriodId);
     const retainedEarningsCents = pnl.netIncomeCents;
 
     const totalEquityWithIncome = totalEquity + retainedEarningsCents;
@@ -681,7 +747,7 @@ export class LedgerService {
 
     return {
       tenantId,
-      asOfPeriodId,
+      asOfPeriodId: targetPeriodId,
       assets,
       liabilities,
       equity,
