@@ -18,6 +18,7 @@ export interface InvoiceEntity {
   id: string;
   tenantId: string;
   counterpartyId: string;
+  counterparty?: { id: string; legalName: string; type: string };
   sourceDocumentId?: string;
   journalEntryId?: string;
   invoiceType: InvoiceType;

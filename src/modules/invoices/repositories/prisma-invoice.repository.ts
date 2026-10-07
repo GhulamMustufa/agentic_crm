@@ -22,7 +22,13 @@ import type {
   PaymentStatus,
   PaymentType,
 } from '../domain/payment.entity';
-import type { Invoice, InvoiceLine, Payment, PaymentAllocation } from '@prisma/client';
+import type {
+  Invoice,
+  InvoiceLine,
+  Payment,
+  PaymentAllocation,
+  Counterparty,
+} from '@prisma/client';
 
 @Injectable()
 export class PrismaInvoiceRepository implements IInvoiceRepository {
@@ -61,11 +67,20 @@ export class PrismaInvoiceRepository implements IInvoiceRepository {
     };
   }
 
-  private toInvoiceEntity(invoice: Invoice & { lines?: InvoiceLine[] }): InvoiceEntity {
+  private toInvoiceEntity(
+    invoice: Invoice & { lines?: InvoiceLine[]; counterparty?: Counterparty },
+  ): InvoiceEntity {
     return {
       id: invoice.id,
       tenantId: invoice.tenantId,
       counterpartyId: invoice.counterpartyId,
+      counterparty: invoice.counterparty
+        ? {
+            id: invoice.counterparty.id,
+            legalName: invoice.counterparty.legalName,
+            type: invoice.counterparty.type,
+          }
+        : undefined,
       sourceDocumentId: invoice.sourceDocumentId ?? undefined,
       journalEntryId: invoice.journalEntryId ?? undefined,
       invoiceType: invoice.invoiceType as InvoiceType,
@@ -185,6 +200,7 @@ export class PrismaInvoiceRepository implements IInvoiceRepository {
         lines: {
           orderBy: { lineNumber: 'asc' },
         },
+        counterparty: true,
       },
     });
     if (!item || item.tenantId !== tenantId) {
@@ -213,6 +229,7 @@ export class PrismaInvoiceRepository implements IInvoiceRepository {
         lines: {
           orderBy: { lineNumber: 'asc' },
         },
+        counterparty: true,
       },
     });
     return item ? this.toInvoiceEntity(item) : null;
@@ -234,6 +251,7 @@ export class PrismaInvoiceRepository implements IInvoiceRepository {
         lines: {
           orderBy: { lineNumber: 'asc' },
         },
+        counterparty: true,
       },
     });
 

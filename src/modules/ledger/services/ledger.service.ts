@@ -188,6 +188,11 @@ export class LedgerService {
         endDate,
         isClosed: false,
       });
+    } else {
+      const existingPeriods = await this.ledgerRepo.listPeriods(tenantId, fiscalYear.id);
+      if (existingPeriods.length > 0) {
+        return { fiscalYear, periods: existingPeriods };
+      }
     }
 
     const periods: AccountingPeriodEntity[] = [];
