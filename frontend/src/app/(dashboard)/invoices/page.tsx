@@ -15,23 +15,13 @@ import {
   X,
   Send,
   Building,
-  User,
   Calendar,
-  DollarSign,
   Receipt,
   BookOpen,
-  Sparkles,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-  CardFooter,
-} from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -46,6 +36,7 @@ import {
 } from '@/components/ui/table';
 import { formatCurrency, formatIsoDate } from '@/lib/formatters';
 import { apiClient } from '@/lib/api-client';
+import { authStorage } from '@/lib/auth-storage';
 
 interface RawInvoice {
   id: string;
@@ -109,7 +100,7 @@ export default function InvoicesPage() {
   const [invoices, setInvoices] = React.useState<InvoiceRecord[]>([]);
   const [loading, setLoading] = React.useState(true);
 
-  // Creation State
+  // Creation Modal State
   const [isCreatingInvoice, setIsCreatingInvoice] = React.useState(false);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [postingInvoiceId, setPostingInvoiceId] = React.useState<string | null>(null);
@@ -179,8 +170,19 @@ export default function InvoicesPage() {
           prev.map((l) => (l.accountId ? l : { ...l, accountId: defaultRevenue.id })),
         );
       }
-    } catch (err) {
-      console.warn('Could not load counterparties or accounts:', err);
+    } catch (err: any) {
+      if (
+        err?.status === 401 ||
+        err?.statusCode === 401 ||
+        err?.message?.includes('expired') ||
+        err?.message?.includes('UNAUTHORIZED')
+      ) {
+        toast.error('Session expired. Redirecting to login...');
+        authStorage.clearAuthSession();
+        setTimeout(() => {
+          window.location.href = '/login?expired=true';
+        }, 1200);
+      }
     } finally {
       setIsLoadingDeps(false);
     }
@@ -218,9 +220,21 @@ export default function InvoicesPage() {
       });
 
       setInvoices(mapped);
-    } catch (err) {
-      console.warn('Could not fetch live invoices:', err);
-      setInvoices([]);
+    } catch (err: any) {
+      if (
+        err?.status === 401 ||
+        err?.statusCode === 401 ||
+        err?.message?.includes('expired') ||
+        err?.message?.includes('UNAUTHORIZED')
+      ) {
+        toast.error('Session expired. Redirecting to login...');
+        authStorage.clearAuthSession();
+        setTimeout(() => {
+          window.location.href = '/login?expired=true';
+        }, 1200);
+      } else {
+        setInvoices([]);
+      }
     } finally {
       setLoading(false);
     }
@@ -230,6 +244,17 @@ export default function InvoicesPage() {
     fetchInvoices();
     loadDependencies();
   }, [fetchInvoices, loadDependencies]);
+
+  // Handle escape key to close modal
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isCreatingInvoice) {
+        setIsCreatingInvoice(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isCreatingInvoice]);
 
   // Sync default invoice number whenever type changes or modal opens
   React.useEffect(() => {
@@ -423,9 +448,23 @@ export default function InvoicesPage() {
       setNewCounterpartyName('');
       await fetchInvoices();
     } catch (err: any) {
-      console.error('Invoice creation error:', err);
-      const msg = err?.data?.message || err?.message || 'Failed to create invoice';
-      toast.error(typeof msg === 'string' ? msg : 'Invoice creation failed. Please check entries.');
+      if (
+        err?.status === 401 ||
+        err?.statusCode === 401 ||
+        err?.message?.includes('expired') ||
+        err?.message?.includes('UNAUTHORIZED')
+      ) {
+        toast.error('Your session expired. Redirecting to login...');
+        authStorage.clearAuthSession();
+        setTimeout(() => {
+          window.location.href = '/login?expired=true';
+        }, 1200);
+      } else {
+        const msg = err?.data?.message || err?.message || 'Failed to create invoice';
+        toast.error(
+          typeof msg === 'string' ? msg : 'Invoice creation failed. Please check entries.',
+        );
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -444,8 +483,20 @@ export default function InvoicesPage() {
       toast.success('Invoice posted to General Ledger successfully');
       await fetchInvoices();
     } catch (err: any) {
-      console.error(err);
-      toast.error(err?.data?.message || err?.message || 'Failed to post invoice');
+      if (
+        err?.status === 401 ||
+        err?.statusCode === 401 ||
+        err?.message?.includes('expired') ||
+        err?.message?.includes('UNAUTHORIZED')
+      ) {
+        toast.error('Session expired. Redirecting to login...');
+        authStorage.clearAuthSession();
+        setTimeout(() => {
+          window.location.href = '/login?expired=true';
+        }, 1200);
+      } else {
+        toast.error(err?.data?.message || err?.message || 'Failed to post invoice');
+      }
     } finally {
       setPostingInvoiceId(null);
     }
@@ -511,60 +562,58 @@ export default function InvoicesPage() {
           </Button>
           <Button
             onClick={() => {
-              setIsCreatingInvoice((prev) => !prev);
-              if (!isCreatingInvoice && counterparties.length === 0) {
+              setIsCreatingInvoice(true);
+              if (counterparties.length === 0) {
                 loadDependencies();
               }
             }}
+            className="cursor-pointer font-semibold shadow-md"
           >
-            {isCreatingInvoice ? (
-              <>
-                <X className="w-4 h-4 mr-2" />
-                Close Form
-              </>
-            ) : (
-              <>
-                <Plus className="w-4 h-4 mr-2" />
-                Create Invoice
-              </>
-            )}
+            <Plus className="w-4 h-4 mr-2" />
+            Create Invoice
           </Button>
         </div>
       </div>
 
-      {/* Creation Modal / Inline Form Card */}
+      {/* Creation Modal Dialog Overlay */}
       {isCreatingInvoice && (
-        <Card className="border-primary/30 bg-card/95 shadow-xl backdrop-blur-sm transition-all duration-300">
-          <CardHeader className="border-b border-border/50 pb-4">
-            <div className="flex justify-between items-center">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 overflow-y-auto"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setIsCreatingInvoice(false);
+          }}
+        >
+          <div className="relative w-full max-w-4xl max-h-[92vh] overflow-y-auto bg-card border border-border rounded-xl shadow-2xl p-6 my-4 animate-in fade-in-0 zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="flex justify-between items-start border-b border-border/50 pb-4">
               <div>
-                <CardTitle className="text-xl flex items-center gap-2">
+                <h2 className="text-xl font-bold flex items-center gap-2">
                   <Receipt className="w-5 h-5 text-primary" />
                   Create New {formType === 'INVOICE' ? 'Customer Invoice (AR)' : 'Vendor Bill (AP)'}
-                </CardTitle>
-                <CardDescription className="mt-1">
+                </h2>
+                <p className="text-sm text-muted-foreground mt-1">
                   Balanced double-entry journal entries will be generated against Accounts{' '}
                   {formType === 'INVOICE' ? 'Receivable (1200)' : 'Payable (2010)'}.
-                </CardDescription>
+                </p>
               </div>
               <Button
                 variant="ghost"
                 size="icon"
                 onClick={() => setIsCreatingInvoice(false)}
-                className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                className="h-8 w-8 rounded-full text-muted-foreground hover:text-foreground cursor-pointer"
               >
-                <X className="w-4 h-4" />
+                <X className="w-5 h-5" />
               </Button>
             </div>
 
             {/* Type Switcher Pills */}
-            <div className="flex gap-2 pt-3">
+            <div className="flex gap-2 pt-4 pb-2">
               <Button
                 type="button"
                 size="sm"
                 variant={formType === 'INVOICE' ? 'default' : 'outline'}
                 onClick={() => setFormType('INVOICE')}
-                className="rounded-full"
+                className="rounded-full cursor-pointer"
               >
                 <ArrowDownLeft className="w-3.5 h-3.5 mr-1 text-emerald-400" />
                 Customer Invoice (AR - Incoming)
@@ -574,20 +623,19 @@ export default function InvoicesPage() {
                 size="sm"
                 variant={formType === 'BILL' ? 'default' : 'outline'}
                 onClick={() => setFormType('BILL')}
-                className="rounded-full"
+                className="rounded-full cursor-pointer"
               >
                 <ArrowUpRight className="w-3.5 h-3.5 mr-1 text-blue-400" />
                 Vendor Bill (AP - Outgoing)
               </Button>
             </div>
-          </CardHeader>
 
-          <CardContent className="pt-6">
-            <form id="invoice-form" onSubmit={handleCreateInvoice} className="space-y-6">
+            {/* Form */}
+            <form id="invoice-modal-form" onSubmit={handleCreateInvoice} className="space-y-5 pt-3">
               {/* Row 1: Counterparty & Invoice Number */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {/* Counterparty Selection */}
-                <div className="space-y-2 md:col-span-2">
+                <div className="space-y-1.5 md:col-span-2">
                   <div className="flex justify-between items-center">
                     <Label
                       htmlFor="counterpartySelect"
@@ -600,7 +648,7 @@ export default function InvoicesPage() {
                       onClick={() =>
                         setCounterpartyMode((prev) => (prev === 'select' ? 'new' : 'select'))
                       }
-                      className="text-xs text-primary hover:underline font-medium"
+                      className="text-xs text-primary hover:underline font-medium cursor-pointer"
                     >
                       {counterpartyMode === 'select' ? '+ Add New Client' : '← Select Existing'}
                     </button>
@@ -611,7 +659,7 @@ export default function InvoicesPage() {
                       id="counterpartySelect"
                       value={selectedCounterpartyId}
                       onChange={(e) => setSelectedCounterpartyId(e.target.value)}
-                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 cursor-pointer"
                       required
                     >
                       {counterparties.map((cp) => (
@@ -628,7 +676,7 @@ export default function InvoicesPage() {
                         onChange={(e) => setNewCounterpartyName(e.target.value)}
                         placeholder={
                           formType === 'INVOICE'
-                            ? 'e.g. Acme Corp Inc.'
+                            ? 'e.g. Acme Corporation Inc.'
                             : 'e.g. Amazon Web Services'
                         }
                         className="pl-9"
@@ -640,7 +688,7 @@ export default function InvoicesPage() {
                 </div>
 
                 {/* Invoice Number */}
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   <Label
                     htmlFor="invoiceNumber"
                     className="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
@@ -659,7 +707,7 @@ export default function InvoicesPage() {
 
               {/* Row 2: Dates & Terms */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   <Label
                     htmlFor="issueDate"
                     className="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
@@ -682,7 +730,7 @@ export default function InvoicesPage() {
                   </div>
                 </div>
 
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   <Label
                     htmlFor="dueDate"
                     className="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
@@ -703,11 +751,11 @@ export default function InvoicesPage() {
                 </div>
 
                 {/* Payment Terms Quick Pills */}
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                     Payment Terms
                   </Label>
-                  <div className="flex gap-1.5 pt-1">
+                  <div className="flex gap-1.5 pt-0.5">
                     {[
                       { label: 'Due Now', days: 0 },
                       { label: 'Net 15', days: 15 },
@@ -719,7 +767,7 @@ export default function InvoicesPage() {
                         type="button"
                         variant="outline"
                         size="sm"
-                        className="text-xs h-8 px-2 flex-1"
+                        className="text-xs h-8 px-2 flex-1 cursor-pointer"
                         onClick={() => setDueDate(addDaysToDate(issueDate, term.days))}
                       >
                         {term.label}
@@ -730,7 +778,7 @@ export default function InvoicesPage() {
               </div>
 
               {/* Line Items Section */}
-              <div className="space-y-3 pt-2">
+              <div className="space-y-2.5 pt-2">
                 <div className="flex justify-between items-center">
                   <Label className="text-sm font-semibold tracking-wide">
                     Line Items & Ledger Accounts
@@ -740,14 +788,14 @@ export default function InvoicesPage() {
                     variant="outline"
                     size="sm"
                     onClick={handleAddLine}
-                    className="text-xs h-8"
+                    className="text-xs h-8 cursor-pointer"
                   >
                     <Plus className="w-3.5 h-3.5 mr-1" /> Add Line Item
                   </Button>
                 </div>
 
-                <div className="space-y-2 border border-border/50 rounded-lg p-3 bg-muted/20">
-                  {formLines.map((line, idx) => (
+                <div className="space-y-2 border border-border/60 rounded-lg p-3 bg-muted/20">
+                  {formLines.map((line) => (
                     <div
                       key={line.id}
                       className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end pb-3 border-b border-border/30 last:border-0 last:pb-0"
@@ -756,7 +804,7 @@ export default function InvoicesPage() {
                       <div className="md:col-span-4 space-y-1">
                         <Label className="text-xs text-muted-foreground">Description</Label>
                         <Input
-                          placeholder="e.g. Consulting Services, SaaS Platform, Hardware"
+                          placeholder="e.g. Monthly Retainer, Server Infrastructure"
                           value={line.description}
                           onChange={(e) => handleUpdateLine(line.id, 'description', e.target.value)}
                           required
@@ -771,7 +819,7 @@ export default function InvoicesPage() {
                         <select
                           value={line.accountId}
                           onChange={(e) => handleUpdateLine(line.id, 'accountId', e.target.value)}
-                          className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-xs ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                          className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-xs ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 cursor-pointer"
                           required
                         >
                           {ledgerAccounts.map((acc) => (
@@ -826,7 +874,7 @@ export default function InvoicesPage() {
                           size="icon"
                           disabled={formLines.length === 1}
                           onClick={() => handleRemoveLine(line.id)}
-                          className="h-9 w-9 text-muted-foreground hover:text-rose-500 hover:bg-rose-500/10"
+                          className="h-9 w-9 text-muted-foreground hover:text-rose-500 hover:bg-rose-500/10 cursor-pointer"
                         >
                           <Trash2 className="w-4 h-4" />
                         </Button>
@@ -845,7 +893,7 @@ export default function InvoicesPage() {
                       type="checkbox"
                       checked={postImmediately}
                       onChange={(e) => setPostImmediately(e.target.checked)}
-                      className="mt-1 h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                      className="mt-1 h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary cursor-pointer"
                     />
                     <div>
                       <span className="text-sm font-medium">
@@ -890,38 +938,39 @@ export default function InvoicesPage() {
                   </div>
                 </div>
               </div>
-            </form>
-          </CardContent>
 
-          <CardFooter className="border-t border-border/50 flex justify-end gap-3 pt-4">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setIsCreatingInvoice(false)}
-              disabled={isSubmitting}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              form="invoice-form"
-              disabled={isSubmitting || isLoadingDeps}
-              className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold px-6"
-            >
-              {isSubmitting ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Creating...
-                </>
-              ) : (
-                <>
-                  <Plus className="w-4 h-4 mr-2" />
-                  {postImmediately ? 'Create & Post Invoice' : 'Save as Draft'}
-                </>
-              )}
-            </Button>
-          </CardFooter>
-        </Card>
+              {/* Modal Footer Actions */}
+              <div className="border-t border-border/50 flex justify-end gap-3 pt-4">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setIsCreatingInvoice(false)}
+                  disabled={isSubmitting}
+                  className="cursor-pointer"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={isSubmitting || isLoadingDeps}
+                  className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold px-6 cursor-pointer"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Creating...
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="w-4 h-4 mr-2" />
+                      {postImmediately ? 'Create & Post Invoice' : 'Save as Draft'}
+                    </>
+                  )}
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
 
       {/* KPI Cards */}
@@ -990,6 +1039,7 @@ export default function InvoicesPage() {
             variant={activeTab === 'ALL' ? 'default' : 'outline'}
             size="sm"
             onClick={() => setActiveTab('ALL')}
+            className="cursor-pointer"
           >
             All Invoices
           </Button>
@@ -997,6 +1047,7 @@ export default function InvoicesPage() {
             variant={activeTab === 'RECEIVABLE' ? 'default' : 'outline'}
             size="sm"
             onClick={() => setActiveTab('RECEIVABLE')}
+            className="cursor-pointer"
           >
             Customer Invoices (AR)
           </Button>
@@ -1004,6 +1055,7 @@ export default function InvoicesPage() {
             variant={activeTab === 'PAYABLE' ? 'default' : 'outline'}
             size="sm"
             onClick={() => setActiveTab('PAYABLE')}
+            className="cursor-pointer"
           >
             Vendor Bills (AP)
           </Button>
@@ -1011,6 +1063,7 @@ export default function InvoicesPage() {
             variant={activeTab === 'OVERDUE' ? 'default' : 'outline'}
             size="sm"
             onClick={() => setActiveTab('OVERDUE')}
+            className="cursor-pointer"
           >
             Overdue
           </Button>
@@ -1053,13 +1106,14 @@ export default function InvoicesPage() {
                 invoice or process a statement to get started.
               </p>
               <Button
-                size="sm"
+                size="lg"
                 onClick={() => {
                   setIsCreatingInvoice(true);
                   if (counterparties.length === 0) {
                     loadDependencies();
                   }
                 }}
+                className="cursor-pointer font-semibold shadow-lg hover:shadow-primary/20"
               >
                 <Plus className="w-4 h-4 mr-2" />
                 Create First Invoice
@@ -1106,7 +1160,7 @@ export default function InvoicesPage() {
                           size="sm"
                           onClick={() => handlePostDraftInvoice(inv.id, inv.issueDate)}
                           disabled={postingInvoiceId === inv.id}
-                          className="h-8 text-xs text-primary"
+                          className="h-8 text-xs text-primary cursor-pointer"
                         >
                           {postingInvoiceId === inv.id ? (
                             <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
