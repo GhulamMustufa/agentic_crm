@@ -469,25 +469,68 @@ export default function InvoicesPage() {
 
       // Create new counterparty if requested
       if (counterpartyMode === 'new') {
-        if (!newCounterpartyName.trim()) {
+        const trimmedName = newCounterpartyName.trim();
+        if (!trimmedName) {
           toast.error('Please enter a counterparty / client legal name');
           setIsSubmitting(false);
           return;
         }
 
-        const cpRes = await apiClient.post<{ data: Counterparty }>('/counterparties', {
-          legalName: newCounterpartyName.trim(),
-          type: formType === 'INVOICE' ? 'CUSTOMER' : 'VENDOR',
-          paymentTermsDays: 30,
-        });
+        // 1. Check if counterparty already exists locally
+        const existingLocal = counterparties.find(
+          (cp) => cp.legalName.trim().toLowerCase() === trimmedName.toLowerCase(),
+        );
 
-        if (!cpRes.data?.id) {
-          throw new Error('Failed to create new counterparty record');
+        if (existingLocal) {
+          targetCounterpartyId = existingLocal.id;
+          setSelectedCounterpartyId(targetCounterpartyId);
+        } else {
+          // 2. Attempt creation with silent option to suppress confusing duplicate toast
+          try {
+            const cpRes = await apiClient.post<{ data: Counterparty }>(
+              '/counterparties',
+              {
+                legalName: trimmedName,
+                type: formType === 'INVOICE' ? 'CUSTOMER' : 'VENDOR',
+                paymentTermsDays: 30,
+              },
+              { silent: true },
+            );
+
+            if (cpRes.data?.id) {
+              targetCounterpartyId = cpRes.data.id;
+              setCounterparties((prev) => [cpRes.data, ...prev]);
+              setSelectedCounterpartyId(targetCounterpartyId);
+            }
+          } catch (cpErr: any) {
+            // If already exists on server, quietly fetch and bind the existing counterparty
+            if (
+              cpErr?.status === 409 ||
+              cpErr?.message?.includes('already exists') ||
+              cpErr?.data?.message?.includes('already exists')
+            ) {
+              try {
+                const refreshed = await apiClient.get<{ data: Counterparty[] }>('/counterparties', {
+                  silent: true,
+                });
+                const found = refreshed.data?.find(
+                  (c) => c.legalName.trim().toLowerCase() === trimmedName.toLowerCase(),
+                );
+                if (found) {
+                  targetCounterpartyId = found.id;
+                  setCounterparties(refreshed.data || []);
+                  setSelectedCounterpartyId(found.id);
+                } else {
+                  throw cpErr;
+                }
+              } catch {
+                throw cpErr;
+              }
+            } else {
+              throw cpErr;
+            }
+          }
         }
-
-        targetCounterpartyId = cpRes.data.id;
-        setCounterparties((prev) => [cpRes.data, ...prev]);
-        setSelectedCounterpartyId(targetCounterpartyId);
       }
 
       if (!targetCounterpartyId) {

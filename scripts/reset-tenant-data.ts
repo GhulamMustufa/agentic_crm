@@ -115,7 +115,7 @@ async function resetTenantData(targetTenantId = 'fd552037-fc94-40b7-aa7d-b3c387c
     console.log(` • Payments deleted:            ${deletedPayments.count} (Allocations: ${deletedAllocations.count})`);
     console.log(` • Monthly Balances reset:      ${deletedBalances.count}`);
     console.log(` • Bank Accounts reset to 0:    ${resetBankAccounts.count}`);
-  });
+  }, { timeout: 30000, maxWait: 15000 });
 
   console.log(`✨ Tenant ${targetTenantId} is completely clean and ready for a fresh demonstration!`);
 }

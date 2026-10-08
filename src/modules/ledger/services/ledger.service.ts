@@ -246,6 +246,10 @@ export class LedgerService {
     return { fiscalYear, periods };
   }
 
+  async listPeriods(tenantId: string, fiscalYearId?: string): Promise<AccountingPeriodEntity[]> {
+    return this.ledgerRepo.listPeriods(tenantId, fiscalYearId);
+  }
+
   async getPeriodByDate(tenantId: string, date: string): Promise<AccountingPeriodEntity | null> {
     return this.ledgerRepo.findPeriodByDate(tenantId, date);
   }

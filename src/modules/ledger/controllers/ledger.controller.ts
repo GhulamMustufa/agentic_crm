@@ -69,6 +69,14 @@ export class LedgerController {
     return { data: result };
   }
 
+  @Get('periods')
+  @HttpCode(HttpStatus.OK)
+  async listPeriods(@CurrentUser() user: TenantSessionContext) {
+    const tenantId = this.requireTenant(user);
+    const periods = await this.ledgerService.listPeriods(tenantId);
+    return { data: periods };
+  }
+
   @Post('accounts')
   @HttpCode(HttpStatus.CREATED)
   async createAccount(@CurrentUser() user: TenantSessionContext, @Body() dto: CreateAccountDto) {

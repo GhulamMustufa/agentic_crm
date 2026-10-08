@@ -80,15 +80,34 @@ export default function ReportsPage() {
   const [pnl, setPnl] = React.useState<ProfitAndLossData | null>(null);
   const [balanceSheet, setBalanceSheet] = React.useState<BalanceSheetData | null>(null);
   const [trialBalance, setTrialBalance] = React.useState<TrialBalanceData | null>(null);
+  const [periods, setPeriods] = React.useState<Array<{ id: string; periodName: string }>>([]);
+  const [selectedPeriodId, setSelectedPeriodId] = React.useState<string>('');
+
+  React.useEffect(() => {
+    async function fetchPeriods() {
+      try {
+        const res = await apiClient.get<{ data: Array<{ id: string; periodName: string }> }>(
+          '/ledger/periods',
+        );
+        if (res.data && res.data.length > 0) {
+          setPeriods(res.data);
+        }
+      } catch (err) {
+        console.warn('Could not fetch periods:', err);
+      }
+    }
+    fetchPeriods();
+  }, []);
 
   React.useEffect(() => {
     async function loadReports() {
       try {
         setLoading(true);
+        const params = selectedPeriodId ? `?periodId=${encodeURIComponent(selectedPeriodId)}` : '';
         const [pnlRes, bsRes, tbRes] = await Promise.allSettled([
-          apiClient.get<{ data: ProfitAndLossData }>('/ledger/reports/profit-and-loss'),
-          apiClient.get<{ data: BalanceSheetData }>('/ledger/reports/balance-sheet'),
-          apiClient.get<{ data: TrialBalanceData }>('/ledger/reports/trial-balance'),
+          apiClient.get<{ data: ProfitAndLossData }>(`/ledger/reports/profit-and-loss${params}`),
+          apiClient.get<{ data: BalanceSheetData }>(`/ledger/reports/balance-sheet${params}`),
+          apiClient.get<{ data: TrialBalanceData }>(`/ledger/reports/trial-balance${params}`),
         ]);
 
         if (pnlRes.status === 'fulfilled' && pnlRes.value.data) {
@@ -112,7 +131,7 @@ export default function ReportsPage() {
     }
 
     loadReports();
-  }, []);
+  }, [selectedPeriodId]);
 
   const totalRev = Number(pnl?.totalRevenueCents || 0) / 100;
   const totalExp = Number(pnl?.totalExpenseCents || 0) / 100;
@@ -143,11 +162,22 @@ export default function ReportsPage() {
             Real-time statements generated directly from your verified business records.
           </p>
         </div>
-        <div className="flex flex-wrap gap-2 w-full md:w-auto">
-          <Button variant="outline">
-            <Calendar className="w-4 h-4 mr-2" />
-            Current Period
-          </Button>
+        <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-input bg-background shadow-xs">
+            <Calendar className="w-4 h-4 text-muted-foreground" />
+            <select
+              value={selectedPeriodId}
+              onChange={(e) => setSelectedPeriodId(e.target.value)}
+              className="text-xs bg-transparent border-0 focus:outline-none cursor-pointer font-medium"
+            >
+              <option value="">Current Calendar Month</option>
+              {periods.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.periodName}
+                </option>
+              ))}
+            </select>
+          </div>
           <Button variant="outline">
             <Download className="w-4 h-4 mr-2" />
             Export CSV
