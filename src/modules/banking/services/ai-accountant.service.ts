@@ -344,7 +344,7 @@ export class AiAccountantService {
               'Description references invoice or bill number not currently found in open AR/AP ledger',
           },
         ],
-        rationale: `Transaction appears to reference an invoice or bill, but no matching open record was identified: '${transaction.rawDescription}'.`,
+        rationale: `Payment references an invoice or bill number, but no matching open record was found in your books: '${transaction.rawDescription}'.`,
         suggestedDebitAccountId: isCredit ? operatingCashAcc : apAcc,
         suggestedCreditAccountId: isCredit ? arAcc : operatingCashAcc,
         isAmbiguous: false,
@@ -360,10 +360,10 @@ export class AiAccountantService {
       evidence: [
         {
           source: 'FALLTHROUGH',
-          reason: 'No matching counterparty, invoice, or recurring pattern detected',
+          reason: 'No matching payee, invoice, or recurring pattern detected',
         },
       ],
-      rationale: `Ambiguous transaction narrative '${transaction.rawDescription}'. Unable to determine counterparty or chart of accounts mapping with high confidence.`,
+      rationale: `Unrecognized payee '${transaction.rawDescription}'. We couldn't match this to a known supplier or bill on file. Please confirm who was paid.`,
       suggestedDebitAccountId: isCredit ? operatingCashAcc : suspenseAcc,
       suggestedCreditAccountId: isCredit ? suspenseAcc : operatingCashAcc,
       isAmbiguous: true,

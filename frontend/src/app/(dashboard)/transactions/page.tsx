@@ -226,7 +226,7 @@ export default function TransactionsPage() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Transactions & Ledger</h1>
           <p className="text-muted-foreground mt-1">
-            Immutable General Ledger records aligned with uploaded bank statements.
+            Verified bank transactions matched directly with your accounting records.
           </p>
         </div>
         <div className="flex flex-wrap gap-2 w-full md:w-auto">
@@ -246,7 +246,7 @@ export default function TransactionsPage() {
           </Button>
           <Button variant="outline" onClick={loadData} disabled={isLoading}>
             <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-            Sync Ledger
+            Refresh Records
           </Button>
           <Button variant="outline" onClick={exportCsv} disabled={transactions.length === 0}>
             <Download className="w-4 h-4 mr-2" />
@@ -266,7 +266,9 @@ export default function TransactionsPage() {
             <div className="text-2xl font-bold tabular-nums text-emerald-600 dark:text-emerald-400">
               +{formatCurrency(totalInflows, primaryCurrency)}
             </div>
-            <p className="text-xs text-muted-foreground mt-1">Money received across statement</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Total deposits received across statement
+            </p>
           </CardContent>
         </Card>
 
@@ -279,7 +281,7 @@ export default function TransactionsPage() {
             <div className="text-2xl font-bold tabular-nums text-rose-600 dark:text-rose-400">
               -{formatCurrency(totalOutflows, primaryCurrency)}
             </div>
-            <p className="text-xs text-muted-foreground mt-1">Disbursements & payments</p>
+            <p className="text-xs text-muted-foreground mt-1">Total payments and withdrawals</p>
           </CardContent>
         </Card>
 
@@ -292,7 +294,9 @@ export default function TransactionsPage() {
             <div className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">
               {reconciliationRate}%
             </div>
-            <p className="text-xs text-muted-foreground mt-1">Automated by AI Accountant</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Automatically matched by AI Assistant
+            </p>
           </CardContent>
         </Card>
 
@@ -303,9 +307,9 @@ export default function TransactionsPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
-              100% Invariant
+              100% Balanced
             </div>
-            <p className="text-xs text-muted-foreground mt-1">Double-entry verified</p>
+            <p className="text-xs text-muted-foreground mt-1">Debits equal Credits</p>
           </CardContent>
         </Card>
       </div>

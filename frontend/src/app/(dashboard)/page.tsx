@@ -104,7 +104,7 @@ export default function DashboardPage() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">AI Accountant Overview</h1>
           <p className="text-muted-foreground mt-1">
-            Autonomous ledger management, continuous reconciliation, and exception supervision.
+            Automated bookkeeping, continuous bank matching, and review approvals.
           </p>
         </div>
         <div className="flex gap-2">
@@ -115,7 +115,7 @@ export default function DashboardPage() {
             </Link>
           </Button>
           <Button asChild>
-            <Link href="/exceptions">View Exceptions</Link>
+            <Link href="/exceptions">Review Approvals</Link>
           </Button>
         </div>
       </div>
@@ -128,10 +128,10 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-emerald-500">
-              {transactionCount > 0 ? 'Up to date' : 'Ready for Ingestion'}
+              {transactionCount > 0 ? 'Up to date' : 'Ready for statement'}
             </div>
             <p className="text-xs text-muted-foreground mt-1">
-              {transactionCount > 0 ? 'Continuous ledger sync active' : 'No pending backlog'}
+              {transactionCount > 0 ? 'Continuous ledger sync active' : 'No pending items'}
             </p>
           </CardContent>
         </Card>
@@ -163,7 +163,7 @@ export default function DashboardPage() {
             <div className="text-2xl font-bold tabular-nums">
               {loading ? '...' : formattedReconciled}
             </div>
-            <p className="text-xs text-muted-foreground mt-1">Verified against bank feeds</p>
+            <p className="text-xs text-muted-foreground mt-1">Verified against bank statements</p>
           </CardContent>
         </Card>
 
@@ -178,7 +178,7 @@ export default function DashboardPage() {
             <CardTitle
               className={`text-sm font-medium ${exceptionsCount > 0 ? 'text-orange-700 dark:text-orange-400' : ''}`}
             >
-              Exceptions
+              Needs Attention
             </CardTitle>
             <AlertCircle
               className={`h-4 w-4 ${exceptionsCount > 0 ? 'text-orange-500' : 'text-muted-foreground'}`}
@@ -193,7 +193,9 @@ export default function DashboardPage() {
             <p
               className={`text-xs mt-1 ${exceptionsCount > 0 ? 'text-orange-600/80 dark:text-orange-400/80' : 'text-muted-foreground'}`}
             >
-              {exceptionsCount > 0 ? 'Requiring human attention' : 'All transactions reconciled'}
+              {exceptionsCount > 0
+                ? 'Transactions needing your confirmation'
+                : 'All transactions matched and recorded'}
             </p>
           </CardContent>
         </Card>
@@ -222,9 +224,9 @@ export default function DashboardPage() {
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
         <Card className="lg:col-span-4">
           <CardHeader>
-            <CardTitle>Recent AI Activity</CardTitle>
+            <CardTitle>Recent Bookkeeping Activity</CardTitle>
             <CardDescription>
-              Actions completed autonomously by the reasoning agent.
+              Actions completed automatically by your AI bookkeeping assistant.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -232,18 +234,17 @@ export default function DashboardPage() {
               [
                 {
                   time: 'Just now',
-                  action: `Active monitoring on ${transactionCount} ledger entries`,
+                  action: `Active monitoring on ${transactionCount} recorded transactions`,
                   type: 'success',
                 },
                 {
                   time: 'Today',
-                  action:
-                    'Reconciliation engine confirmed double-entry sum(Debits) == sum(Credits)',
+                  action: 'Double-entry balance confirmed: Total Debits equal Total Credits',
                   type: 'success',
                 },
                 {
                   time: 'Today',
-                  action: 'Validated tenant isolation and audit logs',
+                  action: 'Verified account security and audit trail',
                   type: 'success',
                 },
               ].map((activity, i) => (
@@ -256,7 +257,7 @@ export default function DashboardPage() {
             ) : (
               <div className="py-6 text-center text-sm text-muted-foreground space-y-2">
                 <Clock className="w-8 h-8 mx-auto text-muted-foreground/50" />
-                <p>AI Accountant is standing by.</p>
+                <p>AI Accountant is ready.</p>
                 <p className="text-xs">
                   Upload a statement to watch transactions get parsed and categorized in real time.
                 </p>
@@ -267,17 +268,17 @@ export default function DashboardPage() {
 
         <Card className="lg:col-span-3">
           <CardHeader>
-            <CardTitle>Upcoming Actions</CardTitle>
-            <CardDescription>Tasks requiring supervisor review.</CardDescription>
+            <CardTitle>Tasks & Approvals</CardTitle>
+            <CardDescription>Items needing your confirmation.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             {exceptionsCount > 0 ? (
               <div className="flex items-start justify-between gap-4 p-4 rounded-lg border bg-card">
                 <div className="space-y-1">
-                  <p className="text-sm font-medium leading-none">
-                    Review {exceptionsCount} Exceptions
+                  <p className="text-sm font-medium leading-none">Review {exceptionsCount} Items</p>
+                  <p className="text-sm text-muted-foreground">
+                    Confirm or adjust suggested categories.
                   </p>
-                  <p className="text-sm text-muted-foreground">Approve or adjust AI proposals.</p>
                 </div>
                 <Button variant="secondary" size="sm" asChild>
                   <Link href="/exceptions">Review</Link>
@@ -286,9 +287,9 @@ export default function DashboardPage() {
             ) : (
               <div className="flex items-start justify-between gap-4 p-4 rounded-lg border bg-card">
                 <div className="space-y-1">
-                  <p className="text-sm font-medium leading-none">Zero Exceptions Pending</p>
+                  <p className="text-sm font-medium leading-none">Zero Items Needing Review</p>
                   <p className="text-sm text-muted-foreground">
-                    No ambiguous transactions require approval.
+                    All transactions are confirmed and matched.
                   </p>
                 </div>
                 <Badge variant="outline" className="text-emerald-600 border-emerald-200">
@@ -298,7 +299,7 @@ export default function DashboardPage() {
             )}
             <div className="flex items-start justify-between gap-4 p-4 rounded-lg border bg-card">
               <div className="space-y-1">
-                <p className="text-sm font-medium leading-none">Ingest Bank Feeds</p>
+                <p className="text-sm font-medium leading-none">Upload Bank Statement</p>
                 <p className="text-sm text-muted-foreground">Import checking or card statement.</p>
               </div>
               <Button variant="secondary" size="sm" asChild>

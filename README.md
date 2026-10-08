@@ -134,13 +134,15 @@ npm run build
 
 ## Documentation Index
 
-| Topic                     | Document                                                   |
-| :------------------------ | :--------------------------------------------------------- |
-| **System Architecture**   | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)             |
-| **Coding Standards**      | [`docs/CODING_STANDARDS.md`](docs/CODING_STANDARDS.md)     |
-| **Database Schema**       | [`docs/DATABASE_SCHEMA.md`](docs/DATABASE_SCHEMA.md)       |
-| **Frontend Standards**    | [`docs/FRONTEND_STANDARDS.md`](docs/FRONTEND_STANDARDS.md) |
-| **Backend Standards**     | [`docs/BACKEND_STANDARDS.md`](docs/BACKEND_STANDARDS.md)   |
-| **API Standards**         | [`docs/API_STANDARDS.md`](docs/API_STANDARDS.md)           |
-| **Git Workflow**          | [`docs/GIT_WORKFLOW.md`](docs/GIT_WORKFLOW.md)             |
-| **Repository Governance** | [`AGENTS.md`](AGENTS.md)                                   |
+| Topic                                   | Document                                                                                   |
+| :-------------------------------------- | :----------------------------------------------------------------------------------------- |
+| **Plain-English Platform Guide**        | [`docs/SYSTEM_ONBOARDING_GUIDE.md`](docs/SYSTEM_ONBOARDING_GUIDE.md)                       |
+| **Accounting Codes & Exceptions Guide** | [`docs/ACCOUNTING_CONCEPTS_AND_EXCEPTIONS.md`](docs/ACCOUNTING_CONCEPTS_AND_EXCEPTIONS.md) |
+| **System Architecture**                 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)                                             |
+| **Coding Standards**                    | [`docs/CODING_STANDARDS.md`](docs/CODING_STANDARDS.md)                                     |
+| **Database Schema**                     | [`docs/DATABASE_SCHEMA.md`](docs/DATABASE_SCHEMA.md)                                       |
+| **Frontend Standards**                  | [`docs/FRONTEND_STANDARDS.md`](docs/FRONTEND_STANDARDS.md)                                 |
+| **Backend Standards**                   | [`docs/BACKEND_STANDARDS.md`](docs/BACKEND_STANDARDS.md)                                   |
+| **API Standards**                       | [`docs/API_STANDARDS.md`](docs/API_STANDARDS.md)                                           |
+| **Git Workflow**                        | [`docs/GIT_WORKFLOW.md`](docs/GIT_WORKFLOW.md)                                             |
+| **Repository Governance**               | [`AGENTS.md`](AGENTS.md)                                                                   |

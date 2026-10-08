@@ -3,47 +3,45 @@
 **Document Status:** Authoritative UX Context & Developer Guidelines  
 **Version:** 1.0.0  
 **Target Platform:** Web (Desktop, Tablet, Mobile Responsive)  
-**Primary Aesthetic & Tone:** Modern, Trustworthy, Elegant, Professional, Calm, Financial, Intelligent
+**Primary Aesthetic & Tone:** Modern, Trustworthy, Elegant, Calm, Financial, Clear
 
 ---
 
-## 1. Primary UX Objective
-
-> **"Show me what the AI did, what needs my attention, and what I can safely ignore."**
-
-Traditional enterprise ERPs and accounting CRMs overwhelm operators with sprawling navigation, dense multi-tab menus, manual entry grids, and noisy dashboards packed with vanity charts.
-
-The **Agentic Business OS** flips this paradigm completely:
-
-1. **The background engine does the work.** The interface is not a tool for manual data entry; it is a command and review surface.
-2. **Silence is success.** If 150 transactions were parsed, normalized, reconciled, and posted with 99% confidence, they do not demand a 150-row manual review. They are summarized cleanly in the background stream.
-3. **High-urgency triage.** Human attention is treated as a scarce, high-value asset. The system highlights anomalies, policy violations, and approval requests with extreme clarity, providing 1-click resolution paths.
+> [!TIP]
+>
+> ### User Experience in 60 Seconds
+>
+> **"Show me what the AI did, what needs my attention right now, and what I can safely ignore."**
+>
+> - **The background engine does the heavy lifting:** This interface is not a tedious data-entry form. It is a control desk where you review and approve things in seconds.
+> - **Silence is success:** If 150 bank transactions matched your invoices perfectly, you don't get spammed with 150 alerts. You get a calm, reassuring green checkmark: _"150 transactions matched automatically."_
+> - **Clean screens (Show details only when clicked):** Keep default screens clean and uncluttered. Show the main facts first; allow users to click a row to see raw bank text or detailed ledger debits/credits.
 
 ---
 
-## 2. Core UX Design Principles
+## 1. Core UX Design Principles
 
-### Principle 1: Minimal Cognitive Load
+### Principle 1: Keep It Simple & Intuitive (Low Mental Burden)
 
-- Do not make the user think about bookkeeping mechanics or database relationships.
-- Group related items by business outcome rather than internal database schemas.
-- Keep screens clean, with ample whitespace, structured hierarchy, and zero decorative visual clutter.
+- Do not force the user to think about database structures or double-entry bookkeeping rules.
+- Group information by real-world business results (e.g., _"Money In / Invoices"_ vs _"Money Out / Bills"_) rather than internal system tables.
+- Keep screens calm with clean whitespace, readable typography, and zero distracting visual clutter.
 
-### Principle 2: Progressive Disclosure
+### Principle 2: Clean Screens First, Details on Demand
 
-- Surface only what is essential for the current decision at the top level.
-- Secondary data (e.g., raw OCR strings, double-entry debit/credit ledger breakdown, system timestamps, model tokens) should be accessible via 1-click drawer, expandable accordion, or hover preview—never cluttering the default view.
+- Display only what is necessary to make the current decision on the main screen.
+- Deep details (raw bank text, full debit/credit breakdown, exact timestamps) stay hidden behind a 1-click drawer or popup so the main page stays neat.
 
-### Principle 3: One Primary Action Per Screen
+### Principle 3: One Clear Main Action Per Screen
 
-- Every view has a single, unmistakable primary call to action (e.g., **"Approve Batch (12)"**, **"Resolve Exception"**, **"Upload Statement"**).
-- Secondary actions (e.g., "Edit Details", "Split Transaction", "Export CSV") are visually de-emphasized. Destructive actions ("Reject", "Delete") require deliberate friction or immediate undo capability.
+- Every page has one unmistakable primary button (e.g., **"Approve & Record"**, **"Upload Statement"**, **"Create Invoice"**).
+- Secondary options (like _"Export CSV"_ or _"Edit"_) use subtle outline styles so the user immediately knows where to click.
 
-### Principle 4: Prominent Exceptions (Management by Exception)
+### Principle 4: Make Items Needing Review Impossible to Miss
 
-- When an item requires human review, it must be impossible to miss.
-- The **Exception Center** surfaces items ordered strictly by priority (financial impact, due date, confidence score).
-- The user should immediately see _why_ the item was flagged without reading a paragraph of error logs.
+- When a transaction needs human confirmation, surface it prominently on the **Review & Approvals** screen.
+- Order items by priority (largest dollar amounts and closest due dates first).
+- Explain _why_ the item was flagged in one simple sentence without dumping technical logs on the user.
 
 ### Principle 5: Routine Work Disappears into Automation
 

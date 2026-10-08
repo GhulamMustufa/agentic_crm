@@ -7,6 +7,18 @@
 
 ---
 
+> [!TIP]
+>
+> ### API Standards in 60 Seconds
+>
+> **Predictable URLs, clean JSON responses, built-in double-click safety.**
+>
+> 1. **Predictable URLs:** Every endpoint uses clean, plural English nouns (e.g., `/api/v1/invoices`, `/api/v1/bank-accounts`). Max 2 levels of nesting.
+> 2. **Consistent Response Envelope:** Every response looks identical: `{ "data": ... }` on success, or `{ "error": { "code": "...", "message": "..." } }` on failure.
+> 3. **Double-Click Safety (Idempotency):** Critical payment and invoice requests can pass an `Idempotency-Key`. If a user clicks "Submit" twice or their Wi-Fi reconnects, the server guarantees they are never charged or billed twice.
+
+---
+
 ## 1. REST Architecture & Conventions
 
 All external and internal HTTP APIs adhere to strict RESTful design principles.

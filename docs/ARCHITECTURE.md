@@ -7,11 +7,27 @@
 
 ---
 
+> [!TIP]
+>
+> ### System Architecture in 60 Seconds: "The Restaurant Kitchen" Analogy
+>
+> Understanding this architecture is simple when you compare it to a high-end restaurant:
+>
+> 1. **The Waiter (Frontend - Next.js):** Takes orders from the user, shows menus, and displays prepared meals cleanly on desktop, tablet, and mobile.
+> 2. **The Floor Manager (NestJS Controllers & API):** Verifies the guest's identity (multi-tenant authentication), stamps the ticket, and routes the request to the right station.
+> 3. **The Strict Recipe Book (Deterministic Core Engine):** The unbreakable accounting laws. It enforces that Total Debits must equal Total Credits, calculates exact payroll taxes, and ensures money never appears or disappears without a record.
+> 4. **The Sous-Chef (AI Assistant):** Reads messy delivery slips (bank statements & receipts), cleans up vendor names, and prepares proposals for the Head Chef. The AI **never** serves a dish directly to a guest without verification.
+> 5. **The Safe & Pantry (PostgreSQL & Object Storage):** Stores the permanent, tamper-evident accounting records and statement files.
+>
+> **Why Modular Monolith?** Everything runs inside one unified, well-organized codebase. There are no messy microservice network timeouts, yet each department (Banking, Invoices, Ledger) has strict boundaries so code never turns into spaghetti.
+
+---
+
 ## 1. System Architecture Overview
 
-The **Agentic Business OS** is architected as an event-driven **Modular Monolith** with an asynchronous worker fleet and an isolated AI agent execution sandbox.
+The **Agentic Business OS** is built as an event-driven **Modular Monolith** with an asynchronous worker fleet and an isolated AI agent execution layer.
 
-The modular monolith pattern is deliberately chosen over premature distributed microservices. It allows strict in-process compile-time boundary enforcement, frictionless transactional unit-of-work guarantees across domain modules, and zero network serialization overhead, while maintaining clean separation of concerns so that domain modules (e.g., Finance, Payroll, Inventory) can be extracted into standalone microservices if scale dictates in future phases.
+Instead of splitting the system into dozens of separate microservices prematurely (which causes network lag and partial failure headaches), a modular monolith organizes the code into distinct, self-contained business modules (Identity, Banking, Ledger, Invoices) that run together with blazing speed, instant database transactions, and compile-time type safety.
 
 ### 1.1 High-Level Component Diagram
 

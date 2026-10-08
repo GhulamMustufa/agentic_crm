@@ -140,7 +140,7 @@ export default function ReportsPage() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Financial Reports</h1>
           <p className="text-muted-foreground mt-1">
-            Real-time statements computed deterministically from the immutable General Ledger.
+            Real-time statements generated directly from your verified business records.
           </p>
         </div>
         <div className="flex flex-wrap gap-2 w-full md:w-auto">
@@ -193,14 +193,14 @@ export default function ReportsPage() {
           <div className="flex items-center gap-2">
             <Sparkles className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
             <CardTitle className="text-base text-indigo-900 dark:text-indigo-300">
-              Autonomous AI Financial Commentary
+              AI Financial Summary
             </CardTitle>
           </div>
           <Badge
             variant="outline"
             className="bg-indigo-100 text-indigo-700 border-indigo-300 dark:bg-indigo-900 dark:text-indigo-300"
           >
-            Audit Verified
+            Verified Accurate
           </Badge>
         </CardHeader>
         <CardContent className="text-sm text-indigo-950/80 dark:text-indigo-200/80 space-y-1">
@@ -211,9 +211,9 @@ export default function ReportsPage() {
                 verified posted journal entries.
               </p>
               <p className="text-xs text-muted-foreground pt-1">
-                General Ledger invariant check:{' '}
+                Books balanced check:{' '}
                 <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
-                  ∑ Debits ({formatCurrency(totalTbDebit, reportCurrency)}) == ∑ Credits (
+                  Total Debits ({formatCurrency(totalTbDebit, reportCurrency)}) == Total Credits (
                   {formatCurrency(totalTbCredit, reportCurrency)})
                 </span>
                 .
@@ -221,9 +221,9 @@ export default function ReportsPage() {
             </>
           ) : (
             <p>
-              <strong>General Ledger Status:</strong> Operating with zero posted transactions.
-              General ledger invariants are balanced at $0.00. Reconcile bank statements or upload
-              invoices to populate live reports.
+              <strong>General Ledger Status:</strong> Operating with zero posted transactions. Books
+              are balanced at $0.00. Reconcile bank statements or upload invoices to populate live
+              reports.
             </p>
           )}
         </CardContent>
@@ -233,7 +233,7 @@ export default function ReportsPage() {
         <Card>
           <CardContent className="flex items-center justify-center py-16 text-muted-foreground gap-2">
             <Loader2 className="w-5 h-5 animate-spin" />
-            <span>Computing financial statements from General Ledger...</span>
+            <span>Generating financial statements from your records...</span>
           </CardContent>
         </Card>
       ) : !hasData ? (
@@ -486,7 +486,7 @@ export default function ReportsPage() {
                       );
                     })}
                     <TableRow className="bg-muted/70 font-bold border-t-2">
-                      <TableCell colSpan={3}>Invariant Balance Verification</TableCell>
+                      <TableCell colSpan={3}>Balanced Books Check (Debits = Credits)</TableCell>
                       <TableCell className="text-right font-mono tabular-nums text-emerald-600 dark:text-emerald-400">
                         {formatCurrency(totalTbDebit, reportCurrency)}
                       </TableCell>

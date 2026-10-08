@@ -2,8 +2,19 @@
 
 **Document Status:** Authoritative Product Context  
 **Version:** 1.0.0  
-**Last Updated:** October 2026  
-**Target Release Track:** Phase 1 MVP (AI Accountant & Core Ledger) &rarr; Phase 2 (Payroll & Inventory Foundations)
+**Target Audience:** Founders, Product Managers, Engineers, and Finance Operators
+
+---
+
+> [!TIP]
+>
+> ### The Product in 60 Seconds
+>
+> **Agentic Business OS** is an **autonomous digital back-office and bookkeeping system** for growing companies.
+>
+> - **Traditional software** (QuickBooks, NetSuite) acts like a digital filing cabinet: humans have to type in every invoice, match every bank row, and manually click around for hours.
+> - **Agentic Business OS** acts like a **self-driving financial team**: it automatically reads bank statements, matches customer payments to invoices, categorizes expenses, and prepares balanced accounting records.
+> - **The Golden Rule:** The AI is smart, but it **never** directly touches company bank balances or edits financial records without verification. It suggests actions; a strict, 100% deterministic math engine enforces the accounting rules. If the AI is ever unsure, it brings the item to the **Review & Approvals** desk for a human to confirm.
 
 ---
 
@@ -11,42 +22,42 @@
 
 ### 1.1 Vision Statement
 
-The **Agentic Business OS** is an autonomous, production-grade multi-tenant SaaS platform engineered to run end-to-end business operations through a coordinated network of AI agents anchored by immutable, deterministic software services.
+The **Agentic Business OS** is an autonomous multi-tenant financial operating system designed to run day-to-day business accounting through a coordinated network of AI assistants backed by an unbreakable mathematical core.
 
-Unlike traditional enterprise software (e.g., NetSuite, QuickBooks, SAP) that functions as passive digital filing cabinets requiring manual data entry and human-driven reconciliation, the Agentic Business OS operates as an active, self-driving back office. The system autonomously ingests operational artifacts, classifies transactions, reconciles ledgers, flags anomalies, and prepares regulatory-compliant accounting entries—escalating to humans strictly when confidence is low, policies demand human sign-off, or data is ambiguous.
+Instead of forcing founders and finance teams to spend weekends categorizing receipts or reconciling bank statements line-by-line, the platform operates as an active, self-driving back office. It continuously imports statements, cleans up messy payee names, suggests accurate expense categories, balances company books, and flags any unusual activity—stopping to ask a human only when confidence is low or company policy requires human approval.
 
-### 1.2 The Core Product Philosophy
+### 1.2 The 5 Core Product Philosophies
 
-> **"This is NOT an accounting chatbot."**
+> **"This is NOT a gimmicky accounting chatbot."**
 
-1. **Autonomous Execution Over Conversational Gimmicks:** The primary user interface is not an open-ended conversational prompt where users must micromanage tasks. The system is an automated, event-driven engine that continuously executes routine business processes in the background.
-2. **Deterministic Computation vs. Probabilistic Reasoning:** The LLM and machine learning models are **never** the authoritative source of financial truth. All arithmetic, ledger balancing, tax rates, inventory counts, currency conversions, and accounting invariants are strictly enforced by deterministic code.
-3. **Management by Exception:** The human operator is an auditor, approver, and strategic pilot—not a manual bookkeeper. Routine transactions with high model confidence and zero rule violations are processed straight-through without human touch.
-4. **Radical Explainability & Trust:** Every automated decision, classification proposal, and agent action is accompanied by a human-readable audit trail, showing the exact source data, heuristic/model reasoning, policy evaluated, and confidence score.
-5. **Zero Unnecessary Enterprise Bloat:** Traditional ERP systems overwhelm SMBs and mid-market teams with hundreds of nested menus, manual journal entry screens, and confusing jargon. The Agentic Business OS offers an elegant, fast, high-density yet clutter-free experience across desktop, tablet, and mobile in both light and dark themes.
+1. **Automatic Action Over Chat Prompts:** You don't have to prompt or micromanage a chatbot. The system runs automatically in the background like an experienced digital bookkeeping assistant.
+2. **Smart AI Helper, Strict Math Boss:** AI models are creative, but they can make arithmetic mistakes. In this system, the AI is strictly an **advisor**. All calculations, debit/credit equality, bank balances, tax formulas, and currency arithmetic are calculated by strict, deterministic math code that never guesses.
+3. **Only Alert Humans When Needed (Management by Exception):** If 100 bank transactions match your open invoices with 99% accuracy, they are recorded automatically without spamming you. Human attention is saved strictly for items that genuinely need a decision (e.g. unknown payees, missing receipts, or wire mismatches).
+4. **Radical Explainability (Plain-English Reasons):** Every time the system makes a suggestion, it clearly explains **why** in simple English with a confidence score (e.g. _"Matched to Google LLC based on recurring monthly subscription"_).
+5. **Zero Enterprise Clutter:** Traditional accounting tools overwhelm users with hundreds of nested menus and jargon. The Agentic Business OS provides a clean, fast, clutter-free experience that works seamlessly across desktop, tablet, and mobile in both light and dark themes.
 
 ---
 
-## 2. Product Principles & Invariants
+## 2. Product Principles & Financial Safety Rules
 
-### 2.1 The Hard Boundary: Deterministic vs. Probabilistic Logic
+### 2.1 The Two Halves of the System
 
-To guarantee absolute financial integrity and zero hallucination risk, system operations are strictly split into two domains:
+To guarantee complete financial accuracy and eliminate any risk of AI hallucinations affecting money, the system is strictly divided into two distinct zones:
 
-| Category             | Probabilistic / AI Domain                                                                                                                                                                                                                                                                                                                  | Deterministic Engine Domain (Zero LLM Authority)                                                                                                                                                                                                                                                                                                                                                                                               |
-| :------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Authority**        | **Advisory, Extraction & Reasoning Only**                                                                                                                                                                                                                                                                                                  | **Absolute Source of Truth**                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| **Responsibilities** | &bull; Unstructured PDF/CSV document extraction<br>&bull; Semantic transaction classification<br>&bull; Vendor & customer entity resolution<br>&bull; Fuzzy invoice-to-payment matching<br>&bull; Anomaly detection & contextual hypothesis<br>&bull; Natural-language explanations & summaries<br>&bull; Workflow routing recommendations | &bull; General ledger debit/credit equality ($\sum Dr = \sum Cr$)<br>&bull; Account balance calculation & rolling balances<br>&bull; Monetary precision arithmetic (fixed-point cents/fractions)<br>&bull; Payroll gross-to-net tax & withholding formulas<br>&bull; Inventory quantity balance & FIFO/WAV unit cost formulas<br>&bull; Accounting period locks & close enforcement<br>&bull; Multi-tenant data isolation & RBAC authorization |
+| Feature / Responsibility | AI Assistant Zone (Advisory & Extraction)                                                                                                                                                                                                                                | Deterministic Math Engine (100% Strict Rules)                                                                                                                                                                                                                                                                                           |
+| :----------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Role & Authority**     | **Advisory only — proposes suggestions**                                                                                                                                                                                                                                 | **Absolute authority — enforces financial truth**                                                                                                                                                                                                                                                                                       |
+| **What it handles**      | &bull; Reading messy PDF & CSV bank statements<br>&bull; Figuring out who was paid from raw bank memos<br>&bull; Suggesting expense and revenue categories<br>&bull; Matching incoming wires to open invoices<br>&bull; Writing plain-English summaries and explanations | &bull; Checking that Total Debits equal Total Credits ($\sum Dr = \sum Cr$)<br>&bull; Calculating real bank and account balances down to the cent<br>&bull; Gross-to-net salary withholding and tax formulas<br>&bull; Locking closed tax years and accounting periods<br>&bull; Enforcing multi-tenant company privacy & access rights |
 
-### 2.2 Human-in-the-Loop (HITL) Triggers
+### 2.2 When the AI Asks for Human Confirmation (The 5 Safety Checkpoints)
 
-The system executes tasks autonomously until it encounters one of five explicit escalation barriers:
+The system works autonomously until it encounters one of five safety checkpoints, at which point it halts and routes the item to the **Review & Approvals** center:
 
-1. **Low Confidence:** Extracted data, counterparty resolution, or transaction classification falls below configured confidence thresholds (e.g., $< 90\%$).
-2. **Mandatory Authorization:** System policy requires explicit human sign-off for actions exceeding defined dollar thresholds or impacting critical accounts (e.g., disbursements $> \$5,000$, tax adjustments).
-3. **Explicit Financial Action:** Disbursing funds, signing payroll files, issuing customer credit notes, or closing an accounting period.
-4. **Missing or Conflicting Information:** Incomplete receipt data, unmatched bank statement lines, or contradictory invoice terms.
-5. **Policy / Guardrail Violation:** Negative inventory attempt, out-of-balance proposal, sudden spike in recurring vendor charges, or suspicious payee bank detail change.
+1. **Low Confidence ($< 90\%$):** If the AI is uncertain about who was paid or which expense category applies.
+2. **High-Value Payments:** Company policies that require human sign-off for large transactions (e.g. transfers over $5,000).
+3. **Official Company Actions:** Releasing payroll funds, issuing customer refund credits, or closing a fiscal period.
+4. **Missing Information:** Incomplete receipt data, unmatched bank lines, or ambiguous terms.
+5. **Safety Alerts:** Unusual price spikes from recurring vendors, duplicate charges, or changed bank routing numbers.
 
 ---
 

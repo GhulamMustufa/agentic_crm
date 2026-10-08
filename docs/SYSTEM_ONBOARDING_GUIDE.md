@@ -54,11 +54,11 @@ Here is how a real user interacts with the platform step-by-step:
          ├───► [3. Banking Feed (/banking)] ──────► Upload bank statement PDF/CSV
          │                                              │ AI extracts transactions
          │                                              ▼
-         ├───► [4. Exception Center (/exceptions)] ◄─ If AI is unsure, human approves
+         ├───► [4. Review & Approvals (/exceptions)] ◄─ If AI is unsure, human confirms
          │
          ├───► [5. Invoices & Bills (/invoices)] ──► Manage customer invoices & vendor bills
          │
-         ├───► [6. Transactions (/transactions)] ──► View the immutable General Ledger entries
+         ├───► [6. Transactions (/transactions)] ──► View verified balanced records
          │
          └───► [7. Reports (/reports)] ────────────► Live P&L, Balance Sheet & Trial Balance
 ```
@@ -88,29 +88,32 @@ Here is how a real user interacts with the platform step-by-step:
      - **Reconciling:** Matches the bank deduction to an existing unpaid vendor bill.
      - **Complete:** Stamps the transaction into the double-entry books.
 
-### Screen 4: AI Exception Center (`/exceptions`)
+### Screen 4: Review & Approvals (`/exceptions`)
 
-- **What it does:** The AI's "help desk". Whenever the AI detects a problem, it stops and brings it here.
-- **Examples of Exceptions:**
-  - **Unrecognized Vendor:** A wire arrived with an unknown name.
-  - **Missing Receipt:** An employee spent $45 on Uber without attaching an invoice.
-  - **Duplicate Invoice:** Two bills arrived from the same supplier with identical amounts.
-- **The Interaction:** The human user clicks **"Approve AI Proposal"** or **"Resolve"**. Once approved, the ledger updates instantly.
+- **What it does:** The review desk for transactions needing quick confirmation. Whenever the AI is less than 90% certain of who was paid or which category applies, it stops and brings it here instead of guessing with your money.
+- **The 5 Types of Exceptions:**
+  1. **Unrecognized Payee:** New vendor or unclear wire memo.
+  2. **Invoice Mismatch:** Amount paid differs from the open invoice total.
+  3. **Duplicate Entry:** The same statement or charge was detected twice.
+  4. **Missing Receipt:** Card swipe missing tax receipt proof.
+  5. **File Issue:** Blurry, corrupted, or password-protected PDF.
+- **The User Actions:** The user reviews the AI suggestion and clicks **"Approve & Record"** (adds directly to books), **"Ignore / Unmatched"** (discards duplicate or leaves untouched), or **"Decide Later"**.
+- **Deep-Dive Documentation:** See [`ACCOUNTING_CONCEPTS_AND_EXCEPTIONS.md`](./ACCOUNTING_CONCEPTS_AND_EXCEPTIONS.md) for the complete guide.
 
 ### Screen 5: Invoices & Bills (`/invoices`)
 
-- **What it does:** Tracks money coming in (Accounts Receivable) and money going out (Accounts Payable).
+- **What it does:** Tracks money coming in from clients (Accounts Receivable / Money In) and bills owed to suppliers (Accounts Payable / Money Out).
 - **What you see:**
   - List of customer invoices and vendor bills.
   - Status badges: `Paid`, `Awaiting Payment`, `Overdue`, `Draft`.
   - Real-time calculation of outstanding receivables and upcoming vendor obligations.
 
-### Screen 6: Transactions & Journal Entries (`/transactions`)
+### Screen 6: Transactions & Records (`/transactions`)
 
-- **What it does:** The immutable accounting book of record.
+- **What it does:** The verified accounting book of record.
 - **What you see:**
-  - Every single financial movement with its debit, credit, account code (`1010 Cash`, `4010 Revenue`, `6010 Hosting`), and audit lock.
-  - Guarantees double-entry balance: Total Debits always equals Total Credits down to the exact cent.
+  - Every single financial movement with its debit, credit, standard account code (`1010 Cash`, `1200 AR`, `4010 Revenue`, `5010 Hosting`), and balanced status.
+  - Guarantees 100% balance: Total Debits always equals Total Credits down to the exact cent.
 
 ### Screen 7: Real-Time Financial Reports (`/reports`)
 

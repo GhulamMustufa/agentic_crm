@@ -329,10 +329,9 @@ export default function BankingPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Bank Accounts & Ingestion</h1>
+          <h1 className="text-3xl font-bold tracking-tight">Bank Accounts & Statements</h1>
           <p className="text-muted-foreground mt-1">
-            Manage linked institutional accounts and upload bank statements for automated ledger
-            ingestion.
+            Manage connected bank accounts and upload bank statements for automated bookkeeping.
           </p>
         </div>
         <div className="flex flex-wrap gap-2 w-full sm:w-auto">
@@ -353,8 +352,7 @@ export default function BankingPage() {
           <CardHeader>
             <CardTitle className="text-lg">Connect Bank Account</CardTitle>
             <CardDescription>
-              Register an institutional bank account linked to your General Ledger Cash account
-              (1010).
+              Register a bank account connected to your cash records (Account 1010).
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -568,7 +566,8 @@ export default function BankingPage() {
               <div>
                 <CardTitle>Upload Statement</CardTitle>
                 <CardDescription>
-                  Upload bank statements (PDF or CSV) to trigger the live AI ingestion pipeline.
+                  Upload bank statements (PDF or CSV) to automatically import and match
+                  transactions.
                 </CardDescription>
               </div>
               <div className="text-right">
@@ -749,10 +748,12 @@ export default function BankingPage() {
                       ) : (
                         <Clock className="w-4 h-4" />
                       )}
-                      Chart of Accounts Classification
+                      Expense & Income Categorization
                     </span>
                     {uploadProgress >= 75 && (
-                      <span className="text-xs text-muted-foreground">Heuristic + LLM Routing</span>
+                      <span className="text-xs text-muted-foreground">
+                        Automatic Pattern Matching
+                      </span>
                     )}
                   </div>
 
@@ -767,11 +768,11 @@ export default function BankingPage() {
                       ) : (
                         <Clock className="w-4 h-4" />
                       )}
-                      Double-Entry General Ledger Reconciliation
+                      Double-Entry Balance Verification
                     </span>
                     {uploadProgress >= 90 && (
                       <span className="text-xs text-emerald-500">
-                        Checking Sum(Debits) == Sum(Credits)
+                        Checking that Debits equal Credits
                       </span>
                     )}
                   </div>
@@ -784,7 +785,7 @@ export default function BankingPage() {
                   <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
                   <div className="space-y-1">
                     <p className="font-semibold text-emerald-900 dark:text-emerald-200">
-                      Statement Successfully Ingested & Reconciled!
+                      Statement Successfully Imported & Recorded!
                     </p>
                     <p className="text-xs text-emerald-800 dark:text-emerald-300">
                       Statement ID: <span className="font-mono">{uploadResult?.statement.id}</span>
@@ -803,13 +804,13 @@ export default function BankingPage() {
                     <div className="text-2xl font-bold tabular-nums text-indigo-500">
                       {uploadResult?.proposals?.length ?? 0}
                     </div>
-                    <div className="text-xs text-muted-foreground mt-1">AI Proposals Generated</div>
+                    <div className="text-xs text-muted-foreground mt-1">Suggested Matches</div>
                   </div>
                   <div className="p-3 bg-card border rounded-lg">
                     <div className="text-2xl font-bold tabular-nums text-amber-500">
                       {uploadResult?.exceptions?.length ?? 0}
                     </div>
-                    <div className="text-xs text-muted-foreground mt-1">Exceptions Flagged</div>
+                    <div className="text-xs text-muted-foreground mt-1">Items Needing Review</div>
                   </div>
                 </div>
 
@@ -822,7 +823,7 @@ export default function BankingPage() {
                   {(uploadResult?.exceptions?.length ?? 0) > 0 && (
                     <Button asChild variant="outline" className="flex-1">
                       <Link href="/exceptions">
-                        Review Exceptions ({uploadResult?.exceptions.length})
+                        Review Items ({uploadResult?.exceptions.length})
                       </Link>
                     </Button>
                   )}

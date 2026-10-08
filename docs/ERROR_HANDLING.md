@@ -6,6 +6,19 @@
 
 ---
 
+> [!TIP]
+>
+> ### Error Handling in 60 Seconds
+>
+> **Errors are classified into 4 simple real-world groups:**
+>
+> 1. **Accounting Rule Errors (`DomainError` - 422):** The action is mathematically or legally impossible (e.g. Total Debits don't equal Total Credits, or trying to edit a closed tax year). _Cannot be retried without fixing the numbers._
+> 2. **Bad Form Data (`ValidationError` - 400):** A required field was missing or formatted incorrectly (e.g. an invalid date or negative price).
+> 3. **Simultaneous Edit Conflict (`ConflictError` - 409):** Two teammates tried to update the same invoice at the exact same millisecond. _System automatically pauses and safely retries._
+> 4. **Temporary Network Glitches (`InfraError` / `ExternalApiError`):** An external service (Stripe or cloud database) took too long to respond. _System retries automatically with exponential backoff._
+
+---
+
 ## 1. Unified Error Taxonomy
 
 Every error across the frontend, backend, workers, and AI agents falls into one of eight standardized classifications:
@@ -19,25 +32,25 @@ Every error across the frontend, backend, workers, and AI agents falls into one 
                                        ▼
 ┌──────────────────┬──────────────────┬──────────────────┬──────────────────┐
 │   DomainError    │ ValidationError  │    AuthError     │  ConflictError   │
-│  (Business Rule) │ (Schema/Format)  │  (AuthN & AuthZ) │ (Lock/Version)   │
+│  (Business Rule) │ (Form/Format)    │  (Login/Access)  │ (Simultaneous)   │
 ├──────────────────┼──────────────────┼──────────────────┼──────────────────┤
 │   InfraError     │ ExternalApiError │ AIProviderError  │  JobWorkerError  │
-│  (DB, S3, Redis) │ (Stripe, Plaid)  │  (OpenAI/Gemini) │ (BullMQ Queue)   │
+│  (DB, S3, Redis) │ (Stripe, Plaid)  │  (OpenAI/Gemini) │ (Background Job) │
 └──────────────────┴──────────────────┴──────────────────┴──────────────────┘
 ```
 
-### 1.1 Detailed Error Categories
+### 1.1 Detailed Error Categories in Plain English
 
-| Error Classification   | Description                                                                            | HTTP Status                               | Retryable?         | Example Trigger                                                                   |
-| :--------------------- | :------------------------------------------------------------------------------------- | :---------------------------------------- | :----------------- | :-------------------------------------------------------------------------------- |
-| **`DomainError`**      | Core business invariant or accounting rule violation.                                  | `422 Unprocessable Entity`                | No                 | Posting an entry where $\sum Dr \ne \sum Cr$; posting to a locked fiscal period.  |
-| **`ValidationError`**  | Ingress data schema mismatch, invalid field format, missing required parameter.        | `400 Bad Request`                         | No                 | Invalid date string, negative debit amount, malformed UUID.                       |
-| **`AuthError`**        | Authentication failure (`401`) or authorization / tenant membership denial (`403`).    | `401 Unauthorized` / `403 Forbidden`      | No                 | Expired JWT, insufficient RBAC role, cross-tenant resource tampering.             |
-| **`ConflictError`**    | Concurrency version mismatch, state machine race condition, duplicate idempotency key. | `409 Conflict`                            | Yes (with backoff) | Concurrent modification of an invoice draft; concurrent period closure attempt.   |
-| **`InfraError`**       | Database connection timeout, Redis crash, S3 network disruption.                       | `500 Internal Server Error` (Masked)      | Yes                | PostgreSQL connection pool saturation, transient network partition.               |
-| **`ExternalApiError`** | Failure communicating with upstream vendor or banking API.                             | `502 Bad Gateway` / `504 Gateway Timeout` | Contextual         | Plaid token invalid (No); Stripe API 503 rate limit (Yes).                        |
-| **`AIProviderError`**  | LLM API rate limit, context window overflow, hallucinated invalid JSON output.         | `502 Bad Gateway`                         | Contextual         | Model outputs unparsable JSON (Retry with correction prompt); Context limit (No). |
-| **`JobWorkerError`**   | Background asynchronous job failure in BullMQ.                                         | N/A (Logged/Queued)                       | Contextual         | Corrupt bank statement PDF (Terminal &rarr; Route to Exception Center).           |
+| Error Classification   | What Happened (Plain English)                              | HTTP Code            | Safe to Auto-Retry? | Real-World Example                                                                      |
+| :--------------------- | :--------------------------------------------------------- | :------------------- | :------------------ | :-------------------------------------------------------------------------------------- |
+| **`DomainError`**      | An accounting rule or invariant was broken.                | `422 Unprocessable`  | No (Requires fix)   | Debits don't equal Credits ($\sum Dr \ne \sum Cr$); trying to edit a closed tax period. |
+| **`ValidationError`**  | Form data was missing or formatted incorrectly.            | `400 Bad Request`    | No (Requires fix)   | Negative price entered, missing customer name, invalid date string.                     |
+| **`AuthError`**        | User is not logged in (`401`) or lacks permission (`403`). | `401 / 403`          | No                  | Expired login token, trying to view another company's records.                          |
+| **`ConflictError`**    | Simultaneous edits or duplicate submission detected.       | `409 Conflict`       | Yes (Auto-retried)  | Two teammates clicked "Save" on the same invoice at the exact same millisecond.         |
+| **`InfraError`**       | Temporary database or cloud connection hiccup.             | `500 Server Error`   | Yes (Auto-retried)  | Database connection pool momentarily busy; brief network blip.                          |
+| **`ExternalApiError`** | External partner service (Stripe, Plaid) is down.          | `502 / 504 Gateway`  | Contextual          | Bank API rate limit exceeded; upstream gateway timeout.                                 |
+| **`AIProviderError`**  | External AI model timed out or returned invalid format.    | `502 Gateway Error`  | Contextual          | AI response took too long; retry with structured schema prompt.                         |
+| **`JobWorkerError`**   | Background queue job ran into an issue.                    | Logged in background | Contextual          | Corrupted bank PDF file (Routes straight to Review & Approvals desk).                   |
 
 ---
 

@@ -90,13 +90,13 @@ export function ExceptionListClient({
       return { previousData };
     },
     onSuccess: () => {
-      toast.success('Proposal approved and exception resolved.');
+      toast.success('Transaction approved and recorded to books.');
     },
     onError: (err, id, context) => {
       if (context?.previousData) {
         queryClient.setQueryData(exceptionKeys.lists(), context.previousData);
       }
-      toast.error('Failed to resolve exception.');
+      toast.error('Failed to approve transaction.');
       console.error('Failed to resolve exception item:', err);
     },
     onSettled: () => {
@@ -126,13 +126,13 @@ export function ExceptionListClient({
       return { previousData };
     },
     onSuccess: () => {
-      toast.success('Exception dismissed.');
+      toast.success('Transaction ignored and left unmatched.');
     },
     onError: (err, id, context) => {
       if (context?.previousData) {
         queryClient.setQueryData(exceptionKeys.lists(), context.previousData);
       }
-      toast.error('Failed to dismiss exception.');
+      toast.error('Failed to update transaction.');
       console.error('Failed to dismiss exception item:', err);
     },
     onSettled: () => {
@@ -157,7 +157,7 @@ export function ExceptionListClient({
   const handleSkip = () => {
     if (!selectedId || filteredExceptions.length === 0) return;
     if (filteredExceptions.length === 1) {
-      toast.info('This is the only pending exception in the queue.');
+      toast.info('This is the only pending item in the queue.');
       return;
     }
     const currentIndex = filteredExceptions.findIndex((e) => e.id === selectedId);
@@ -189,27 +189,27 @@ export function ExceptionListClient({
     switch (type) {
       case 'unrecognized_vendor':
       case 'UNKNOWN_TRANSACTION':
-        return 'Unknown Vendor';
+        return 'Unrecognized Payee';
       case 'AMBIGUOUS_TRANSACTION':
-        return 'Ambiguous Transaction';
+        return 'Unclear Transaction';
       case 'ambiguous_category':
-        return 'Ambiguous Category';
+        return 'Category Needed';
       case 'DUPLICATE':
       case 'DUPLICATE_STATEMENT':
       case 'DUPLICATE_TRANSACTION':
         return 'Duplicate Entry';
       case 'missing_receipt':
       case 'MISSING_RECEIPT':
-        return 'Missing Receipt';
+        return 'Receipt Needed';
       default:
-        return 'Exception Item';
+        return 'Needs Review';
     }
   };
 
   if (isLoading && exceptions.length === 0) {
     return (
       <div className="flex flex-col h-[calc(100vh-8rem)] pt-12 items-center justify-center">
-        <p className="text-muted-foreground animate-pulse">Loading exception center...</p>
+        <p className="text-muted-foreground animate-pulse">Loading items for review...</p>
       </div>
     );
   }
@@ -220,8 +220,8 @@ export function ExceptionListClient({
         <EmptyState
           icon={CheckCircle2}
           title="All caught up!"
-          description="Your AI accountant has handled everything. There are no exceptions requiring your attention."
-          actionLabel="Refresh Exceptions"
+          description="Your books are up to date. There are no transactions currently waiting for your review."
+          actionLabel="Refresh List"
           onAction={() => {
             queryClient.invalidateQueries({ queryKey: exceptionKeys.lists() });
           }}
@@ -293,18 +293,18 @@ export function ExceptionListClient({
                 onClick={() => setMobileView('list')}
                 className="md:hidden self-start -ml-2 text-muted-foreground hover:text-foreground h-8 px-2"
               >
-                <ArrowLeft className="w-4 h-4 mr-1.5" /> Back to exceptions
+                <ArrowLeft className="w-4 h-4 mr-1.5" /> Back to list
               </Button>
               <div className="flex justify-between items-start gap-4">
                 <div className="space-y-1 min-w-0">
                   <div className="flex items-center gap-2 mb-2">
                     <Badge variant="outline" className="font-mono text-[11px]">
-                      EXC-{selectedException.id.slice(0, 8).toUpperCase()}
+                      REV-{selectedException.id.slice(0, 8).toUpperCase()}
                     </Badge>
                     <Badge
                       variant={selectedException.severity === 'high' ? 'destructive' : 'secondary'}
                     >
-                      {selectedException.severity} priority
+                      {selectedException.severity === 'high' ? 'High' : 'Normal'} Priority
                     </Badge>
                   </div>
                   <h2 className="text-xl font-bold leading-snug">
@@ -332,7 +332,7 @@ export function ExceptionListClient({
               <div className="space-y-6">
                 <div>
                   <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-                    AI Analysis & Proposal
+                    AI Suggestion & Reason
                   </h3>
                   <Card className="border-primary/20 bg-primary/5">
                     <CardContent className="p-5">
@@ -354,11 +354,11 @@ export function ExceptionListClient({
 
                 <div>
                   <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-                    Exception Context
+                    What happens when you approve
                   </h3>
                   <div className="text-sm text-muted-foreground">
-                    This item requires review before final ledger posting. Approving this proposal
-                    will accept the AI decision, post journal entries, and resolve the exception.
+                    This transaction will be recorded to your accounting books under the category
+                    suggested above. Your bank and book balances will update automatically.
                   </div>
                 </div>
               </div>
@@ -376,7 +376,7 @@ export function ExceptionListClient({
                 className="text-muted-foreground hover:text-destructive hover:border-destructive"
               >
                 <XCircle className="w-4 h-4 mr-2" />
-                {dismissMutation.isPending ? 'Dismissing...' : 'Dismiss'}
+                {dismissMutation.isPending ? 'Updating...' : 'Ignore / Unmatched'}
               </Button>
 
               <div className="flex flex-wrap items-center gap-2">
@@ -387,7 +387,7 @@ export function ExceptionListClient({
                   disabled={dismissMutation.isPending || resolveMutation.isPending}
                 >
                   <SkipForward className="w-4 h-4 mr-2" />
-                  Skip for now
+                  Decide Later
                 </Button>
                 <Button
                   size="sm"
@@ -399,7 +399,7 @@ export function ExceptionListClient({
                   className="bg-emerald-600 hover:bg-emerald-700 text-white"
                 >
                   <Check className="w-4 h-4 mr-2" />
-                  {resolveMutation.isPending ? 'Approving...' : 'Approve Proposal'}
+                  {resolveMutation.isPending ? 'Approving...' : 'Approve & Record'}
                 </Button>
               </div>
             </div>
@@ -407,7 +407,7 @@ export function ExceptionListClient({
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground p-8 text-center">
             <HelpCircle className="w-12 h-12 mb-4 opacity-20" />
-            <p>Select an exception from the list to view details.</p>
+            <p>Select a transaction from the list to view details.</p>
           </div>
         )}
       </div>

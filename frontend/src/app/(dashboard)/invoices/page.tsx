@@ -812,7 +812,7 @@ export default function InvoicesPage() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Invoices & Bills</h1>
           <p className="text-muted-foreground mt-1">
-            Deterministic Accounts Receivable (AR) & Accounts Payable (AP) ledger integration.
+            Track money owed by customers (Invoices) and bills you owe to suppliers (Bills).
           </p>
         </div>
         <div className="flex flex-wrap gap-2 w-full md:w-auto">
@@ -845,10 +845,12 @@ export default function InvoicesPage() {
                 <h2 className="text-xl font-bold flex items-center gap-2">
                   <Receipt className="w-5 h-5 text-primary" />
                   {editingInvoiceId ? 'Edit Draft' : 'Create New'}{' '}
-                  {formType === 'INVOICE' ? 'Customer Invoice (AR)' : 'Vendor Bill (AP)'}
+                  {formType === 'INVOICE'
+                    ? 'Customer Invoice (Money In)'
+                    : 'Supplier Bill (Money Out)'}
                 </h2>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Balanced double-entry journal entries will be generated against Accounts{' '}
+                  Will be recorded to Accounts{' '}
                   {formType === 'INVOICE' ? 'Receivable (1200)' : 'Payable (2010)'}.
                 </p>
               </div>
@@ -1400,12 +1402,12 @@ export default function InvoicesPage() {
                     {isSubmitting ? (
                       <>
                         <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        Posting...
+                        Recording...
                       </>
                     ) : (
                       <>
                         <Send className="w-4 h-4 mr-2" />
-                        {editingInvoiceId ? 'Update & Post to Ledger' : 'Post to Ledger'}
+                        {editingInvoiceId ? 'Update & Record Invoice' : 'Confirm & Record Invoice'}
                       </>
                     )}
                   </Button>
@@ -1472,7 +1474,7 @@ export default function InvoicesPage() {
             <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400 tabular-nums">
               {formatCurrency(collectedThisMonth, invoices[0]?.currency || 'USD')}
             </div>
-            <p className="text-xs text-muted-foreground mt-1">Reconciled against general ledger</p>
+            <p className="text-xs text-muted-foreground mt-1">Matched and recorded in your books</p>
           </CardContent>
         </Card>
       </div>
@@ -1494,7 +1496,7 @@ export default function InvoicesPage() {
             onClick={() => setActiveTab('RECEIVABLE')}
             className="cursor-pointer"
           >
-            Customer Invoices (AR)
+            Customer Invoices (Money In)
           </Button>
           <Button
             variant={activeTab === 'PAYABLE' ? 'default' : 'outline'}
@@ -1502,7 +1504,7 @@ export default function InvoicesPage() {
             onClick={() => setActiveTab('PAYABLE')}
             className="cursor-pointer"
           >
-            Vendor Bills (AP)
+            Supplier Bills (Money Out)
           </Button>
           <Button
             variant={activeTab === 'OVERDUE' ? 'default' : 'outline'}
@@ -1528,10 +1530,9 @@ export default function InvoicesPage() {
       {/* Main Table Card */}
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle>Invoices & Bills Ledger</CardTitle>
+          <CardTitle>Invoices & Bills Summary</CardTitle>
           <CardDescription>
-            Showing {filteredInvoices.length} entries with double-entry general ledger
-            synchronization.
+            Showing {filteredInvoices.length} entries tracked in your books.
           </CardDescription>
         </CardHeader>
         <CardContent>

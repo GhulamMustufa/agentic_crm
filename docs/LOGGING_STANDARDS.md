@@ -7,16 +7,28 @@
 
 ---
 
+> [!TIP]
+>
+> ### Logging & Privacy in 60 Seconds
+>
+> **Clean structured logs, zero private data leaks.**
+>
+> 1. **Structured JSON format:** Instead of messy text strings, logs are emitted as neat JSON objects that can be searched and filtered instantly.
+> 2. **Automatic Privacy Masking (Zero PII Leaks):** Passwords, credit cards, bank account numbers, and API tokens are automatically replaced with `[REDACTED]` before anything is saved to disk.
+> 3. **Trace every request:** Every log entry carries a `correlationId` and `tenantId`, so engineers can follow any transaction from start to finish across all server processes.
+
+---
+
 ## 1. Structured Logging Principles
 
-All logs generated in production must be machine-readable, structured JSON emitted directly to `stdout`.
+All logs generated in production must be machine-readable, structured JSON emitted directly to standard system output.
 
-### 1.1 Core Logging Invariants
+### 1.1 Core Logging Rules
 
-1. **Never use `console.log()`:** Raw `console.log()`, `console.warn()`, or `console.error()` are strictly prohibited in application and worker code. Use the injected `AppLoggerService`.
-2. **Contextual Enrichment:** Every log record automatically includes correlation identifiers, tenant context, and service metadata.
-3. **Zero Sensitive Data:** Logs must be scrubbed of credentials, full bank accounts, and PII before serialization.
-4. **Appropriate Log Levels:** Logging everything at `INFO` or polluting production with `DEBUG` is a defect.
+1. **Use the App Logger:** Raw `console.log()` is avoided in production. Use the centralized `AppLoggerService`.
+2. **Contextual Enrichment:** Every log record automatically includes request IDs, company IDs (`tenantId`), and module names.
+3. **Zero Sensitive Data:** All passwords, tokens, and bank details are scrubbed before printing.
+4. **Clean Log Levels:** Use `ERROR` for failures, `WARN` for unusual issues, and `INFO` for normal completed milestones.
 
 ---
 

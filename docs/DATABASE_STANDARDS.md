@@ -7,15 +7,27 @@
 
 ---
 
+> [!TIP]
+>
+> ### Database Standards in 60 Seconds
+>
+> **Zero rounding bugs, zero data loss, complete company privacy.**
+>
+> 1. **Money is stored in whole integer cents (`amount_cents`):** Computers make strange rounding mistakes with floating-point decimals (e.g. `0.1 + 0.2 = 0.30000000004`). By storing `$10.50` as `1050` whole cents, rounding bugs are 100% eliminated.
+> 2. **Financial records are permanent (Append-Only):** In real accounting, you never erase past entries with white-out. If a mistake was made, a new reversing entry is posted. `UPDATE` and `DELETE` on posted transactions are strictly blocked.
+> 3. **Every company has complete privacy:** Every financial table has a `tenant_id`. Queries must always filter by `tenant_id` derived from verified login sessions. Company A can never view or modify Company B's data.
+
+---
+
 ## 1. Relational Schema Design & Architecture
 
 The database architecture is designed for absolute financial consistency, strict multi-tenant isolation, and zero data loss.
 
 ### 1.1 Structural Invariants
 
-1. **Third Normal Form (3NF) for Core Ledger:** The operational and accounting core (journal entries, lines, bank transactions, invoices) is strictly normalized to eliminate update anomalies.
-2. **Materialized Views for Reporting:** Financial statements (P&L, Balance Sheet) query incremental materialized account balance tables rather than scanning millions of raw historical ledger lines on every request.
-3. **Immutable Accounting Tables:** Tables recording posted financial events (`journal_entries`, `journal_entry_lines`, `audit_events`) are **append-only**. `UPDATE` and `DELETE` operations are blocked by application rules and database triggers.
+1. **Normalized Core Tables:** The accounting core (journal entries, lines, bank transactions, invoices) is organized so data is never duplicated in ways that can get out of sync.
+2. **Fast Pre-Calculated Reports:** Financial statements (P&L, Balance Sheet) read from summary balance tables rather than scanning millions of historical rows every time a page is viewed.
+3. **Immutable Accounting Tables:** Tables recording posted financial events (`journal_entries`, `journal_entry_lines`, `audit_events`) are **permanent and append-only**. `UPDATE` and `DELETE` operations are blocked by application rules and database triggers.
 
 ---
 

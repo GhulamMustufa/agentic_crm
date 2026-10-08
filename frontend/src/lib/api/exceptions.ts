@@ -135,7 +135,8 @@ export async function getPendingExceptions(): Promise<ExceptionItem[]> {
         description: item.reason,
         type: rawType,
         severity: sev,
-        aiProposal: item.suggestedAction || item.aiRecommendation || 'Review and reconcile item.',
+        aiProposal:
+          item.suggestedAction || item.aiRecommendation || 'Review and confirm this transaction.',
       };
     });
   } catch (err) {

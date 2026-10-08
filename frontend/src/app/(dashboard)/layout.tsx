@@ -22,7 +22,7 @@ import { authStorage, AuthUser } from '@/lib/auth-storage';
 
 const navigation = [
   { name: 'Overview', href: '/', icon: LayoutDashboard },
-  { name: 'Exceptions', href: '/exceptions', icon: CheckCircle },
+  { name: 'Approvals', href: '/exceptions', icon: CheckCircle },
   { name: 'Banking', href: '/banking', icon: Building2 },
   { name: 'Transactions', href: '/transactions', icon: Receipt },
   { name: 'Invoices', href: '/invoices', icon: FileText },

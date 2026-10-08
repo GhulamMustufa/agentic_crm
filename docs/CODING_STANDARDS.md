@@ -7,15 +7,28 @@
 
 ---
 
+> [!TIP]
+>
+> ### Coding Standards in 60 Seconds
+>
+> **Clean code, strict types, zero financial bugs.**
+>
+> 1. **Keep it simple and readable:** Avoid clever, overly complicated code tricks. Clean code that a junior developer can read in 2 minutes is always better than complex "magic".
+> 2. **Strict TypeScript (`any` is banned):** Every variable, function return, and API response has a strict type. This catches bugs _before_ code ever runs in production.
+> 3. **Never let AI write to balances directly:** AI suggestions must pass through strict validation code before any money changes hands or ledgers are updated.
+> 4. **Fail safely:** If an operation hits an error halfway through, cancel and roll it back completely. Never leave a financial transaction half-recorded.
+
+---
+
 ## 1. Core Engineering Principles
 
-Engineering at the Agentic Business OS is guided by pragmatic principles rather than academic dogma. The goal is correctness, maintainability, security, predictability, and velocity.
+Engineering in the Agentic Business OS is guided by practical, battle-tested principles rather than academic theory. Our priority is correctness, security, maintainability, and clean developer speed.
 
 ### 1.1 The Invariant Principles
 
-1. **KISS (Keep It Simple, Stupid):** The simplest design that cleanly satisfies current requirements and accommodates known extension points is the superior design. Avoid clever, obfuscated, or overly intricate patterns.
-2. **YAGNI (You Aren't Gonna Need It):** Build for the known requirements of Phase 1 and Phase 2. Do not introduce generic meta-frameworks, dynamic plugin loaders, or multi-tenant database partitioning sharding schemes before they are required.
-3. **DRY (Don't Repeat Yourself) — Pragmatically Applied:** DRY applies to _knowledge and business rules_, not superficial structural resemblance. Two blocks of code that look identical today but evolve under different business drivers must **not** be unified into an artificial abstraction. **Prefer duplication over the wrong abstraction.**
+1. **Keep It Simple (KISS):** The simplest design that solves the problem clearly is the best design. Avoid intricate or confusing patterns.
+2. **Build What You Need Now (YAGNI):** Build for current real requirements. Do not over-engineer speculative features before they are needed.
+3. **Don't Repeat Yourself (DRY) — Pragmatically:** Avoid duplicate business rules. However, if two small pieces of code look similar but represent different business concepts, prefer simple duplication over a confusing, over-complicated shared abstraction.
 4. **SOLID Principles:**
    - **Single Responsibility (SRP):** A class, service, or function should have one reason to change. Separate invoice tax calculation from invoice PDF generation.
    - **Open/Closed:** Core accounting workflows must be open for extension (e.g., adding a new document parser) but closed for modification (the core ledger engine remains untouched).
