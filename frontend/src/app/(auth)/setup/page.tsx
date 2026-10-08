@@ -18,6 +18,7 @@ import { authStorage } from '@/lib/auth-storage';
 const setupSchema = z.object({
   companyName: z.string().min(2, { message: 'Company name is required' }),
   industry: z.string().min(2, { message: 'Industry is required' }),
+  baseCurrency: z.string().min(3).max(3),
   registrationNumber: z.string().optional(),
 });
 
@@ -36,6 +37,7 @@ export default function SetupPage() {
     defaultValues: {
       companyName: '',
       industry: '',
+      baseCurrency: 'MYR',
       registrationNumber: '',
     },
   });
@@ -59,11 +61,13 @@ export default function SetupPage() {
         {
           legalName: data.companyName,
           slug,
+          baseCurrency: data.baseCurrency,
         },
       );
 
       const tenantId = orgRes.data.id;
       authStorage.setActiveTenantId(tenantId);
+      authStorage.setTenantCurrency(data.baseCurrency);
 
       // 2. Seed Standard Chart of Accounts (COA)
       try {
@@ -110,17 +114,35 @@ export default function SetupPage() {
               )}
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="industry">Industry</Label>
-              <Input
-                id="industry"
-                placeholder="Technology, Retail, etc."
-                disabled={isLoading}
-                {...register('industry')}
-              />
-              {errors.industry && (
-                <p className="text-sm text-destructive font-medium">{errors.industry.message}</p>
-              )}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="industry">Industry</Label>
+                <Input
+                  id="industry"
+                  placeholder="Technology, Retail, etc."
+                  disabled={isLoading}
+                  {...register('industry')}
+                />
+                {errors.industry && (
+                  <p className="text-sm text-destructive font-medium">{errors.industry.message}</p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="baseCurrency">Primary Operating Currency</Label>
+                <select
+                  id="baseCurrency"
+                  disabled={isLoading}
+                  {...register('baseCurrency')}
+                  className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring font-mono font-medium"
+                >
+                  <option value="MYR">MYR (RM) - Malaysian Ringgit</option>
+                  <option value="USD">USD ($) - US Dollar</option>
+                  <option value="SGD">SGD ($) - Singapore Dollar</option>
+                  <option value="EUR">EUR (€) - Euro</option>
+                  <option value="GBP">GBP (£) - British Pound</option>
+                </select>
+              </div>
             </div>
 
             <div className="space-y-2">

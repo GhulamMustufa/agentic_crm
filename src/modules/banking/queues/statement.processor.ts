@@ -1,6 +1,6 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Inject, Logger } from '@nestjs/common';
-import { Job } from 'bullmq';
+import { Job, UnrecoverableError } from 'bullmq';
 
 import { OBJECT_STORAGE_TOKEN } from '../../../core/storage/storage.service';
 import { BankProcessingService } from '../services/bank-processing.service';
@@ -35,8 +35,9 @@ export class StatementProcessor extends WorkerHost {
       this.logger.debug(`Downloading object ${dto.objectKey} from storage...`);
       const buffer = await this.storageService.getObject(dto.objectKey);
 
-      // 2. Convert to Base64 for the existing processing service
-      const contentBase64 = buffer.toString('base64');
+      // 2. Format content for parser (UTF-8 for CSV, Base64 for PDF)
+      const content =
+        dto.mimeType === 'text/csv' ? buffer.toString('utf-8') : buffer.toString('base64');
 
       // 3. Process exactly as we did before, but now in the background
       this.logger.debug(`Parsing statement ${dto.fileName}...`);
@@ -44,7 +45,7 @@ export class StatementProcessor extends WorkerHost {
         bankAccountId: dto.bankAccountId,
         fileName: dto.fileName,
         mimeType: dto.mimeType,
-        content: contentBase64,
+        content,
         manualBankName: dto.manualBankName,
         manualAccountType: dto.manualAccountType,
         manualAccountNumberLast4: dto.manualAccountNumberLast4,
@@ -52,12 +53,31 @@ export class StatementProcessor extends WorkerHost {
 
       this.logger.log(`Successfully processed statement job ${job.id}`);
       return this.serializeBigInts(result);
-    } catch (error) {
+    } catch (error: unknown) {
+      const err = error as
+        { message?: string; stack?: string; status?: number; name?: string } | undefined;
       this.logger.error(
         `Failed to process statement job ${job.id}: ${error instanceof Error ? error.message : String(error)}`,
         error instanceof Error ? error.stack : undefined,
       );
-      throw error; // Let BullMQ handle retries
+
+      // Prevent retrying non-retryable domain exceptions (e.g. duplicate files, validation errors, invalid schemas)
+      const errorMsg = String(err?.message || '');
+      const isDomainConflict =
+        errorMsg.includes('Duplicate statement') ||
+        errorMsg.includes('Date collision') ||
+        errorMsg.includes('Period collision') ||
+        errorMsg.includes('checksum') ||
+        err?.status === 400 ||
+        err?.status === 409 ||
+        err?.name === 'ConflictError' ||
+        err?.name === 'BadRequestError';
+
+      if (isDomainConflict) {
+        throw new UnrecoverableError(errorMsg);
+      }
+
+      throw error; // Let BullMQ handle network/transient retries
     }
   }
 

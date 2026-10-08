@@ -30,12 +30,15 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { formatCurrency, formatIsoDate } from '@/lib/formatters';
+import { useTenantCurrency } from '@/hooks/use-tenant-currency';
 import { apiClient } from '@/lib/api-client';
+import { cleanBankPayee } from '@/lib/api/exceptions';
 
 interface TransactionItem {
   id: string;
   date: string;
-  description: string;
+  cleanPayee: string;
+  rawMemo: string;
   accountName: string;
   accountCode: string;
   counterparty: string;
@@ -58,6 +61,7 @@ interface RawBankTransaction {
 }
 
 export default function TransactionsPage() {
+  const tenantCurrency = useTenantCurrency();
   const [searchTerm, setSearchTerm] = React.useState('');
   const [statusFilter, setStatusFilter] = React.useState<
     'ALL' | 'RECONCILED' | 'AI_MATCHED' | 'PENDING_REVIEW'
@@ -82,18 +86,22 @@ export default function TransactionsPage() {
           if (tx.status === 'RECONCILED') status = 'RECONCILED';
           else if (tx.status === 'MATCHED' || tx.status === 'PROPOSED') status = 'AI_MATCHED';
 
+          const rawMemo = tx.rawDescription || '';
+          const cleanName = tx.normalizedPayee || cleanBankPayee(rawMemo);
+
           return {
             id: tx.id,
             date: tx.transactionDate || tx.createdAt,
-            description: tx.rawDescription,
+            cleanPayee: cleanName,
+            rawMemo: rawMemo,
             accountName: isDeposit ? 'Operating Cash (Deposit)' : 'Operating Cash (Disbursement)',
             accountCode: '1010',
-            counterparty: tx.normalizedPayee || 'Institutional Counterparty',
+            counterparty: cleanName,
             inflow: isDeposit ? absAmount : 0,
             outflow: isDeposit ? 0 : absAmount,
             status,
             isAuditLocked: tx.status === 'RECONCILED',
-            currency: tx.currency || 'USD',
+            currency: tx.currency || tenantCurrency || 'MYR',
           };
         });
 
@@ -113,7 +121,7 @@ export default function TransactionsPage() {
     loadData();
   }, [loadData]);
 
-  // Order sorting: preserve statement chronological order (Page 1 top -> Page 5 bottom) by default
+  // Preserve statement chronological order (Page 1 top -> Page 5 bottom) by default
   const sortedList = React.useMemo(() => {
     const copy = [...transactions];
     if (sortOrder === 'DESC') {
@@ -124,8 +132,8 @@ export default function TransactionsPage() {
 
   const filtered = sortedList.filter((tx) => {
     const matchesSearch =
-      tx.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      tx.counterparty.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      tx.cleanPayee.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      tx.rawMemo.toLowerCase().includes(searchTerm.toLowerCase()) ||
       tx.accountName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       tx.accountCode.includes(searchTerm);
 
@@ -147,17 +155,17 @@ export default function TransactionsPage() {
         return (
           <Badge
             variant="outline"
-            className="bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 gap-1"
+            className="bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 gap-1 text-[11px] font-medium"
           >
             <CheckCircle2 className="w-3 h-3" />
-            Reconciled
+            Verified in Books
           </Badge>
         );
       case 'AI_MATCHED':
         return (
           <Badge
             variant="outline"
-            className="bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-400 gap-1"
+            className="bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-400 gap-1 text-[11px] font-medium"
           >
             <Sparkles className="w-3 h-3" />
             AI Matched
@@ -167,10 +175,10 @@ export default function TransactionsPage() {
         return (
           <Badge
             variant="outline"
-            className="bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-400 gap-1"
+            className="bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-400 gap-1 text-[11px] font-medium"
           >
             <Clock className="w-3 h-3" />
-            Pending Review
+            Needs Category
           </Badge>
         );
       default:
@@ -180,24 +188,12 @@ export default function TransactionsPage() {
 
   const exportCsv = () => {
     if (transactions.length === 0) return;
-    const headers = [
-      'ID',
-      'Date',
-      'Description',
-      'Account',
-      'Code',
-      'Counterparty',
-      'Inflow_Deposit',
-      'Outflow_Withdrawal',
-      'Status',
-    ];
-    const rows = transactions.map((t) => [
-      t.id,
-      t.date,
-      `"${t.description.replace(/"/g, '""')}"`,
-      `"${t.accountName}"`,
-      t.accountCode,
-      `"${t.counterparty}"`,
+    const headers = ['Date', 'Payee', 'Raw Memo', 'Account', 'Inflow', 'Outflow', 'Status'];
+    const rows = filtered.map((t) => [
+      `"${t.date}"`,
+      `"${t.cleanPayee}"`,
+      `"${t.rawMemo.replace(/"/g, '""')}"`,
+      `"${t.accountCode} - ${t.accountName}"`,
       t.inflow,
       t.outflow,
       t.status,
@@ -217,7 +213,7 @@ export default function TransactionsPage() {
     document.body.removeChild(link);
   };
 
-  const primaryCurrency = transactions[0]?.currency || 'USD';
+  const primaryCurrency = transactions[0]?.currency || tenantCurrency || 'MYR';
 
   return (
     <div className="flex flex-col gap-6">
@@ -226,7 +222,7 @@ export default function TransactionsPage() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Transactions & Ledger</h1>
           <p className="text-muted-foreground mt-1">
-            Verified bank transactions matched directly with your accounting records.
+            Bank statement transactions matched and verified against your General Ledger.
           </p>
         </div>
         <div className="flex flex-wrap gap-2 w-full md:w-auto">
@@ -241,12 +237,12 @@ export default function TransactionsPage() {
               {sortOrder === 'STATEMENT_ASC' ? 'Oldest First' : 'Newest First'}
             </span>
             <span className="hidden sm:inline">
-              {sortOrder === 'STATEMENT_ASC' ? 'Statement Order (Oldest First)' : 'Newest First'}
+              {sortOrder === 'STATEMENT_ASC' ? 'Statement Order (Chronological)' : 'Newest First'}
             </span>
           </Button>
           <Button variant="outline" onClick={loadData} disabled={isLoading}>
             <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-            Refresh Records
+            Refresh
           </Button>
           <Button variant="outline" onClick={exportCsv} disabled={transactions.length === 0}>
             <Download className="w-4 h-4 mr-2" />
@@ -256,86 +252,100 @@ export default function TransactionsPage() {
       </div>
 
       {/* Summary KPI Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Inflows (Deposits)</CardTitle>
-            <ArrowDownLeft className="h-4 w-4 text-emerald-500" />
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1.5 sm:pb-2 p-3.5 sm:p-5">
+            <CardTitle className="text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-muted-foreground truncate">
+              Deposits (Inflows)
+            </CardTitle>
+            <ArrowDownLeft className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-emerald-500 shrink-0" />
           </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold tabular-nums text-emerald-600 dark:text-emerald-400">
+          <CardContent className="p-3.5 sm:p-5 pt-0 sm:pt-0">
+            <div className="text-lg sm:text-2xl font-bold tabular-nums text-emerald-600 dark:text-emerald-400 truncate font-mono">
               +{formatCurrency(totalInflows, primaryCurrency)}
             </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              Total deposits received across statement
+            <p className="text-[11px] sm:text-xs text-muted-foreground mt-1 sm:mt-1.5 truncate">
+              Customer payments & credits
             </p>
           </CardContent>
         </Card>
 
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Outflows (Withdrawals)</CardTitle>
-            <ArrowUpRight className="h-4 w-4 text-rose-500" />
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1.5 sm:pb-2 p-3.5 sm:p-5">
+            <CardTitle className="text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-muted-foreground truncate">
+              Expenses (Outflows)
+            </CardTitle>
+            <ArrowUpRight className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-rose-500 shrink-0" />
           </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold tabular-nums text-rose-600 dark:text-rose-400">
+          <CardContent className="p-3.5 sm:p-5 pt-0 sm:pt-0">
+            <div className="text-lg sm:text-2xl font-bold tabular-nums text-foreground truncate font-mono">
               -{formatCurrency(totalOutflows, primaryCurrency)}
             </div>
-            <p className="text-xs text-muted-foreground mt-1">Total payments and withdrawals</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Reconciliation Rate</CardTitle>
-            <Sparkles className="h-4 w-4 text-indigo-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">
-              {reconciliationRate}%
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              Automatically matched by AI Assistant
+            <p className="text-[11px] sm:text-xs text-muted-foreground mt-1 sm:mt-1.5 truncate">
+              Vendor payments & costs
             </p>
           </CardContent>
         </Card>
 
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Ledger Integrity</CardTitle>
-            <ShieldCheck className="h-4 w-4 text-emerald-500" />
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1.5 sm:pb-2 p-3.5 sm:p-5">
+            <CardTitle className="text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-muted-foreground truncate">
+              Auto-Reconciliation
+            </CardTitle>
+            <Sparkles className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-primary shrink-0" />
           </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
+          <CardContent className="p-3.5 sm:p-5 pt-0 sm:pt-0">
+            <div className="text-lg sm:text-2xl font-bold text-primary tabular-nums truncate">
+              {reconciliationRate}%
+            </div>
+            <p className="text-[11px] sm:text-xs text-muted-foreground mt-1 sm:mt-1.5 truncate">
+              {reconciledCount} of {transactions.length} verified in books
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1.5 sm:pb-2 p-3.5 sm:p-5">
+            <CardTitle className="text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-muted-foreground truncate">
+              Ledger Audit Check
+            </CardTitle>
+            <ShieldCheck className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-emerald-500 shrink-0" />
+          </CardHeader>
+          <CardContent className="p-3.5 sm:p-5 pt-0 sm:pt-0">
+            <div className="text-lg sm:text-2xl font-bold text-emerald-600 dark:text-emerald-400 truncate">
               100% Balanced
             </div>
-            <p className="text-xs text-muted-foreground mt-1">Debits equal Credits</p>
+            <p className="text-[11px] sm:text-xs text-muted-foreground mt-1 sm:mt-1.5 truncate">
+              Debits strictly match credits
+            </p>
           </CardContent>
         </Card>
       </div>
 
       {/* Filter Tabs & Search */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div className="flex items-center gap-2 overflow-x-auto pb-2 sm:pb-0 w-full sm:w-auto">
+        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-2 sm:pb-0 w-full sm:w-auto">
           <Button
             variant={statusFilter === 'ALL' ? 'default' : 'outline'}
             size="sm"
             onClick={() => setStatusFilter('ALL')}
           >
-            All Entries
+            All Transactions ({transactions.length})
           </Button>
           <Button
             variant={statusFilter === 'RECONCILED' ? 'default' : 'outline'}
             size="sm"
             onClick={() => setStatusFilter('RECONCILED')}
           >
-            Reconciled
+            <CheckCircle2 className="w-3.5 h-3.5 mr-1 text-emerald-500" />
+            Verified in Books
           </Button>
           <Button
             variant={statusFilter === 'AI_MATCHED' ? 'default' : 'outline'}
             size="sm"
             onClick={() => setStatusFilter('AI_MATCHED')}
           >
+            <Sparkles className="w-3.5 h-3.5 mr-1 text-blue-500" />
             AI Matched
           </Button>
           <Button
@@ -343,14 +353,15 @@ export default function TransactionsPage() {
             size="sm"
             onClick={() => setStatusFilter('PENDING_REVIEW')}
           >
-            Pending Review
+            <Clock className="w-3.5 h-3.5 mr-1 text-amber-500" />
+            Needs Category
           </Button>
         </div>
 
         <div className="relative w-full sm:w-72">
           <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Search description, account..."
+            placeholder="Search payee, amount, account..."
             className="pl-9"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
@@ -391,15 +402,15 @@ export default function TransactionsPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-[120px]">Date</TableHead>
-                    <TableHead>Description & Payee</TableHead>
-                    <TableHead>Chart of Accounts</TableHead>
+                    <TableHead>Payee & Bank Memo</TableHead>
+                    <TableHead>General Ledger Account</TableHead>
                     <TableHead className="text-right text-emerald-600 dark:text-emerald-400 font-semibold">
                       Deposit (Inflow)
                     </TableHead>
-                    <TableHead className="text-right text-rose-600 dark:text-rose-400 font-semibold">
-                      Withdrawal (Outflow)
+                    <TableHead className="text-right text-foreground font-semibold">
+                      Expense (Outflow)
                     </TableHead>
-                    <TableHead className="w-[140px]">Status</TableHead>
+                    <TableHead className="w-[160px]">Status</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -409,18 +420,28 @@ export default function TransactionsPage() {
                         {formatIsoDate(tx.date)}
                       </TableCell>
                       <TableCell>
-                        <div className="font-medium">{tx.description}</div>
-                        <div className="text-xs text-muted-foreground">{tx.counterparty}</div>
+                        <div className="font-semibold text-sm text-foreground">{tx.cleanPayee}</div>
+                        <div
+                          className="text-xs text-muted-foreground font-mono truncate max-w-sm"
+                          title={tx.rawMemo}
+                        >
+                          {tx.rawMemo}
+                        </div>
                       </TableCell>
                       <TableCell>
-                        <div className="text-sm font-medium">{tx.accountName}</div>
-                        <div className="text-xs font-mono text-muted-foreground">
-                          Account {tx.accountCode}
+                        <div className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                          <Badge
+                            variant="outline"
+                            className="text-[10px] font-mono px-1.5 py-0 bg-muted"
+                          >
+                            {tx.accountCode}
+                          </Badge>
+                          <span>{tx.accountName}</span>
                         </div>
                       </TableCell>
                       <TableCell className="text-right tabular-nums font-mono">
                         {tx.inflow > 0 ? (
-                          <span className="text-emerald-600 dark:text-emerald-400 font-medium">
+                          <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
                             +{formatCurrency(tx.inflow, tx.currency)}
                           </span>
                         ) : (
@@ -429,7 +450,7 @@ export default function TransactionsPage() {
                       </TableCell>
                       <TableCell className="text-right tabular-nums font-mono">
                         {tx.outflow > 0 ? (
-                          <span className="text-rose-600 dark:text-rose-400 font-medium">
+                          <span className="text-foreground font-semibold">
                             -{formatCurrency(tx.outflow, tx.currency)}
                           </span>
                         ) : (
@@ -449,11 +470,14 @@ export default function TransactionsPage() {
                 <div key={tx.id} className="p-4 space-y-2">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <div className="font-medium text-sm text-foreground truncate">
-                        {tx.counterparty || tx.description}
+                      <div className="font-semibold text-sm text-foreground truncate">
+                        {tx.cleanPayee}
                       </div>
-                      <div className="text-xs text-muted-foreground truncate mt-0.5">
-                        {tx.description}
+                      <div
+                        className="text-xs text-muted-foreground font-mono truncate mt-0.5"
+                        title={tx.rawMemo}
+                      >
+                        {tx.rawMemo}
                       </div>
                     </div>
                     <div className="text-right shrink-0">
@@ -462,7 +486,7 @@ export default function TransactionsPage() {
                           +{formatCurrency(tx.inflow, tx.currency)}
                         </span>
                       ) : tx.outflow > 0 ? (
-                        <span className="text-sm font-semibold text-rose-600 dark:text-rose-400 font-mono tabular-nums">
+                        <span className="text-sm font-semibold text-foreground font-mono tabular-nums">
                           -{formatCurrency(tx.outflow, tx.currency)}
                         </span>
                       ) : (

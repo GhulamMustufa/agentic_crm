@@ -340,4 +340,8 @@ export class InMemoryLedgerRepository implements ILedgerRepository {
       .filter((b) => b.tenantId === tenantId && b.accountingPeriodId === periodId)
       .map((b) => ({ ...b }));
   }
+
+  async getTenantBaseCurrency(_tenantId: string): Promise<string> {
+    return 'MYR';
+  }
 }

@@ -28,8 +28,15 @@ const LOCALE_BY_CURRENCY: Record<string, string> = {
   TRY: 'tr-TR',
 };
 
-export function formatCurrency(amount: number, currency = 'USD'): string {
-  const curr = (currency || 'USD').toUpperCase();
+function getDefaultCurrency(): string {
+  if (typeof window !== 'undefined') {
+    return localStorage.getItem('agentic_os_currency') || 'MYR';
+  }
+  return 'MYR';
+}
+
+export function formatCurrency(amount: number, currency?: string): string {
+  const curr = (currency || getDefaultCurrency()).toUpperCase();
   const locale = LOCALE_BY_CURRENCY[curr] || 'en-US';
   try {
     return new Intl.NumberFormat(locale, {
@@ -45,7 +52,7 @@ export function formatCurrency(amount: number, currency = 'USD'): string {
     } catch {
       return new Intl.NumberFormat('en-US', {
         style: 'currency',
-        currency: 'USD',
+        currency: 'MYR',
       }).format(amount);
     }
   }
@@ -59,8 +66,8 @@ export function formatIsoDate(dateString: string): string {
   });
 }
 
-export function getCurrencySymbol(currency = 'USD'): string {
-  const curr = (currency || 'USD').toUpperCase();
+export function getCurrencySymbol(currency?: string): string {
+  const curr = (currency || getDefaultCurrency()).toUpperCase();
   switch (curr) {
     case 'MYR':
       return 'RM';

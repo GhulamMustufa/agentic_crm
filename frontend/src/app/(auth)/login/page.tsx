@@ -70,12 +70,15 @@ export default function LoginPage() {
 
       // 2. Fetch Organizations
       try {
-        const orgsRes = await apiClient.get<{ data: Array<{ id: string; name: string }> }>(
-          '/organizations',
-        );
+        const orgsRes = await apiClient.get<{
+          data: Array<{ id: string; name: string; baseCurrency?: string }>;
+        }>('/organizations');
         const orgs = orgsRes.data || [];
         if (orgs.length > 0) {
           authStorage.setActiveTenantId(orgs[0].id);
+          if (orgs[0].baseCurrency) {
+            authStorage.setTenantCurrency(orgs[0].baseCurrency);
+          }
           router.push('/');
         } else {
           router.push('/setup');

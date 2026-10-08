@@ -150,7 +150,25 @@ export function parseCsvLine(line: string): string[] {
 @Injectable()
 export class CsvStatementParser implements IStatementParser {
   async parse(content: string | Buffer): Promise<ParsedStatementResult> {
-    const text = typeof content === 'string' ? content : content.toString('utf-8');
+    let text = typeof content === 'string' ? content : content.toString('utf-8');
+
+    // Auto-detect and decode base64 string if content is base64 encoded
+    if (
+      typeof content === 'string' &&
+      !content.includes('\n') &&
+      !content.includes(',') &&
+      content.length > 20
+    ) {
+      try {
+        const decoded = Buffer.from(content, 'base64').toString('utf-8');
+        if (decoded.includes('\n') || decoded.includes(',')) {
+          text = decoded;
+        }
+      } catch {
+        // Ignore base64 decoding errors for non-base64 input
+      }
+    }
+
     const lines = text
       .split(/\r?\n/)
       .map((l) => l.trim())

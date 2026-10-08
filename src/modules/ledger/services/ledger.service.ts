@@ -599,9 +599,12 @@ export class LedgerService {
       totalCreditSum += crBalance;
     }
 
+    const baseCurrency = await this.ledgerRepo.getTenantBaseCurrency(tenantId);
+
     return {
       tenantId,
       periodId: targetPeriodId,
+      baseCurrency,
       items,
       totalDebitCents: totalDebitSum,
       totalCreditCents: totalCreditSum,
@@ -666,10 +669,12 @@ export class LedgerService {
       }
     }
 
+    const baseCurrency = await this.ledgerRepo.getTenantBaseCurrency(tenantId);
+
     return {
       tenantId,
       periodId: targetPeriodId,
-      baseCurrency: 'USD',
+      baseCurrency,
       revenues,
       expenses,
       totalRevenueCents: totalRevenue,
@@ -755,10 +760,12 @@ export class LedgerService {
     const totalEquityWithIncome = totalEquity + retainedEarningsCents;
     const isBalanced = totalAssets === totalLiabilities + totalEquityWithIncome;
 
+    const baseCurrency = await this.ledgerRepo.getTenantBaseCurrency(tenantId);
+
     return {
       tenantId,
       asOfPeriodId: targetPeriodId,
-      baseCurrency: 'USD',
+      baseCurrency,
       assets,
       liabilities,
       equity,
@@ -768,6 +775,10 @@ export class LedgerService {
       retainedEarningsCents,
       isBalanced,
     };
+  }
+
+  async getTenantBaseCurrency(tenantId: string): Promise<string> {
+    return this.ledgerRepo.getTenantBaseCurrency(tenantId);
   }
 
   async getEntryById(tenantId: string, entryId: string): Promise<JournalEntryEntity | null> {

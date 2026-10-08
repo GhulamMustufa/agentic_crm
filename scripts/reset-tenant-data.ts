@@ -55,6 +55,11 @@ async function resetTenantData(targetTenantId = 'fd552037-fc94-40b7-aa7d-b3c387c
       where: { tenantId: targetTenantId },
     });
 
+    // 4b. Delete Counterparties
+    const deletedCounterparties = await tx.counterparty.deleteMany({
+      where: { tenantId: targetTenantId },
+    });
+
     // 5. Delete Journal Entry Lines & Journal Entries
     const deletedJournalLines = await tx.journalEntryLine.deleteMany({
       where: { tenantId: targetTenantId },
@@ -106,6 +111,7 @@ async function resetTenantData(targetTenantId = 'fd552037-fc94-40b7-aa7d-b3c387c
 
     console.log('✅ Cleanup Report:');
     console.log(` • Invoices deleted:            ${deletedInvoices.count} (Lines: ${deletedInvLines.count})`);
+    console.log(` • Counterparties deleted:      ${deletedCounterparties.count}`);
     console.log(` • Journal Entries deleted:     ${deletedJournals.count} (Lines: ${deletedJournalLines.count})`);
     console.log(` • Bank Statements deleted:     ${deletedStatements.count}`);
     console.log(` • Bank Transactions deleted:   ${deletedBankTx.count}`);

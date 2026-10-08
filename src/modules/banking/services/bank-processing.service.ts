@@ -352,12 +352,27 @@ export class BankProcessingService {
               ledgerRes.find((a) => a.accountCode === '1010' || a.subClassification === 'CASH') ||
               ledgerRes[0];
             if (cashAccount) {
+              const baseCurrency = await this.ledgerService.getTenantBaseCurrency(tenantId);
+              const isMalaysianBank =
+                targetBankName.toLowerCase().includes('maybank') ||
+                targetBankName.toLowerCase().includes('cimb') ||
+                targetBankName.toLowerCase().includes('rhb') ||
+                targetBankName.toLowerCase().includes('public bank') ||
+                targetBankName.toLowerCase().includes('hong leong') ||
+                targetBankName.toLowerCase().includes('ambank') ||
+                targetBankName.toLowerCase().includes('islam');
+              const detectedCurrency =
+                (parsedData.metadata?.currency as string) ||
+                (isMalaysianBank ? 'MYR' : undefined) ||
+                baseCurrency ||
+                'MYR';
+
               bankAccount = await this.createBankAccount(tenantId, userId, {
                 ledgerAccountId: cashAccount.id,
                 accountName: `${targetBankName} ${targetAcctType}`,
                 institutionName: targetBankName,
                 accountType: targetAcctType as 'CHECKING' | 'SAVINGS' | 'CREDIT_CARD',
-                currency: 'USD',
+                currency: detectedCurrency,
                 accountNumberLast4: targetAcctLast4,
               });
             }
@@ -632,6 +647,7 @@ export class BankProcessingService {
                 ? 'UNMATCHED_PAYMENT'
                 : 'EXTRACTION_UNCERTAIN';
 
+            const txCurrency = bankAccount.currency || 'MYR';
             const exc = await this.bankingRepo.createExceptionItem({
               tenantId,
               entityType: 'PROPOSAL',
@@ -639,9 +655,24 @@ export class BankProcessingService {
               exceptionType: excType,
               severity: evalResult.confidenceScore < 0.6 ? 'HIGH' : 'MEDIUM',
               reason: `${evalResult.rationale} (Confidence: ${Math.round(evalResult.confidenceScore * 100)}%)`,
-              evidence: evalResult.evidence,
+              evidence: [
+                ...evalResult.evidence,
+                {
+                  source: 'TRANSACTION_CONTEXT',
+                  reason: `Transaction amount: ${tx.amountCents.toString()}, currency: ${txCurrency}`,
+                  amountCents: tx.amountCents.toString(),
+                  signedAmountCents: tx.signedAmountCents.toString(),
+                  currency: txCurrency,
+                  transactionDate: tx.transactionDate,
+                  bankAccountId: bankAccount.id,
+                },
+              ],
               proposedResolution: {
                 proposalId: proposal.id,
+                amountCents: tx.amountCents.toString(),
+                signedAmountCents: tx.signedAmountCents.toString(),
+                currency: txCurrency,
+                transactionDate: tx.transactionDate,
                 suggestedDebitAccountId: evalResult.suggestedDebitAccountId,
                 suggestedCreditAccountId: evalResult.suggestedCreditAccountId,
               },

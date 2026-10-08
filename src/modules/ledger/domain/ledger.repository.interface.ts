@@ -100,4 +100,7 @@ export interface ILedgerRepository {
     periodId: string,
   ): Promise<AccountBalanceEntity | null>;
   listBalancesForPeriod(tenantId: string, periodId: string): Promise<AccountBalanceEntity[]>;
+
+  // Tenant Currency
+  getTenantBaseCurrency(tenantId: string): Promise<string>;
 }

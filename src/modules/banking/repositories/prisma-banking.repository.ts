@@ -680,7 +680,51 @@ export class PrismaBankingRepository implements IBankingRepository {
     if (!item || item.tenantId !== tenantId) {
       return null;
     }
-    return this.toExceptionItemEntity(item);
+    const entity = this.toExceptionItemEntity(item);
+    if (entity.entityType === 'PROPOSAL' && entity.entityId) {
+      const prop = await this.prisma.proposal.findUnique({
+        where: { id: entity.entityId },
+        include: {
+          bankTransaction: {
+            include: { bankAccount: true },
+          },
+        },
+      });
+      if (prop) {
+        const currency = prop.bankTransaction?.bankAccount?.currency || 'MYR';
+        const amountCents =
+          prop.bankTransaction?.amountCents?.toString() || prop.amountCents.toString();
+        const signedAmountCents =
+          prop.bankTransaction?.signedAmountCents?.toString() || prop.amountCents.toString();
+        const txDate = prop.bankTransaction?.transactionDate?.toISOString();
+
+        entity.proposedResolution = {
+          ...(entity.proposedResolution || {}),
+          amountCents,
+          signedAmountCents,
+          currency,
+          transactionDate: txDate,
+        };
+
+        const existingEvidence = Array.isArray(entity.evidence) ? entity.evidence : [];
+        const hasTxContext = existingEvidence.some(
+          (ev: unknown) => ev && typeof ev === 'object' && (ev as Record<string, unknown>).currency,
+        );
+        if (!hasTxContext) {
+          entity.evidence = [
+            ...existingEvidence,
+            {
+              source: 'TRANSACTION_CONTEXT',
+              amountCents,
+              signedAmountCents,
+              currency,
+              transactionDate: txDate,
+            },
+          ];
+        }
+      }
+    }
+    return entity;
   }
 
   async listExceptionItems(
@@ -695,6 +739,63 @@ export class PrismaBankingRepository implements IBankingRepository {
       },
       orderBy: { createdAt: 'desc' },
     });
+
+    const proposalIds = items
+      .filter((e) => e.entityType === 'PROPOSAL' && e.entityId)
+      .map((e) => e.entityId);
+
+    if (proposalIds.length > 0) {
+      const proposals = await this.prisma.proposal.findMany({
+        where: { id: { in: proposalIds }, tenantId },
+        include: {
+          bankTransaction: {
+            include: { bankAccount: true },
+          },
+        },
+      });
+      const proposalMap = new Map(proposals.map((p) => [p.id, p]));
+
+      return items.map((e) => {
+        const entity = this.toExceptionItemEntity(e);
+        if (e.entityType === 'PROPOSAL' && proposalMap.has(e.entityId)) {
+          const prop = proposalMap.get(e.entityId)!;
+          const currency = prop.bankTransaction?.bankAccount?.currency || 'MYR';
+          const amountCents =
+            prop.bankTransaction?.amountCents?.toString() || prop.amountCents.toString();
+          const signedAmountCents =
+            prop.bankTransaction?.signedAmountCents?.toString() || prop.amountCents.toString();
+          const txDate = prop.bankTransaction?.transactionDate?.toISOString();
+
+          entity.proposedResolution = {
+            ...(entity.proposedResolution || {}),
+            amountCents,
+            signedAmountCents,
+            currency,
+            transactionDate: txDate,
+          };
+
+          const existingEvidence = Array.isArray(entity.evidence) ? entity.evidence : [];
+          const hasTxContext = existingEvidence.some(
+            (ev: unknown) =>
+              ev && typeof ev === 'object' && (ev as Record<string, unknown>).currency,
+          );
+          if (!hasTxContext) {
+            entity.evidence = [
+              ...existingEvidence,
+              {
+                source: 'TRANSACTION_CONTEXT',
+                amountCents,
+                signedAmountCents,
+                currency,
+                transactionDate: txDate,
+              },
+            ];
+          }
+        }
+        return entity;
+      });
+    }
+
     return items.map((e) => this.toExceptionItemEntity(e));
   }
 

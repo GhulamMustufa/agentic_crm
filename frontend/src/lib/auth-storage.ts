@@ -9,6 +9,7 @@ const TOKEN_KEY = 'agentic_os_token';
 const REFRESH_TOKEN_KEY = 'agentic_os_refresh_token';
 const USER_KEY = 'agentic_os_user';
 const TENANT_KEY = 'agentic_os_tenant_id';
+const CURRENCY_KEY = 'agentic_os_currency';
 
 export const authStorage = {
   setAuthSession(tokens: { accessToken: string; refreshToken?: string }, user: AuthUser) {
@@ -67,12 +68,23 @@ export const authStorage = {
     }
   },
 
+  getTenantCurrency(): string {
+    if (typeof window === 'undefined') return 'MYR';
+    return localStorage.getItem(CURRENCY_KEY) || 'MYR';
+  },
+
+  setTenantCurrency(currency: string) {
+    if (typeof window === 'undefined' || !currency) return;
+    localStorage.setItem(CURRENCY_KEY, currency.toUpperCase());
+  },
+
   clearAuthSession() {
     if (typeof window === 'undefined') return;
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(REFRESH_TOKEN_KEY);
     localStorage.removeItem(USER_KEY);
     localStorage.removeItem(TENANT_KEY);
+    localStorage.removeItem(CURRENCY_KEY);
     document.cookie = 'token=; path=/; max-age=0';
     document.cookie = 'tenantId=; path=/; max-age=0';
   },

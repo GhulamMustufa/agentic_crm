@@ -24,6 +24,7 @@ export interface TrialBalanceItem {
 export interface TrialBalanceReport {
   tenantId: string;
   periodId: string;
+  baseCurrency?: string;
   items: TrialBalanceItem[];
   totalDebitCents: bigint;
   totalCreditCents: bigint;

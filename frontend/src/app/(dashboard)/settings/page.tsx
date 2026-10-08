@@ -9,7 +9,6 @@ import {
   User,
   Shield,
   ShieldCheck,
-  ShieldAlert,
   Save,
   Plus,
   Mail,
@@ -17,10 +16,11 @@ import {
   CheckCircle2,
   Lock,
   Copy,
-  Info,
   Sliders,
   DollarSign,
   Percent,
+  Receipt,
+  FileCheck,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -95,6 +95,7 @@ export default function SettingsPage() {
   // Org state for editing
   const [editOrgName, setEditOrgName] = React.useState('');
   const [editTimezone, setEditTimezone] = React.useState('UTC');
+  const [editBaseCurrency, setEditBaseCurrency] = React.useState('USD');
 
   // Members state
   const [members, setMembers] = React.useState<TeamMember[]>([]);
@@ -146,6 +147,7 @@ export default function SettingsPage() {
         setTenant(org);
         setEditOrgName(org.legalName);
         setEditTimezone(org.timezone || 'UTC');
+        setEditBaseCurrency(org.baseCurrency || 'USD');
       }
 
       if (membersRes.status === 'fulfilled' && membersRes.value.data) {
@@ -183,8 +185,12 @@ export default function SettingsPage() {
       const res = await apiClient.patch<{ data: TenantDetails }>(`/organizations/${tenantId}`, {
         legalName: editOrgName,
         timezone: editTimezone,
+        baseCurrency: editBaseCurrency,
       });
       setTenant(res.data);
+      if (res.data?.baseCurrency) {
+        authStorage.setTenantCurrency(res.data.baseCurrency);
+      }
       toast.success('Organization profile updated');
     } catch (err: any) {
       toast.error(err?.message || 'Failed to update organization');
@@ -209,7 +215,6 @@ export default function SettingsPage() {
       toast.success(`Invitation sent to ${inviteEmail}`);
       setInviteEmail('');
       setInviteModalOpen(false);
-      // Reload members list
       const membersRes = await apiClient.get<{ data: TeamMember[] }>(
         `/organizations/${tenantId}/members`,
       );
@@ -245,28 +250,39 @@ export default function SettingsPage() {
     }, 600);
   };
 
+  const currencySymbol = tenant?.baseCurrency === 'MYR' ? 'RM' : '$';
+
   return (
-    <div className="flex flex-col space-y-6">
+    <div className="flex flex-col gap-6 max-w-7xl mx-auto w-full">
       {/* Top Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
-          <p className="text-muted-foreground mt-1">
-            Configure AI automation guardrails, company profile, team roles, and account
-            preferences.
+          <div className="flex items-center gap-2.5">
+            <h1 className="text-3xl font-bold tracking-tight">Organization Settings</h1>
+            <Badge
+              variant="secondary"
+              className="gap-1 px-2.5 py-0.5 font-medium text-xs bg-primary/10 text-primary border-primary/20"
+            >
+              <ShieldCheck className="w-3 h-3 text-primary" />
+              Governed Controls
+            </Badge>
+          </div>
+          <p className="text-muted-foreground text-sm mt-1">
+            Manage autonomous AI guardrails, company financial profile, team permissions, and
+            account security.
           </p>
         </div>
         {tenant && (
           <div className="flex items-center gap-2">
-            <Badge variant="outline" className="px-3 py-1 font-mono text-xs">
-              Role: {tenant.roleCode || 'OWNER'}
+            <Badge variant="outline" className="px-3 py-1 font-mono text-xs border-border/70">
+              Active Role: {tenant.roleCode || 'OWNER'}
             </Badge>
             <Button
               variant="outline"
               size="sm"
               onClick={() => tenantId && loadSettingsData(tenantId)}
               disabled={loading}
-              className="gap-2"
+              className="gap-2 h-9"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
               Refresh
@@ -276,38 +292,42 @@ export default function SettingsPage() {
       </div>
 
       {/* Segmented Tab Navigation */}
-      <div className="flex flex-wrap gap-2 border-b pb-3">
+      <div className="flex gap-2 border-b border-border/60 pb-3 overflow-x-auto no-scrollbar">
         <Button
           variant={activeTab === 'AI_GUARDRAILS' ? 'default' : 'outline'}
+          size="sm"
           onClick={() => setActiveTab('AI_GUARDRAILS')}
-          className="gap-2"
+          className="gap-2 h-9 shrink-0"
         >
           <Bot className="w-4 h-4" />
           AI Automation & Guardrails
         </Button>
         <Button
           variant={activeTab === 'ORGANIZATION' ? 'default' : 'outline'}
+          size="sm"
           onClick={() => setActiveTab('ORGANIZATION')}
-          className="gap-2"
+          className="gap-2 h-9 shrink-0"
         >
           <Building2 className="w-4 h-4" />
-          Organization Profile
+          Company Profile
         </Button>
         <Button
           variant={activeTab === 'TEAM_MEMBERS' ? 'default' : 'outline'}
+          size="sm"
           onClick={() => setActiveTab('TEAM_MEMBERS')}
-          className="gap-2"
+          className="gap-2 h-9 shrink-0"
         >
           <Users className="w-4 h-4" />
-          Team & Permissions
-          <Badge variant="secondary" className="ml-1 text-xs">
+          Team & Roles
+          <Badge variant="secondary" className="ml-1 text-[11px] h-4 px-1.5">
             {members.length}
           </Badge>
         </Button>
         <Button
           variant={activeTab === 'MY_PROFILE' ? 'default' : 'outline'}
+          size="sm"
           onClick={() => setActiveTab('MY_PROFILE')}
-          className="gap-2"
+          className="gap-2 h-9 shrink-0"
         >
           <User className="w-4 h-4" />
           My Profile & Security
@@ -317,54 +337,64 @@ export default function SettingsPage() {
       {/* TAB 1: AI AUTOMATION & GUARDRAILS */}
       {activeTab === 'AI_GUARDRAILS' && (
         <div className="space-y-6">
-          {/* Header Banner */}
-          <Card className="border-indigo-200 dark:border-indigo-900 bg-indigo-50/40 dark:bg-indigo-950/20">
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <div className="flex items-center gap-2">
-                <Sparkles className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-                <CardTitle className="text-base text-indigo-900 dark:text-indigo-300">
+          {/* Header Callout */}
+          <Card className="border-border/70 bg-primary/5 shadow-sm">
+            <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 pb-2 pt-4 px-5">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                  <Sparkles className="w-4 h-4 text-primary" />
+                </div>
+                <CardTitle className="text-sm font-semibold">
                   Deterministic Financial Safety Guarantee
                 </CardTitle>
               </div>
               <Badge
                 variant="outline"
-                className="bg-indigo-100 text-indigo-700 border-indigo-300 dark:bg-indigo-900 dark:text-indigo-300"
+                className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 text-[11px] sm:text-xs font-mono shrink-0"
               >
-                Zero Hallucinations
+                Zero Hallucinations Guarantee
               </Badge>
             </CardHeader>
-            <CardContent className="text-sm text-indigo-950/80 dark:text-indigo-200/80">
-              The AI accountant is strictly advisory. It suggests matches, tags counterparties, and
-              proposes journal entries. Only entries that meet your exact confidence threshold and
-              dollar limits will ever be posted automatically without manual review.
+            <CardContent className="px-5 pb-4 text-xs text-muted-foreground leading-relaxed">
+              The AI accountant operates under strict deterministic boundaries. It extracts document
+              layouts and proposes matching general ledger accounts, but{' '}
+              <strong>
+                only transactions meeting your exact confidence threshold and dollar limits
+              </strong>{' '}
+              are ever recorded automatically. All ambiguous items are safely held in Review &
+              Approvals.
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
+          <Card className="border-border/70 shadow-sm">
+            <CardHeader className="pb-3 border-b border-border/40">
               <div className="flex items-center gap-2">
-                <Sliders className="w-5 h-5 text-primary" />
-                <CardTitle>AI Auto-Posting & Approval Rules</CardTitle>
+                <Sliders className="w-4 h-4 text-primary" />
+                <CardTitle className="text-base font-semibold">
+                  Autonomous Posting Policies
+                </CardTitle>
               </div>
-              <CardDescription>
-                Define exactly when the AI is permitted to record transactions directly to your
-                General Ledger versus routing them to Review & Approvals.
+              <CardDescription className="text-xs">
+                Fine-tune automatic transaction recording versus manual human approval routing.
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-6">
+            <CardContent className="pt-5 space-y-6">
               {/* Rule 1: Allow AI Auto-Posting Toggle */}
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 rounded-lg border bg-muted/30 gap-4">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 rounded-xl border border-border/70 bg-muted/20 gap-4">
                 <div className="space-y-0.5">
-                  <div className="font-semibold text-base">Enable Automatic Ledger Posting</div>
-                  <p className="text-sm text-muted-foreground">
-                    When enabled, high-confidence matches are automatically balanced and posted.
-                    When disabled, every single transaction requires manual human confirmation.
+                  <div className="font-semibold text-sm text-foreground">
+                    Autonomous General Ledger Posting
+                  </div>
+                  <p className="text-xs text-muted-foreground max-w-xl leading-relaxed">
+                    When active, high-confidence transactions meeting your thresholds are posted
+                    instantly to books. When paused, all statement items require human one-click
+                    confirmation.
                   </p>
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
                   <Badge
                     variant={aiSettings.allowAiAutoPosting ? 'default' : 'secondary'}
-                    className="cursor-pointer select-none px-3 py-1.5"
+                    className="cursor-pointer select-none px-3 py-1.5 text-xs font-medium"
                     onClick={() =>
                       setAiSettings((prev) => ({
                         ...prev,
@@ -373,28 +403,30 @@ export default function SettingsPage() {
                     }
                   >
                     {aiSettings.allowAiAutoPosting
-                      ? 'Active (Auto-Post)'
-                      : 'Paused (Manual Review)'}
+                      ? '✓ Active (Auto-Post)'
+                      : 'Paused (Manual Confirmation)'}
                   </Badge>
                 </div>
               </div>
 
               {/* Rule 2: Minimum Confidence Threshold Slider */}
-              <div className="space-y-3 p-4 rounded-lg border">
+              <div className="space-y-3 p-4 rounded-xl border border-border/70">
                 <div className="flex justify-between items-center">
                   <div>
-                    <label className="font-semibold text-sm flex items-center gap-1.5">
+                    <label className="font-semibold text-sm flex items-center gap-1.5 text-foreground">
                       <Percent className="w-4 h-4 text-primary" />
                       Minimum AI Confidence Threshold
                     </label>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      Any transaction with AI confidence below this percentage will be held in
-                      Review & Approvals.
+                      Any transaction with AI certainty below this percentage will be queued for
+                      manual approval.
                     </p>
                   </div>
-                  <span className="font-mono text-lg font-bold text-primary">
-                    {Math.round(aiSettings.autoPostMinConfidence * 100)}%
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-base font-bold text-primary px-2.5 py-0.5 rounded-lg bg-primary/10 border border-primary/20">
+                      {Math.round(aiSettings.autoPostMinConfidence * 100)}%
+                    </span>
+                  </div>
                 </div>
                 <input
                   type="range"
@@ -410,94 +442,156 @@ export default function SettingsPage() {
                   }
                   className="w-full accent-primary h-2 bg-muted rounded-lg cursor-pointer"
                 />
-                <div className="flex justify-between text-xs text-muted-foreground">
+                <div className="flex justify-between text-[11px] text-muted-foreground">
                   <span>50% (Permissive)</span>
-                  <span>95% (Recommended Default)</span>
-                  <span>100% (Exact Matches Only)</span>
+                  <span className="font-semibold text-primary">95% (Recommended Default)</span>
+                  <span>100% (Strict Exact Match)</span>
                 </div>
               </div>
 
               {/* Rule 3: Max Auto-Post Dollar Limit */}
-              <div className="space-y-2 p-4 rounded-lg border">
-                <label className="font-semibold text-sm flex items-center gap-1.5">
-                  <DollarSign className="w-4 h-4 text-primary" />
-                  Maximum Auto-Post Transaction Amount
-                </label>
-                <p className="text-xs text-muted-foreground">
-                  Transactions exceeding this dollar threshold will always require human controller
-                  approval, regardless of how confident the AI is.
-                </p>
-                <div className="relative max-w-sm mt-2">
-                  <span className="absolute left-3 top-2.5 text-muted-foreground font-mono">$</span>
-                  <Input
-                    type="number"
-                    step="50"
-                    min="0"
-                    value={Number(aiSettings.maxAutoPostAmountCents) / 100}
-                    onChange={(e) =>
-                      setAiSettings((prev) => ({
-                        ...prev,
-                        maxAutoPostAmountCents: Math.round(Number(e.target.value) * 100),
-                      }))
-                    }
-                    className="pl-7 font-mono font-medium"
-                  />
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Current cap:{' '}
-                  <span className="font-semibold text-foreground">
+              <div className="space-y-3 p-4 rounded-xl border border-border/70">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <label className="font-semibold text-sm flex items-center gap-1.5 text-foreground">
+                      <DollarSign className="w-4 h-4 text-primary" />
+                      Maximum Auto-Post Transaction Cap
+                    </label>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Transactions exceeding this amount will always require human controller
+                      sign-off.
+                    </p>
+                  </div>
+                  <div className="font-mono text-sm font-semibold text-foreground bg-muted px-2.5 py-1 rounded-lg">
                     {formatCurrency(
-                      Number(aiSettings.maxAutoPostAmountCents),
+                      Number(aiSettings.maxAutoPostAmountCents) / 100,
                       tenant?.baseCurrency || 'USD',
                     )}
-                  </span>
-                </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  <div className="relative">
+                    <span className="absolute left-3 top-2 text-muted-foreground font-mono text-sm">
+                      {currencySymbol}
+                    </span>
+                    <Input
+                      type="number"
+                      step="100"
+                      min="0"
+                      value={Number(aiSettings.maxAutoPostAmountCents) / 100}
+                      onChange={(e) =>
+                        setAiSettings((prev) => ({
+                          ...prev,
+                          maxAutoPostAmountCents: Math.round(Number(e.target.value) * 100),
+                        }))
+                      }
+                      className="pl-8 font-mono font-medium h-9 text-sm"
+                    />
+                  </div>
+                  {/* Quick Preset Buttons */}
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {[1000, 5000, 10000, 25000, 50000].map((val) => (
+                      <Button
+                        key={val}
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                          setAiSettings((prev) => ({
+                            ...prev,
+                            maxAutoPostAmountCents: val * 100,
+                          }))
+                        }
+                        className={`text-xs h-9 font-mono ${
+                          Number(aiSettings.maxAutoPostAmountCents) === val * 100
+                            ? 'border-primary text-primary bg-primary/5'
+                            : ''
+                        }`}
+                      >
+                        {currencySymbol}
+                        {val.toLocaleString()}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
               </div>
 
               {/* Rule 4: Receipt Compliance Threshold */}
-              <div className="space-y-2 p-4 rounded-lg border">
-                <label className="font-semibold text-sm flex items-center gap-1.5">
-                  <ShieldCheck className="w-4 h-4 text-primary" />
-                  Receipt / Document Compliance Threshold
-                </label>
-                <p className="text-xs text-muted-foreground">
-                  Flag business expenses over this amount that do not have an attached receipt or
-                  invoice (compliant with standard IRS and tax recordkeeping regulations).
-                </p>
-                <div className="relative max-w-sm mt-2">
-                  <span className="absolute left-3 top-2.5 text-muted-foreground font-mono">$</span>
-                  <Input
-                    type="number"
-                    step="5"
-                    min="0"
-                    value={Number(aiSettings.requireReceiptAboveCents) / 100}
-                    onChange={(e) =>
-                      setAiSettings((prev) => ({
-                        ...prev,
-                        requireReceiptAboveCents: Math.round(Number(e.target.value) * 100),
-                      }))
-                    }
-                    className="pl-7 font-mono font-medium"
-                  />
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Current compliance threshold:{' '}
-                  <span className="font-semibold text-foreground">
+              <div className="space-y-3 p-4 rounded-xl border border-border/70">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <label className="font-semibold text-sm flex items-center gap-1.5 text-foreground">
+                      <Receipt className="w-4 h-4 text-primary" />
+                      Receipt & Bill Compliance Policy
+                    </label>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Flag operating expenses over this amount that lack an attached vendor invoice
+                      or receipt.
+                    </p>
+                  </div>
+                  <div className="font-mono text-sm font-semibold text-foreground bg-muted px-2.5 py-1 rounded-lg">
                     {formatCurrency(
-                      Number(aiSettings.requireReceiptAboveCents),
+                      Number(aiSettings.requireReceiptAboveCents) / 100,
                       tenant?.baseCurrency || 'USD',
                     )}
-                  </span>
-                </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  <div className="relative">
+                    <span className="absolute left-3 top-2 text-muted-foreground font-mono text-sm">
+                      {currencySymbol}
+                    </span>
+                    <Input
+                      type="number"
+                      step="5"
+                      min="0"
+                      value={Number(aiSettings.requireReceiptAboveCents) / 100}
+                      onChange={(e) =>
+                        setAiSettings((prev) => ({
+                          ...prev,
+                          requireReceiptAboveCents: Math.round(Number(e.target.value) * 100),
+                        }))
+                      }
+                      className="pl-8 font-mono font-medium h-9 text-sm"
+                    />
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {[25, 75, 250, 500].map((val) => (
+                      <Button
+                        key={val}
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                          setAiSettings((prev) => ({
+                            ...prev,
+                            requireReceiptAboveCents: val * 100,
+                          }))
+                        }
+                        className={`text-xs h-9 font-mono ${
+                          Number(aiSettings.requireReceiptAboveCents) === val * 100
+                            ? 'border-primary text-primary bg-primary/5'
+                            : ''
+                        }`}
+                      >
+                        {currencySymbol}
+                        {val} {val === 75 ? '(IRS Std)' : ''}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
               </div>
 
               <div className="pt-2 flex justify-end">
                 <Button
                   onClick={handleSaveAiGuardrails}
                   disabled={savingSettings}
-                  className="gap-2"
+                  size="sm"
+                  className="gap-2 h-9"
                 >
-                  <Save className="w-4 h-4" />
+                  <Save className="w-3.5 h-3.5" />
                   {savingSettings ? 'Saving Policies...' : 'Save AI Guardrails'}
                 </Button>
               </div>
@@ -509,55 +603,72 @@ export default function SettingsPage() {
       {/* TAB 2: ORGANIZATION PROFILE */}
       {activeTab === 'ORGANIZATION' && (
         <div className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Company & Financial Profile</CardTitle>
-              <CardDescription>
+          <Card className="border-border/70 shadow-sm">
+            <CardHeader className="pb-3 border-b border-border/40">
+              <CardTitle className="text-base font-semibold">Company & Financial Profile</CardTitle>
+              <CardDescription className="text-xs">
                 Primary business identity, functional accounting currency, and operating timezone.
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold">Legal Business Name</label>
+            <CardContent className="pt-5 space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-foreground">
+                    Legal Business Name
+                  </label>
                   <Input
                     value={editOrgName}
                     onChange={(e) => setEditOrgName(e.target.value)}
                     placeholder="e.g. Acme Corp Pte Ltd"
+                    className="h-9 text-sm"
                   />
-                  <p className="text-xs text-muted-foreground">
-                    Used on customer invoices, financial reports, and tax statements.
+                  <p className="text-[11px] text-muted-foreground">
+                    Printed on customer invoices, financial reports, and tax statements.
                   </p>
                 </div>
 
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold">Organization URL Slug</label>
-                  <Input value={tenant?.slug || ''} disabled className="bg-muted font-mono" />
-                  <p className="text-xs text-muted-foreground">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-foreground">Workspace Slug</label>
+                  <Input
+                    value={tenant?.slug || ''}
+                    disabled
+                    className="bg-muted font-mono h-9 text-sm"
+                  />
+                  <p className="text-[11px] text-muted-foreground">
                     Permanent tenant identifier assigned upon workspace creation.
                   </p>
                 </div>
 
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold">Base Functional Currency</label>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-foreground">
+                    Base Functional Currency
+                  </label>
                   <div className="flex items-center gap-2">
-                    <Input
-                      value={tenant?.baseCurrency || 'USD'}
-                      disabled
-                      className="bg-muted font-mono font-bold w-32"
-                    />
-                    <Badge variant="outline" className="text-xs">
-                      Primary Ledger Currency
+                    <select
+                      value={editBaseCurrency}
+                      onChange={(e) => setEditBaseCurrency(e.target.value)}
+                      className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring font-mono font-medium"
+                    >
+                      <option value="MYR">MYR (RM) - Malaysian Ringgit</option>
+                      <option value="USD">USD ($) - US Dollar</option>
+                      <option value="SGD">SGD ($) - Singapore Dollar</option>
+                      <option value="EUR">EUR (€) - Euro</option>
+                      <option value="GBP">GBP (£) - British Pound</option>
+                    </select>
+                    <Badge variant="outline" className="text-xs shrink-0">
+                      General Ledger Currency
                     </Badge>
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    General Ledger accounts, balance sheets, and trial balances calculate in this
+                  <p className="text-[11px] text-muted-foreground">
+                    All financial statements, balance sheets, and trial balances calculate in this
                     currency.
                   </p>
                 </div>
 
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold">Operating Timezone</label>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-foreground">
+                    Operating Timezone
+                  </label>
                   <select
                     value={editTimezone}
                     onChange={(e) => setEditTimezone(e.target.value)}
@@ -570,45 +681,58 @@ export default function SettingsPage() {
                     <option value="America/Los_Angeles">America/Los_Angeles (PST/PDT)</option>
                     <option value="Europe/London">Europe/London (GMT/BST)</option>
                   </select>
-                  <p className="text-xs text-muted-foreground">
-                    Determines fiscal period boundaries and statement transaction timestamps.
+                  <p className="text-[11px] text-muted-foreground">
+                    Determines fiscal period cutoffs and statement transaction timestamps.
                   </p>
                 </div>
               </div>
 
-              {/* Accounting Standards Metadata */}
-              <div className="p-4 rounded-lg border bg-muted/20 space-y-2">
-                <div className="flex items-center gap-2 font-semibold text-sm">
+              {/* Double Entry Standard Badge */}
+              <div className="p-4 rounded-xl border border-border/70 bg-muted/20 space-y-1.5">
+                <div className="flex items-center gap-2 font-semibold text-xs text-foreground">
                   <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                  Accounting Standard Enforced
+                  Accounting Standard Invariant
                 </div>
                 <p className="text-xs text-muted-foreground leading-relaxed">
-                  Agentic OS enforces <strong>Accrual-Basis Double-Entry Bookkeeping</strong>. Every
-                  posted transaction automatically records balanced debits and credits across
-                  assets, liabilities, equity, revenues, and expenses.
+                  Agentic OS strictly enforces{' '}
+                  <strong>Accrual-Basis Double-Entry Bookkeeping</strong>. Every posted transaction
+                  records balanced debits and credits across assets, liabilities, equity, revenues,
+                  and expenses.
                 </p>
               </div>
 
               {/* Organization ID */}
-              <div className="space-y-2 pt-2">
-                <label className="text-sm font-semibold">Organization Tenant ID</label>
+              <div className="space-y-1.5 pt-1">
+                <label className="text-xs font-semibold text-foreground">
+                  Organization Tenant ID
+                </label>
                 <div className="flex items-center gap-2 max-w-md">
-                  <Input value={tenantId || ''} disabled className="font-mono text-xs bg-muted" />
+                  <Input
+                    value={tenantId || ''}
+                    disabled
+                    className="font-mono text-xs bg-muted h-9"
+                  />
                   <Button
                     variant="outline"
                     size="icon"
                     onClick={handleCopyTenantId}
                     title="Copy Organization ID"
+                    className="h-9 w-9 shrink-0"
                   >
-                    <Copy className="w-4 h-4" />
+                    <Copy className="w-3.5 h-3.5" />
                   </Button>
                 </div>
               </div>
 
-              <div className="pt-4 flex justify-end">
-                <Button onClick={handleSaveOrgDetails} disabled={savingOrg} className="gap-2">
-                  <Save className="w-4 h-4" />
-                  {savingOrg ? 'Saving...' : 'Save Organization Profile'}
+              <div className="pt-2 flex justify-end">
+                <Button
+                  onClick={handleSaveOrgDetails}
+                  disabled={savingOrg}
+                  size="sm"
+                  className="gap-2 h-9"
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  {savingOrg ? 'Saving...' : 'Save Company Profile'}
                 </Button>
               </div>
             </CardContent>
@@ -619,132 +743,186 @@ export default function SettingsPage() {
       {/* TAB 3: TEAM & PERMISSIONS */}
       {activeTab === 'TEAM_MEMBERS' && (
         <div className="space-y-6">
-          <Card>
-            <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <Card className="border-border/70 shadow-sm">
+            <CardHeader className="pb-3 border-b border-border/40 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
-                <CardTitle>Team Members & Roles</CardTitle>
-                <CardDescription>
+                <CardTitle className="text-base font-semibold">
+                  Team Members & Role-Based Access
+                </CardTitle>
+                <CardDescription className="text-xs">
                   Manage organization access, assign accounting permissions, and invite
                   collaborators.
                 </CardDescription>
               </div>
-              <Button onClick={() => setInviteModalOpen(true)} className="gap-2 shrink-0">
-                <Plus className="w-4 h-4" />
+              <Button
+                onClick={() => setInviteModalOpen(true)}
+                size="sm"
+                className="gap-2 shrink-0 h-9"
+              >
+                <Plus className="w-3.5 h-3.5" />
                 Invite Member
               </Button>
             </CardHeader>
-            <CardContent>
+            <CardContent className="pt-4">
               {members.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground text-sm">
                   No team members found.
                 </div>
               ) : (
-                <div className="rounded-md border overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Member</TableHead>
-                        <TableHead>Role</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Permissions</TableHead>
-                        <TableHead>Joined Date</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {members.map((mem) => {
-                        const displayName = mem.user?.fullName || 'Active Member';
-                        const displayEmail = mem.user?.email || 'Registered User';
-                        return (
-                          <TableRow key={mem.id}>
-                            <TableCell>
-                              <div className="flex items-center gap-3">
-                                <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-semibold text-xs shrink-0">
-                                  {displayName.slice(0, 2).toUpperCase()}
+                <div className="rounded-xl border border-border/70 overflow-hidden">
+                  {/* Desktop Table View */}
+                  <div className="hidden md:block">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Member</TableHead>
+                          <TableHead>Role</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead>Permissions</TableHead>
+                          <TableHead>Joined Date</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {members.map((mem) => {
+                          const displayName = mem.user?.fullName || 'Active Member';
+                          const displayEmail = mem.user?.email || 'Registered User';
+                          return (
+                            <TableRow key={mem.id} className="hover:bg-muted/30">
+                              <TableCell>
+                                <div className="flex items-center gap-3">
+                                  <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary font-semibold text-xs shrink-0">
+                                    {displayName.slice(0, 2).toUpperCase()}
+                                  </div>
+                                  <div className="flex flex-col min-w-0">
+                                    <span className="font-medium text-sm truncate text-foreground">
+                                      {displayName}
+                                    </span>
+                                    <span className="text-xs text-muted-foreground truncate">
+                                      {displayEmail}
+                                    </span>
+                                  </div>
                                 </div>
-                                <div className="flex flex-col min-w-0">
-                                  <span className="font-medium text-sm truncate">
-                                    {displayName}
-                                  </span>
-                                  <span className="text-xs text-muted-foreground truncate">
-                                    {displayEmail}
-                                  </span>
+                              </TableCell>
+                              <TableCell>
+                                <Badge
+                                  variant={mem.roleCode === 'OWNER' ? 'default' : 'outline'}
+                                  className="font-mono text-xs"
+                                >
+                                  {mem.roleCode}
+                                </Badge>
+                              </TableCell>
+                              <TableCell>
+                                <Badge
+                                  variant="outline"
+                                  className="text-xs bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
+                                >
+                                  {mem.status}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="text-xs text-muted-foreground max-w-xs">
+                                {mem.roleCode === 'OWNER' &&
+                                  'Full administrative & financial authority'}
+                                {mem.roleCode === 'CONTROLLER' &&
+                                  'Approvals, period close, and journal posting'}
+                                {mem.roleCode === 'BOOKKEEPER' &&
+                                  'Invoice entry, banking uploads, draft transactions'}
+                                {mem.roleCode === 'AUDITOR' &&
+                                  'Read-only access to ledgers & reports'}
+                              </TableCell>
+                              <TableCell className="text-xs text-muted-foreground font-mono">
+                                {new Date(mem.createdAt).toLocaleDateString()}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
+
+                  {/* Mobile Team List View */}
+                  <div className="md:hidden divide-y divide-border">
+                    {members.map((mem) => {
+                      const displayName = mem.user?.fullName || 'Active Member';
+                      const displayEmail = mem.user?.email || 'Registered User';
+                      return (
+                        <div key={mem.id} className="p-4 space-y-2.5">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary font-semibold text-xs shrink-0">
+                                {displayName.slice(0, 2).toUpperCase()}
+                              </div>
+                              <div className="min-w-0">
+                                <div className="font-medium text-sm text-foreground truncate">
+                                  {displayName}
+                                </div>
+                                <div className="text-xs text-muted-foreground truncate">
+                                  {displayEmail}
                                 </div>
                               </div>
-                            </TableCell>
-                            <TableCell>
-                              <Badge
-                                variant={mem.roleCode === 'OWNER' ? 'default' : 'outline'}
-                                className="font-mono text-xs"
-                              >
-                                {mem.roleCode}
-                              </Badge>
-                            </TableCell>
-                            <TableCell>
-                              <Badge
-                                variant={mem.status === 'ACTIVE' ? 'secondary' : 'outline'}
-                                className="text-xs"
-                              >
-                                {mem.status}
-                              </Badge>
-                            </TableCell>
-                            <TableCell className="text-xs text-muted-foreground max-w-xs">
-                              {mem.roleCode === 'OWNER' &&
-                                'Full administrative & financial authority'}
-                              {mem.roleCode === 'CONTROLLER' &&
-                                'Approvals, period close, and journal posting'}
-                              {mem.roleCode === 'BOOKKEEPER' &&
-                                'Invoice entry, banking uploads, draft transactions'}
-                              {mem.roleCode === 'AUDITOR' &&
-                                'Read-only access to ledgers & reports'}
-                            </TableCell>
-                            <TableCell className="text-xs text-muted-foreground font-mono">
-                              {new Date(mem.createdAt).toLocaleDateString()}
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
+                            </div>
+                            <Badge
+                              variant={mem.roleCode === 'OWNER' ? 'default' : 'outline'}
+                              className="font-mono text-xs shrink-0"
+                            >
+                              {mem.roleCode}
+                            </Badge>
+                          </div>
+
+                          <div className="flex items-center justify-between text-xs text-muted-foreground pt-1 border-t border-border/40">
+                            <Badge
+                              variant="outline"
+                              className="text-[10px] bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
+                            >
+                              {mem.status}
+                            </Badge>
+                            <span className="font-mono text-[11px]">
+                              Joined {new Date(mem.createdAt).toLocaleDateString()}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
             </CardContent>
           </Card>
 
-          {/* Role Descriptions Reference Card */}
-          <Card className="bg-muted/30">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                <Shield className="w-4 h-4 text-primary" />
-                Role-Based Access Control (RBAC) Reference
+          {/* Role Reference Card */}
+          <Card className="border-border/70 bg-muted/20 shadow-sm">
+            <CardHeader className="pb-3 border-b border-border/40">
+              <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                <Shield className="w-3.5 h-3.5 text-primary" />
+                Role-Based Access Control (RBAC) Architecture
               </CardTitle>
             </CardHeader>
-            <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs text-muted-foreground">
-              <div className="p-3 rounded border bg-background space-y-1">
+            <CardContent className="pt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+              <div className="p-3 rounded-lg border border-border/60 bg-card space-y-1">
                 <span className="font-semibold text-foreground">Owner</span>
-                <p>
-                  Complete authority over tenant billing, financial settings, bank credentials, and
-                  member provisioning.
+                <p className="text-muted-foreground text-[11px] leading-relaxed">
+                  Full authority over billing, bank accounts, guardrail policies, and member
+                  invites.
                 </p>
               </div>
-              <div className="p-3 rounded border bg-background space-y-1">
+              <div className="p-3 rounded-lg border border-border/60 bg-card space-y-1">
                 <span className="font-semibold text-foreground">Controller</span>
-                <p>
-                  Can approve exceptions in Review & Approvals, finalize monthly periods, and post
-                  manual adjusting entries.
+                <p className="text-muted-foreground text-[11px] leading-relaxed">
+                  Approves transaction exceptions, finalizes fiscal periods, and posts adjusting
+                  journal entries.
                 </p>
               </div>
-              <div className="p-3 rounded border bg-background space-y-1">
+              <div className="p-3 rounded-lg border border-border/60 bg-card space-y-1">
                 <span className="font-semibold text-foreground">Bookkeeper</span>
-                <p>
-                  Can create invoices, upload PDF bank statements, reconcile payments, and draft
-                  entries.
+                <p className="text-muted-foreground text-[11px] leading-relaxed">
+                  Issues customer invoices, registers vendor bills, and uploads bank statement
+                  feeds.
                 </p>
               </div>
-              <div className="p-3 rounded border bg-background space-y-1">
+              <div className="p-3 rounded-lg border border-border/60 bg-card space-y-1">
                 <span className="font-semibold text-foreground">Auditor</span>
-                <p>
-                  Strict read-only access to view Trial Balances, General Ledgers, and system audit
-                  logs.
+                <p className="text-muted-foreground text-[11px] leading-relaxed">
+                  Read-only access to Trial Balances, Balance Sheets, and immutable system audit
+                  trails.
                 </p>
               </div>
             </CardContent>
@@ -755,39 +933,45 @@ export default function SettingsPage() {
       {/* TAB 4: MY PROFILE & SECURITY */}
       {activeTab === 'MY_PROFILE' && (
         <div className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>User Profile</CardTitle>
-              <CardDescription>
-                Your personal account details and session credentials.
+          <Card className="border-border/70 shadow-sm">
+            <CardHeader className="pb-3 border-b border-border/40">
+              <CardTitle className="text-base font-semibold">User Profile</CardTitle>
+              <CardDescription className="text-xs">
+                Your personal account credentials and security preferences.
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="pt-5 space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-muted-foreground">Full Name</label>
-                  <Input value={currentUser?.fullName || ''} disabled className="bg-muted" />
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-foreground">Full Name</label>
+                  <Input
+                    value={currentUser?.fullName || ''}
+                    disabled
+                    className="bg-muted h-9 text-sm"
+                  />
                 </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-muted-foreground">
-                    Email Address
-                  </label>
-                  <Input value={currentUser?.email || ''} disabled className="bg-muted font-mono" />
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-foreground">Email Address</label>
+                  <Input
+                    value={currentUser?.email || ''}
+                    disabled
+                    className="bg-muted font-mono h-9 text-sm"
+                  />
                 </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-muted-foreground">User ID</label>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-foreground">User ID</label>
                   <Input
                     value={currentUser?.id || ''}
                     disabled
-                    className="bg-muted font-mono text-xs"
+                    className="bg-muted font-mono text-xs h-9"
                   />
                 </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-muted-foreground">Active Role</label>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-foreground">Assigned Role</label>
                   <Input
                     value={tenant?.roleCode || 'OWNER'}
                     disabled
-                    className="bg-muted font-mono font-semibold"
+                    className="bg-muted font-mono font-semibold h-9 text-sm"
                   />
                 </div>
               </div>
@@ -795,36 +979,40 @@ export default function SettingsPage() {
           </Card>
 
           {/* Change Password */}
-          <Card>
-            <CardHeader>
+          <Card className="border-border/70 shadow-sm">
+            <CardHeader className="pb-3 border-b border-border/40">
               <div className="flex items-center gap-2">
-                <Lock className="w-5 h-5 text-primary" />
-                <CardTitle>Security & Password</CardTitle>
+                <Lock className="w-4 h-4 text-primary" />
+                <CardTitle className="text-base font-semibold">Security & Password</CardTitle>
               </div>
-              <CardDescription>Update your personal account password.</CardDescription>
+              <CardDescription className="text-xs">
+                Update your personal account password.
+              </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="pt-5">
               <form onSubmit={handleUpdatePassword} className="space-y-4 max-w-md">
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold">Current Password</label>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-foreground">Current Password</label>
                   <Input
                     type="password"
                     placeholder="Enter current password"
                     value={currentPassword}
                     onChange={(e) => setCurrentPassword(e.target.value)}
+                    className="h-9 text-sm"
                   />
                 </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold">New Password</label>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-foreground">New Password</label>
                   <Input
                     type="password"
                     placeholder="At least 8 characters"
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
+                    className="h-9 text-sm"
                   />
                 </div>
-                <Button type="submit" disabled={updatingPassword} className="gap-2">
-                  <Save className="w-4 h-4" />
+                <Button type="submit" disabled={updatingPassword} size="sm" className="gap-2 h-9">
+                  <Save className="w-3.5 h-3.5" />
                   {updatingPassword ? 'Updating...' : 'Update Password'}
                 </Button>
               </form>
@@ -836,7 +1024,7 @@ export default function SettingsPage() {
       {/* Invite Member Modal */}
       {inviteModalOpen && (
         <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <Card className="w-full max-w-md shadow-2xl border">
+          <Card className="w-full max-w-md shadow-2xl border border-border">
             <CardHeader>
               <CardTitle>Invite Team Member</CardTitle>
               <CardDescription>
@@ -846,18 +1034,19 @@ export default function SettingsPage() {
             <form onSubmit={handleInviteMember}>
               <CardContent className="space-y-4">
                 <div className="space-y-1.5">
-                  <label className="text-sm font-semibold">Email Address</label>
+                  <label className="text-xs font-semibold">Email Address</label>
                   <Input
                     type="email"
                     required
                     placeholder="colleague@company.com"
                     value={inviteEmail}
                     onChange={(e) => setInviteEmail(e.target.value)}
+                    className="h-9 text-sm"
                   />
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-sm font-semibold">Role</label>
+                  <label className="text-xs font-semibold">Role</label>
                   <select
                     value={inviteRole}
                     onChange={(e: any) => setInviteRole(e.target.value)}
@@ -874,13 +1063,15 @@ export default function SettingsPage() {
                 <Button
                   type="button"
                   variant="outline"
+                  size="sm"
                   onClick={() => setInviteModalOpen(false)}
                   disabled={invitingMember}
+                  className="h-9"
                 >
                   Cancel
                 </Button>
-                <Button type="submit" disabled={invitingMember} className="gap-2">
-                  <Mail className="w-4 h-4" />
+                <Button type="submit" size="sm" disabled={invitingMember} className="gap-2 h-9">
+                  <Mail className="w-3.5 h-3.5" />
                   {invitingMember ? 'Sending...' : 'Send Invitation'}
                 </Button>
               </div>

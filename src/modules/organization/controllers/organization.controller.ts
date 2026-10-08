@@ -55,7 +55,7 @@ export class OrganizationController {
   async updateOrganization(
     @CurrentUser() user: TenantSessionContext,
     @Param('id') tenantId: string,
-    @Body() dto: { legalName?: string; timezone?: string },
+    @Body() dto: { legalName?: string; timezone?: string; baseCurrency?: string },
   ) {
     const tenant = await this.orgService.updateOrganization(tenantId, user.userId, dto);
     return { data: tenant };

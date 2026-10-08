@@ -20,6 +20,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { ThemeToggle } from '@/components/shared/theme-toggle';
 import { authStorage, AuthUser } from '@/lib/auth-storage';
+import { apiClient } from '@/lib/api-client';
 
 const navigation = [
   { name: 'Overview', href: '/', icon: LayoutDashboard },
@@ -42,8 +43,21 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     if (!authStorage.isAuthenticated()) {
       router.push('/login');
     } else {
-      setCurrentUser(authStorage.getAuthUser());
+      const user = authStorage.getAuthUser();
+      setCurrentUser(user);
       setIsCheckingAuth(false);
+
+      const tenantId = authStorage.getActiveTenantId() || user?.tenantId;
+      if (tenantId) {
+        apiClient
+          .get<{ data: { baseCurrency?: string } }>(`/organizations/${tenantId}`, { silent: true })
+          .then((res) => {
+            if (res.data?.baseCurrency) {
+              authStorage.setTenantCurrency(res.data.baseCurrency);
+            }
+          })
+          .catch(() => {});
+      }
     }
   }, [router]);
 

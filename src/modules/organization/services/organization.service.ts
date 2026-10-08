@@ -215,7 +215,7 @@ export class OrganizationService {
   async updateOrganization(
     tenantId: string,
     userId: string,
-    dto: { legalName?: string; timezone?: string },
+    dto: { legalName?: string; timezone?: string; baseCurrency?: string },
   ): Promise<TenantEntity> {
     const membership = await this.tenantRepo.findMembership(tenantId, userId);
     if (!membership || membership.roleCode !== 'OWNER') {
@@ -224,6 +224,7 @@ export class OrganizationService {
     return this.tenantRepo.updateTenant(tenantId, {
       legalName: dto.legalName?.trim(),
       timezone: dto.timezone,
+      ...(dto.baseCurrency ? { baseCurrency: dto.baseCurrency.toUpperCase().trim() } : {}),
     });
   }
 }

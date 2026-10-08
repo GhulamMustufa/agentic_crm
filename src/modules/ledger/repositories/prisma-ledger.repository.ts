@@ -529,4 +529,12 @@ export class PrismaLedgerRepository implements ILedgerRepository {
     });
     return balances.map((b) => this.toBalanceEntity(b));
   }
+
+  async getTenantBaseCurrency(tenantId: string): Promise<string> {
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { baseCurrency: true },
+    });
+    return tenant?.baseCurrency || 'MYR';
+  }
 }
