@@ -37,6 +37,7 @@ interface StatementLineItem {
 }
 
 interface ProfitAndLossData {
+  baseCurrency?: string;
   revenues: StatementLineItem[];
   expenses: StatementLineItem[];
   totalRevenueCents: string | number;
@@ -45,6 +46,7 @@ interface ProfitAndLossData {
 }
 
 interface BalanceSheetData {
+  baseCurrency?: string;
   assets: StatementLineItem[];
   liabilities: StatementLineItem[];
   equity: StatementLineItem[];
@@ -118,6 +120,8 @@ export default function ReportsPage() {
   const totalTbDebit = Number(trialBalance?.totalDebitCents || 0) / 100;
   const totalTbCredit = Number(trialBalance?.totalCreditCents || 0) / 100;
 
+  const reportCurrency = pnl?.baseCurrency || balanceSheet?.baseCurrency || 'USD';
+
   const hasData =
     (pnl?.revenues && pnl.revenues.length > 0) ||
     (pnl?.expenses && pnl.expenses.length > 0) ||
@@ -134,7 +138,7 @@ export default function ReportsPage() {
             Real-time statements computed deterministically from the immutable General Ledger.
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2 w-full md:w-auto">
           <Button variant="outline">
             <Calendar className="w-4 h-4 mr-2" />
             Current Period
@@ -204,8 +208,8 @@ export default function ReportsPage() {
               <p className="text-xs text-muted-foreground pt-1">
                 General Ledger invariant check:{' '}
                 <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
-                  ∑ Debits ({formatCurrency(totalTbDebit)}) == ∑ Credits (
-                  {formatCurrency(totalTbCredit)})
+                  ∑ Debits ({formatCurrency(totalTbDebit, reportCurrency)}) == ∑ Credits (
+                  {formatCurrency(totalTbCredit, reportCurrency)})
                 </span>
                 .
               </p>
@@ -277,14 +281,14 @@ export default function ReportsPage() {
                             {item.accountCode} - {item.accountName}
                           </TableCell>
                           <TableCell className="text-right tabular-nums">
-                            {formatCurrency(Number(item.amountCents) / 100)}
+                            {formatCurrency(Number(item.amountCents) / 100, reportCurrency)}
                           </TableCell>
                         </TableRow>
                       ))}
                       <TableRow className="bg-muted/40 font-semibold">
                         <TableCell>Total Revenue</TableCell>
                         <TableCell className="text-right tabular-nums">
-                          {formatCurrency(totalRev)}
+                          {formatCurrency(totalRev, reportCurrency)}
                         </TableCell>
                       </TableRow>
                     </TableBody>
@@ -304,14 +308,14 @@ export default function ReportsPage() {
                             {item.accountCode} - {item.accountName}
                           </TableCell>
                           <TableCell className="text-right tabular-nums">
-                            {formatCurrency(Number(item.amountCents) / 100)}
+                            {formatCurrency(Number(item.amountCents) / 100, reportCurrency)}
                           </TableCell>
                         </TableRow>
                       ))}
                       <TableRow className="bg-muted/60 font-bold text-base border-t-2">
                         <TableCell>Net Income</TableCell>
                         <TableCell className="text-right tabular-nums text-emerald-600 dark:text-emerald-400">
-                          {formatCurrency(netIncome)}
+                          {formatCurrency(netIncome, reportCurrency)}
                         </TableCell>
                       </TableRow>
                     </TableBody>
@@ -353,14 +357,14 @@ export default function ReportsPage() {
                             {item.accountCode} - {item.accountName}
                           </TableCell>
                           <TableCell className="text-right tabular-nums">
-                            {formatCurrency(Number(item.amountCents) / 100)}
+                            {formatCurrency(Number(item.amountCents) / 100, reportCurrency)}
                           </TableCell>
                         </TableRow>
                       ))}
                       <TableRow className="bg-muted/40 font-semibold">
                         <TableCell>Total Assets</TableCell>
                         <TableCell className="text-right tabular-nums">
-                          {formatCurrency(totalAssets)}
+                          {formatCurrency(totalAssets, reportCurrency)}
                         </TableCell>
                       </TableRow>
                     </TableBody>
@@ -380,14 +384,14 @@ export default function ReportsPage() {
                             {item.accountCode} - {item.accountName}
                           </TableCell>
                           <TableCell className="text-right tabular-nums">
-                            {formatCurrency(Number(item.amountCents) / 100)}
+                            {formatCurrency(Number(item.amountCents) / 100, reportCurrency)}
                           </TableCell>
                         </TableRow>
                       ))}
                       <TableRow className="bg-muted/40 font-semibold">
                         <TableCell>Total Liabilities</TableCell>
                         <TableCell className="text-right tabular-nums">
-                          {formatCurrency(totalLiab)}
+                          {formatCurrency(totalLiab, reportCurrency)}
                         </TableCell>
                       </TableRow>
                     </TableBody>
@@ -406,14 +410,14 @@ export default function ReportsPage() {
                             {item.accountCode} - {item.accountName}
                           </TableCell>
                           <TableCell className="text-right tabular-nums">
-                            {formatCurrency(Number(item.amountCents) / 100)}
+                            {formatCurrency(Number(item.amountCents) / 100, reportCurrency)}
                           </TableCell>
                         </TableRow>
                       ))}
                       <TableRow className="bg-muted/60 font-bold text-base border-t-2">
                         <TableCell>Total Liabilities & Equity</TableCell>
                         <TableCell className="text-right tabular-nums">
-                          {formatCurrency(totalLiab + totalEq)}
+                          {formatCurrency(totalLiab + totalEq, reportCurrency)}
                         </TableCell>
                       </TableRow>
                     </TableBody>
@@ -468,10 +472,10 @@ export default function ReportsPage() {
                             </span>
                           </TableCell>
                           <TableCell className="text-right font-mono tabular-nums">
-                            {dr > 0 ? formatCurrency(dr) : '—'}
+                            {dr > 0 ? formatCurrency(dr, reportCurrency) : '—'}
                           </TableCell>
                           <TableCell className="text-right font-mono tabular-nums">
-                            {cr > 0 ? formatCurrency(cr) : '—'}
+                            {cr > 0 ? formatCurrency(cr, reportCurrency) : '—'}
                           </TableCell>
                         </TableRow>
                       );
@@ -479,10 +483,10 @@ export default function ReportsPage() {
                     <TableRow className="bg-muted/70 font-bold border-t-2">
                       <TableCell colSpan={3}>Invariant Balance Verification</TableCell>
                       <TableCell className="text-right font-mono tabular-nums text-emerald-600 dark:text-emerald-400">
-                        {formatCurrency(totalTbDebit)}
+                        {formatCurrency(totalTbDebit, reportCurrency)}
                       </TableCell>
                       <TableCell className="text-right font-mono tabular-nums text-emerald-600 dark:text-emerald-400">
-                        {formatCurrency(totalTbCredit)}
+                        {formatCurrency(totalTbCredit, reportCurrency)}
                       </TableCell>
                     </TableRow>
                   </TableBody>

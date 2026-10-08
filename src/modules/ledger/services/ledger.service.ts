@@ -665,6 +665,7 @@ export class LedgerService {
     return {
       tenantId,
       periodId: targetPeriodId,
+      baseCurrency: 'USD',
       revenues,
       expenses,
       totalRevenueCents: totalRevenue,
@@ -753,6 +754,7 @@ export class LedgerService {
     return {
       tenantId,
       asOfPeriodId: targetPeriodId,
+      baseCurrency: 'USD',
       assets,
       liabilities,
       equity,

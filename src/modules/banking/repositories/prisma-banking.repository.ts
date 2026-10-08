@@ -120,7 +120,9 @@ export class PrismaBankingRepository implements IBankingRepository {
     };
   }
 
-  private toBankTransactionEntity(model: BankTransaction): BankTransactionEntity {
+  private toBankTransactionEntity(
+    model: BankTransaction & { bankAccount?: { currency: string } | null },
+  ): BankTransactionEntity {
     return {
       id: model.id,
       tenantId: model.tenantId,
@@ -153,6 +155,7 @@ export class PrismaBankingRepository implements IBankingRepository {
       transactionFingerprint: model.transactionFingerprint ?? undefined,
       referenceNumber: model.referenceNumber ?? undefined,
       transactionHash: model.transactionHash,
+      currency: model.bankAccount?.currency ?? 'USD',
       status: model.status as BankTransactionStatus,
       createdAt: model.createdAt,
     };
@@ -525,6 +528,11 @@ export class PrismaBankingRepository implements IBankingRepository {
         tenantId,
         ...(options?.bankAccountId ? { bankAccountId: options.bankAccountId } : {}),
         ...(options?.status ? { status: options.status } : {}),
+      },
+      include: {
+        bankAccount: {
+          select: { currency: true },
+        },
       },
       orderBy: [{ transactionDate: 'asc' }, { createdAt: 'asc' }],
     });

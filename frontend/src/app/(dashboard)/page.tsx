@@ -21,11 +21,13 @@ import { formatCurrency } from '@/lib/formatters';
 
 interface BankAccount {
   id: string;
+  currency?: string;
   currentBalanceCents: string | number;
 }
 
 interface BankTransaction {
   id: string;
+  currency?: string;
   amountCents: string | number;
   status: string;
 }
@@ -44,6 +46,8 @@ export default function DashboardPage() {
   const [totalBalanceCents, setTotalBalanceCents] = React.useState(0);
   const [hasAccounts, setHasAccounts] = React.useState(false);
 
+  const [dashboardCurrency, setDashboardCurrency] = React.useState('USD');
+
   React.useEffect(() => {
     async function fetchDashboardMetrics() {
       try {
@@ -59,6 +63,9 @@ export default function DashboardPage() {
           setHasAccounts(accs.length > 0);
           const bal = accs.reduce((sum, a) => sum + Number(a.currentBalanceCents || 0), 0);
           setTotalBalanceCents(bal);
+          if (accs[0]?.currency) {
+            setDashboardCurrency(accs[0].currency);
+          }
         }
 
         if (txRes.status === 'fulfilled') {
@@ -68,6 +75,9 @@ export default function DashboardPage() {
             .filter((t) => t.status === 'RECONCILED' || t.status === 'MATCHED')
             .reduce((sum, t) => sum + Math.abs(Number(t.amountCents || 0)), 0);
           setTotalReconciledCents(reconciledSum);
+          if (txs[0]?.currency) {
+            setDashboardCurrency(txs[0].currency);
+          }
         }
 
         if (excRes.status === 'fulfilled') {
@@ -85,7 +95,7 @@ export default function DashboardPage() {
     fetchDashboardMetrics();
   }, []);
 
-  const formattedReconciled = formatCurrency(totalReconciledCents / 100);
+  const formattedReconciled = formatCurrency(totalReconciledCents / 100, dashboardCurrency);
   const isFreshAccount = !loading && transactionCount === 0;
 
   return (

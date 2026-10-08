@@ -102,6 +102,7 @@ export default function BankingPage() {
     'CHECKING' | 'SAVINGS' | 'CREDIT_CARD'
   >('CHECKING');
   const [newLast4, setNewLast4] = React.useState('4092');
+  const [newCurrency, setNewCurrency] = React.useState('USD');
 
   // Manual Bank Selection for Upload
   const [manualBankName, setManualBankName] = React.useState('');
@@ -176,7 +177,7 @@ export default function BankingPage() {
         accountName: newAccountName.trim(),
         institutionName: newInstitution.trim(),
         accountType: newAccountType,
-        currency: 'USD',
+        currency: newCurrency,
         accountNumberLast4: newLast4.trim(),
       });
 
@@ -334,7 +335,7 @@ export default function BankingPage() {
             ingestion.
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2 w-full sm:w-auto">
           <Button variant="outline" size="sm" onClick={loadAccounts} disabled={isLoadingAccounts}>
             <RefreshCw className={`w-4 h-4 mr-2 ${isLoadingAccounts ? 'animate-spin' : ''}`} />
             Refresh
@@ -392,6 +393,28 @@ export default function BankingPage() {
                     <option value="CHECKING">Checking</option>
                     <option value="SAVINGS">Savings</option>
                     <option value="CREDIT_CARD">Credit Card</option>
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="currency">Currency</Label>
+                  <select
+                    id="currency"
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                    value={newCurrency}
+                    onChange={(e) => setNewCurrency(e.target.value)}
+                  >
+                    <option value="USD">USD ($ - US Dollar)</option>
+                    <option value="MYR">MYR (RM - Malaysian Ringgit)</option>
+                    <option value="SGD">SGD (S$ - Singapore Dollar)</option>
+                    <option value="EUR">EUR (€ - Euro)</option>
+                    <option value="GBP">GBP (£ - British Pound)</option>
+                    <option value="AED">AED (AED - UAE Dirham)</option>
+                    <option value="CAD">CAD (C$ - Canadian Dollar)</option>
+                    <option value="AUD">AUD (A$ - Australian Dollar)</option>
+                    <option value="INR">INR (₹ - Indian Rupee)</option>
+                    <option value="PKR">PKR (Rs - Pakistani Rupee)</option>
+                    <option value="JPY">JPY (¥ - Japanese Yen)</option>
+                    <option value="CNY">CNY (¥ - Chinese Yuan)</option>
                   </select>
                 </div>
                 <div className="space-y-1">
@@ -514,7 +537,10 @@ export default function BankingPage() {
                           </div>
                         </TableCell>
                         <TableCell className="tabular-nums font-mono">
-                          {formatCurrency(balanceNum)}
+                          {formatCurrency(balanceNum, acc.currency)}
+                          <Badge variant="outline" className="ml-2 text-[10px] font-mono uppercase">
+                            {acc.currency || 'USD'}
+                          </Badge>
                         </TableCell>
                         <TableCell>
                           <Badge variant="outline" className="text-xs">

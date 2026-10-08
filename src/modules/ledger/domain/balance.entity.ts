@@ -40,6 +40,7 @@ export interface StatementLineItem {
 export interface ProfitAndLossReport {
   tenantId: string;
   periodId: string;
+  baseCurrency?: string;
   revenues: StatementLineItem[];
   expenses: StatementLineItem[];
   totalRevenueCents: bigint;
@@ -50,6 +51,7 @@ export interface ProfitAndLossReport {
 export interface BalanceSheetReport {
   tenantId: string;
   asOfPeriodId: string;
+  baseCurrency?: string;
   assets: StatementLineItem[];
   liabilities: StatementLineItem[];
   equity: StatementLineItem[];

@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { ThemeToggle } from '@/components/shared/theme-toggle';
 import { authStorage, AuthUser } from '@/lib/auth-storage';
 
 const navigation = [
@@ -179,7 +180,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <Menu className="w-5 h-5" />
           </Button>
           <div className="flex-1" />
-          {/* We'll add ThemeToggle or UserMenu here later */}
+          <ThemeToggle />
         </header>
 
         {/* Page content */}

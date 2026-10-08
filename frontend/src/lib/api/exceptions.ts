@@ -29,6 +29,7 @@ export interface ExceptionItem {
   id: string;
   date: string;
   amount: number;
+  currency?: string;
   description: string;
   type: ExceptionType;
   severity: 'high' | 'medium' | 'low';
@@ -108,10 +109,29 @@ export async function getPendingExceptions(): Promise<ExceptionItem[]> {
           ? new Date(rawDate).toISOString()
           : new Date().toISOString();
 
+      let currency = 'USD';
+      if (
+        Array.isArray(item.evidence) &&
+        item.evidence[0] &&
+        (item.evidence[0] as Record<string, unknown>).currency
+      ) {
+        currency = String((item.evidence[0] as Record<string, unknown>).currency);
+      } else if (
+        item.evidence &&
+        typeof item.evidence === 'object' &&
+        !Array.isArray(item.evidence) &&
+        (item.evidence as Record<string, unknown>).currency
+      ) {
+        currency = String((item.evidence as Record<string, unknown>).currency);
+      } else if (item.reason && (item.reason.includes('RM') || item.reason.includes('MYR'))) {
+        currency = 'MYR';
+      }
+
       return {
         id: item.id,
         date: validDate,
         amount,
+        currency,
         description: item.reason,
         type: rawType,
         severity: sev,

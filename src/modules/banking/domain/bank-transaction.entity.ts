@@ -33,6 +33,7 @@ export interface BankTransactionEntity {
   transactionFingerprint?: string;
   referenceNumber?: string;
   transactionHash: string; // SHA-256 fingerprint
+  currency?: string;
   status: BankTransactionStatus;
   createdAt: Date;
 }

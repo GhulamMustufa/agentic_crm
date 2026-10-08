@@ -51,6 +51,7 @@ interface RawInvoice {
   dueDate: string;
   totalCents: string | number;
   amountDueCents: string | number;
+  currency?: string;
   status: 'DRAFT' | 'APPROVED' | 'POSTED' | 'PARTIALLY_PAID' | 'PAID' | 'VOID';
 }
 
@@ -62,6 +63,7 @@ interface InvoiceRecord {
   issueDate: string;
   dueDate: string;
   totalAmount: number;
+  currency: string;
   status: 'DRAFT' | 'POSTED' | 'PAID' | 'OVERDUE' | 'VOID';
 }
 
@@ -124,6 +126,7 @@ export default function InvoicesPage() {
   const [invoiceNumber, setInvoiceNumber] = React.useState('');
   const [issueDate, setIssueDate] = React.useState(getTodayDate());
   const [dueDate, setDueDate] = React.useState(addDaysToDate(getTodayDate(), 30));
+  const [formCurrency, setFormCurrency] = React.useState('USD');
   const [taxAmount, setTaxAmount] = React.useState<number>(0);
   const [postImmediately, setPostImmediately] = React.useState(true);
   const [formLines, setFormLines] = React.useState<FormLineItem[]>([
@@ -253,6 +256,7 @@ export default function InvoicesPage() {
           issueDate: inv.issueDate,
           dueDate: inv.dueDate,
           totalAmount: total,
+          currency: inv.currency || 'USD',
           status: mappedStatus,
         };
       });
@@ -451,7 +455,7 @@ export default function InvoicesPage() {
         invoiceNumber: invoiceNumber.trim(),
         issueDate,
         dueDate,
-        currency: 'USD',
+        currency: formCurrency,
         taxCents: Math.round(Number(taxAmount || 0) * 100),
         lines: validLines.map((l) => ({
           accountId: l.accountId,
@@ -723,7 +727,7 @@ export default function InvoicesPage() {
             Deterministic Accounts Receivable (AR) & Accounts Payable (AP) ledger integration.
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2 w-full md:w-auto">
           <Button variant="outline" onClick={fetchInvoices} disabled={loading}>
             <Download className="w-4 h-4 mr-2" />
             Refresh
@@ -771,7 +775,7 @@ export default function InvoicesPage() {
             </div>
 
             {/* Type Switcher Pills */}
-            <div className="flex gap-2 pt-4 pb-2">
+            <div className="flex flex-wrap gap-2 pt-4 pb-2">
               <Button
                 type="button"
                 size="sm"
@@ -886,6 +890,35 @@ export default function InvoicesPage() {
                     placeholder="INV-2026-001"
                     required
                   />
+                </div>
+
+                {/* Currency */}
+                <div className="space-y-1.5">
+                  <Label
+                    htmlFor="formCurrency"
+                    className="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
+                  >
+                    Currency
+                  </Label>
+                  <select
+                    id="formCurrency"
+                    value={formCurrency}
+                    onChange={(e) => setFormCurrency(e.target.value)}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <option value="USD">USD ($ - US Dollar)</option>
+                    <option value="MYR">MYR (RM - Malaysian Ringgit)</option>
+                    <option value="SGD">SGD (S$ - Singapore Dollar)</option>
+                    <option value="EUR">EUR (€ - Euro)</option>
+                    <option value="GBP">GBP (£ - British Pound)</option>
+                    <option value="AED">AED (AED - UAE Dirham)</option>
+                    <option value="CAD">CAD (C$ - Canadian Dollar)</option>
+                    <option value="AUD">AUD (A$ - Australian Dollar)</option>
+                    <option value="INR">INR (₹ - Indian Rupee)</option>
+                    <option value="PKR">PKR (Rs - Pakistani Rupee)</option>
+                    <option value="JPY">JPY (¥ - Japanese Yen)</option>
+                    <option value="CNY">CNY (¥ - Chinese Yuan)</option>
+                  </select>
                 </div>
               </div>
 
@@ -1100,7 +1133,7 @@ export default function InvoicesPage() {
                   <div className="flex justify-between text-sm text-muted-foreground">
                     <span>Subtotal:</span>
                     <span className="font-medium text-foreground tabular-nums">
-                      {formatCurrency(linesSubtotal)}
+                      {formatCurrency(linesSubtotal, formCurrency)}
                     </span>
                   </div>
                   <div className="flex justify-between items-center text-sm text-muted-foreground">
@@ -1117,7 +1150,7 @@ export default function InvoicesPage() {
                   <div className="flex justify-between text-base font-bold text-foreground border-t border-border/50 pt-2">
                     <span>Total Amount:</span>
                     <span className="text-primary tabular-nums">
-                      {formatCurrency(invoiceTotal)}
+                      {formatCurrency(invoiceTotal, formCurrency)}
                     </span>
                   </div>
                 </div>
@@ -1176,7 +1209,7 @@ export default function InvoicesPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold tabular-nums">
-              {formatCurrency(totalReceivables)}
+              {formatCurrency(totalReceivables, invoices[0]?.currency || 'USD')}
             </div>
             <p className="text-xs text-muted-foreground mt-1">Incoming revenue expected</p>
           </CardContent>
@@ -1188,7 +1221,9 @@ export default function InvoicesPage() {
             <ArrowUpRight className="h-4 w-4 text-blue-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold tabular-nums">{formatCurrency(totalPayables)}</div>
+            <div className="text-2xl font-bold tabular-nums">
+              {formatCurrency(totalPayables, invoices[0]?.currency || 'USD')}
+            </div>
             <p className="text-xs text-muted-foreground mt-1">Upcoming vendor obligations</p>
           </CardContent>
         </Card>
@@ -1202,7 +1237,7 @@ export default function InvoicesPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-rose-700 dark:text-rose-400 tabular-nums">
-              {formatCurrency(overdueAmount)}
+              {formatCurrency(overdueAmount, invoices[0]?.currency || 'USD')}
             </div>
             <p className="text-xs text-rose-600/80 dark:text-rose-400/80 mt-1">
               {overdueCount === 0
@@ -1219,7 +1254,7 @@ export default function InvoicesPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400 tabular-nums">
-              {formatCurrency(collectedThisMonth)}
+              {formatCurrency(collectedThisMonth, invoices[0]?.currency || 'USD')}
             </div>
             <p className="text-xs text-muted-foreground mt-1">Reconciled against general ledger</p>
           </CardContent>
@@ -1339,7 +1374,10 @@ export default function InvoicesPage() {
                       {formatIsoDate(inv.dueDate)}
                     </TableCell>
                     <TableCell className="text-right font-medium tabular-nums">
-                      {formatCurrency(inv.totalAmount)}
+                      {formatCurrency(inv.totalAmount, inv.currency)}
+                      <span className="ml-1 text-[10px] text-muted-foreground font-mono uppercase">
+                        {inv.currency || 'USD'}
+                      </span>
                     </TableCell>
                     <TableCell>{getStatusBadge(inv.status)}</TableCell>
                     <TableCell className="text-right">

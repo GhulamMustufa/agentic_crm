@@ -43,6 +43,7 @@ interface TransactionItem {
   outflow: number; // Withdrawal (Money Out)
   status: 'RECONCILED' | 'AI_MATCHED' | 'PENDING_REVIEW';
   isAuditLocked: boolean;
+  currency: string;
 }
 
 interface RawBankTransaction {
@@ -51,6 +52,7 @@ interface RawBankTransaction {
   amountCents: string | number;
   rawDescription: string;
   normalizedPayee?: string;
+  currency?: string;
   status: string;
   createdAt: string;
 }
@@ -91,6 +93,7 @@ export default function TransactionsPage() {
             outflow: isDeposit ? 0 : absAmount,
             status,
             isAuditLocked: tx.status === 'RECONCILED',
+            currency: tx.currency || 'USD',
           };
         });
 
@@ -214,6 +217,8 @@ export default function TransactionsPage() {
     document.body.removeChild(link);
   };
 
+  const primaryCurrency = transactions[0]?.currency || 'USD';
+
   return (
     <div className="flex flex-col gap-6">
       {/* Header */}
@@ -224,7 +229,7 @@ export default function TransactionsPage() {
             Immutable General Ledger records aligned with uploaded bank statements.
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2 w-full md:w-auto">
           <Button
             variant="outline"
             onClick={() =>
@@ -232,7 +237,12 @@ export default function TransactionsPage() {
             }
           >
             <ArrowUpDown className="w-4 h-4 mr-2" />
-            {sortOrder === 'STATEMENT_ASC' ? 'Statement Order (Oldest First)' : 'Newest First'}
+            <span className="sm:hidden">
+              {sortOrder === 'STATEMENT_ASC' ? 'Oldest First' : 'Newest First'}
+            </span>
+            <span className="hidden sm:inline">
+              {sortOrder === 'STATEMENT_ASC' ? 'Statement Order (Oldest First)' : 'Newest First'}
+            </span>
           </Button>
           <Button variant="outline" onClick={loadData} disabled={isLoading}>
             <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
@@ -254,7 +264,7 @@ export default function TransactionsPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold tabular-nums text-emerald-600 dark:text-emerald-400">
-              +{formatCurrency(totalInflows)}
+              +{formatCurrency(totalInflows, primaryCurrency)}
             </div>
             <p className="text-xs text-muted-foreground mt-1">Money received across statement</p>
           </CardContent>
@@ -267,7 +277,7 @@ export default function TransactionsPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold tabular-nums text-rose-600 dark:text-rose-400">
-              -{formatCurrency(totalOutflows)}
+              -{formatCurrency(totalOutflows, primaryCurrency)}
             </div>
             <p className="text-xs text-muted-foreground mt-1">Disbursements & payments</p>
           </CardContent>
@@ -371,60 +381,105 @@ export default function TransactionsPage() {
       ) : (
         <Card>
           <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-[120px]">Date</TableHead>
-                  <TableHead>Description & Payee</TableHead>
-                  <TableHead>Chart of Accounts</TableHead>
-                  <TableHead className="text-right text-emerald-600 dark:text-emerald-400 font-semibold">
-                    Deposit (Inflow)
-                  </TableHead>
-                  <TableHead className="text-right text-rose-600 dark:text-rose-400 font-semibold">
-                    Withdrawal (Outflow)
-                  </TableHead>
-                  <TableHead className="w-[140px]">Status</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filtered.map((tx) => (
-                  <TableRow key={tx.id}>
-                    <TableCell className="font-mono text-xs text-muted-foreground">
-                      {formatIsoDate(tx.date)}
-                    </TableCell>
-                    <TableCell>
-                      <div className="font-medium">{tx.description}</div>
-                      <div className="text-xs text-muted-foreground">{tx.counterparty}</div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="text-sm font-medium">{tx.accountName}</div>
-                      <div className="text-xs font-mono text-muted-foreground">
-                        Account {tx.accountCode}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums font-mono">
-                      {tx.inflow > 0 ? (
-                        <span className="text-emerald-600 dark:text-emerald-400 font-medium">
-                          +{formatCurrency(tx.inflow)}
-                        </span>
-                      ) : (
-                        <span className="text-muted-foreground/40">—</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums font-mono">
-                      {tx.outflow > 0 ? (
-                        <span className="text-rose-600 dark:text-rose-400 font-medium">
-                          -{formatCurrency(tx.outflow)}
-                        </span>
-                      ) : (
-                        <span className="text-muted-foreground/40">—</span>
-                      )}
-                    </TableCell>
-                    <TableCell>{getStatusBadge(tx.status)}</TableCell>
+            {/* Desktop Table View */}
+            <div className="hidden md:block">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-[120px]">Date</TableHead>
+                    <TableHead>Description & Payee</TableHead>
+                    <TableHead>Chart of Accounts</TableHead>
+                    <TableHead className="text-right text-emerald-600 dark:text-emerald-400 font-semibold">
+                      Deposit (Inflow)
+                    </TableHead>
+                    <TableHead className="text-right text-rose-600 dark:text-rose-400 font-semibold">
+                      Withdrawal (Outflow)
+                    </TableHead>
+                    <TableHead className="w-[140px]">Status</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {filtered.map((tx) => (
+                    <TableRow key={tx.id}>
+                      <TableCell className="font-mono text-xs text-muted-foreground">
+                        {formatIsoDate(tx.date)}
+                      </TableCell>
+                      <TableCell>
+                        <div className="font-medium">{tx.description}</div>
+                        <div className="text-xs text-muted-foreground">{tx.counterparty}</div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="text-sm font-medium">{tx.accountName}</div>
+                        <div className="text-xs font-mono text-muted-foreground">
+                          Account {tx.accountCode}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums font-mono">
+                        {tx.inflow > 0 ? (
+                          <span className="text-emerald-600 dark:text-emerald-400 font-medium">
+                            +{formatCurrency(tx.inflow, tx.currency)}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground/40">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums font-mono">
+                        {tx.outflow > 0 ? (
+                          <span className="text-rose-600 dark:text-rose-400 font-medium">
+                            -{formatCurrency(tx.outflow, tx.currency)}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground/40">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell>{getStatusBadge(tx.status)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+
+            {/* Mobile Card / List View */}
+            <div className="md:hidden divide-y divide-border">
+              {filtered.map((tx) => (
+                <div key={tx.id} className="p-4 space-y-2">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="font-medium text-sm text-foreground truncate">
+                        {tx.counterparty || tx.description}
+                      </div>
+                      <div className="text-xs text-muted-foreground truncate mt-0.5">
+                        {tx.description}
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      {tx.inflow > 0 ? (
+                        <span className="text-sm font-semibold text-emerald-600 dark:text-emerald-400 font-mono tabular-nums">
+                          +{formatCurrency(tx.inflow, tx.currency)}
+                        </span>
+                      ) : tx.outflow > 0 ? (
+                        <span className="text-sm font-semibold text-rose-600 dark:text-rose-400 font-mono tabular-nums">
+                          -{formatCurrency(tx.outflow, tx.currency)}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-muted-foreground/40">—</span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between text-xs pt-1">
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <span className="font-mono">{formatIsoDate(tx.date)}</span>
+                      <span>•</span>
+                      <span className="font-mono text-[11px] bg-muted px-1.5 py-0.5 rounded">
+                        Acc {tx.accountCode}
+                      </span>
+                    </div>
+                    <div>{getStatusBadge(tx.status)}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
           </CardContent>
         </Card>
       )}
