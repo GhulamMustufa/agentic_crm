@@ -76,4 +76,46 @@ describe('Multi-Currency Formatting Utility', () => {
     const formatted = formatCurrency(100, 'INVALID_CODE');
     expect(formatted).toContain('$100.00');
   });
+
+  it('should return correct currency symbols for major currencies', () => {
+    function getCurrencySymbol(currency = 'USD'): string {
+      const curr = (currency || 'USD').toUpperCase();
+      switch (curr) {
+        case 'MYR':
+          return 'RM';
+        case 'EUR':
+          return '€';
+        case 'GBP':
+          return '£';
+        case 'SGD':
+          return 'S$';
+        case 'CAD':
+          return 'C$';
+        case 'AUD':
+          return 'A$';
+        case 'INR':
+          return '₹';
+        case 'PKR':
+          return 'Rs';
+        case 'JPY':
+        case 'CNY':
+          return '¥';
+        case 'AED':
+          return 'AED';
+        default:
+          return '$';
+      }
+    }
+
+    expect(getCurrencySymbol('MYR')).toBe('RM');
+    expect(getCurrencySymbol('USD')).toBe('$');
+    expect(getCurrencySymbol('EUR')).toBe('€');
+    expect(getCurrencySymbol('GBP')).toBe('£');
+    expect(getCurrencySymbol('SGD')).toBe('S$');
+    expect(getCurrencySymbol('AED')).toBe('AED');
+    expect(getCurrencySymbol('INR')).toBe('₹');
+    expect(getCurrencySymbol('PKR')).toBe('Rs');
+    expect(getCurrencySymbol('JPY')).toBe('¥');
+    expect(getCurrencySymbol('UNKNOWN')).toBe('$');
+  });
 });

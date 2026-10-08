@@ -21,6 +21,8 @@ import {
   Edit2,
   Ban,
   Sparkles,
+  RotateCw,
+  ShieldCheck,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -37,7 +39,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { formatCurrency, formatIsoDate } from '@/lib/formatters';
+import { formatCurrency, formatIsoDate, getCurrencySymbol } from '@/lib/formatters';
 import { apiClient } from '@/lib/api-client';
 import { authStorage } from '@/lib/auth-storage';
 
@@ -120,6 +122,7 @@ export default function InvoicesPage() {
 
   // Form Fields
   const [formType, setFormType] = React.useState<'INVOICE' | 'BILL'>('INVOICE');
+  const [lineMode, setLineMode] = React.useState<'simple' | 'itemized'>('simple');
   const [counterpartyMode, setCounterpartyMode] = React.useState<'select' | 'new'>('select');
   const [selectedCounterpartyId, setSelectedCounterpartyId] = React.useState('');
   const [newCounterpartyName, setNewCounterpartyName] = React.useState('');
@@ -138,6 +141,68 @@ export default function InvoicesPage() {
       unitPrice: 1250,
     },
   ]);
+
+  const getSuggestedAccountForType = React.useCallback(
+    (type: 'INVOICE' | 'BILL', accounts: LedgerAccount[]) => {
+      if (type === 'INVOICE') {
+        return (
+          accounts.find((a) => a.accountCode === '4010') ||
+          accounts.find((a) => a.classification === 'REVENUE') ||
+          accounts[0]
+        );
+      } else {
+        return (
+          accounts.find((a) => a.accountCode === '5010') ||
+          accounts.find((a) => a.accountCode === '6010') ||
+          accounts.find((a) => a.classification === 'EXPENSE') ||
+          accounts[0]
+        );
+      }
+    },
+    [],
+  );
+
+  const getNextInvoiceNumber = React.useCallback(
+    (type: 'INVOICE' | 'BILL', existingInvoices: InvoiceRecord[]) => {
+      const prefix = type === 'INVOICE' ? 'INV' : 'BILL';
+      const year = new Date().getFullYear();
+      const pattern = new RegExp(`^${prefix}-${year}-(\\d+)$`);
+      let maxSeq = 0;
+      for (const inv of existingInvoices) {
+        const match = inv.invoiceNumber?.match(pattern);
+        if (match) {
+          const seq = parseInt(match[1], 10);
+          if (seq > maxSeq) maxSeq = seq;
+        }
+      }
+      const nextSeq = maxSeq > 0 ? maxSeq + 1 : existingInvoices.length + 1;
+      return `${prefix}-${year}-${String(nextSeq).padStart(3, '0')}`;
+    },
+    [],
+  );
+
+  const handleSwitchFormType = (newType: 'INVOICE' | 'BILL') => {
+    setFormType(newType);
+    if (!editingInvoiceId) {
+      setInvoiceNumber(getNextInvoiceNumber(newType, invoices));
+      const suggested = getSuggestedAccountForType(newType, ledgerAccounts);
+      if (suggested) {
+        setFormLines((prev) =>
+          prev.map((l) => ({
+            ...l,
+            accountId: suggested.id,
+            description:
+              l.description === 'Consulting & Implementation Services' ||
+              l.description === 'Vendor Goods / Operating Expense'
+                ? newType === 'INVOICE'
+                  ? 'Consulting & Implementation Services'
+                  : 'Vendor Goods / Operating Expense'
+                : l.description,
+          })),
+        );
+      }
+    }
+  };
 
   // Load Dependencies (Counterparties & Ledger Accounts)
   const loadDependencies = React.useCallback(async () => {
@@ -302,30 +367,25 @@ export default function InvoicesPage() {
   React.useEffect(() => {
     if (editingInvoiceId) return;
 
-    const prefix = formType === 'INVOICE' ? 'INV' : 'BILL';
-    const year = new Date().getFullYear();
-    const count = invoices.length + 1;
-    setInvoiceNumber(`${prefix}-${year}-${String(count).padStart(3, '0')}`);
+    setInvoiceNumber(getNextInvoiceNumber(formType, invoices));
 
     // Update account IDs to suit type
     if (ledgerAccounts.length > 0) {
-      const preferredAccount =
-        formType === 'INVOICE'
-          ? ledgerAccounts.find((a) => a.classification === 'REVENUE' || a.accountCode === '4010')
-          : ledgerAccounts.find(
-              (a) =>
-                a.classification === 'EXPENSE' ||
-                a.accountCode === '5010' ||
-                a.accountCode === '6010',
-            );
-
+      const preferredAccount = getSuggestedAccountForType(formType, ledgerAccounts);
       if (preferredAccount) {
         setFormLines((prev) =>
           prev.map((l) => ({ ...l, accountId: l.accountId || preferredAccount.id })),
         );
       }
     }
-  }, [formType, invoices.length, ledgerAccounts]);
+  }, [
+    formType,
+    invoices,
+    ledgerAccounts,
+    getNextInvoiceNumber,
+    getSuggestedAccountForType,
+    editingInvoiceId,
+  ]);
 
   const filteredInvoices = invoices.filter((inv) => {
     const matchesSearch =
@@ -398,8 +458,8 @@ export default function InvoicesPage() {
   const invoiceTotal = linesSubtotal + (Number(taxAmount) || 0);
 
   // Form Submit Handler
-  const handleCreateInvoice = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleCreateInvoice = async (e?: React.FormEvent, shouldPostOverride?: boolean) => {
+    if (e) e.preventDefault();
     if (isSubmitting) return;
 
     try {
@@ -436,8 +496,16 @@ export default function InvoicesPage() {
         return;
       }
 
+      // Ensure each line has a valid GL account fallback
+      const fallbackAccount = getSuggestedAccountForType(formType, ledgerAccounts);
+      const normalizedLines = formLines.map((l) => ({
+        ...l,
+        accountId: l.accountId || fallbackAccount?.id || '',
+        quantity: Number(l.quantity) || 1,
+      }));
+
       // Validate lines
-      const validLines = formLines.filter(
+      const validLines = normalizedLines.filter(
         (l) => l.description.trim().length > 0 && l.accountId && l.quantity > 0,
       );
 
@@ -474,7 +542,9 @@ export default function InvoicesPage() {
         targetInvoiceId = res.data?.id;
       }
 
-      if (postImmediately && targetInvoiceId) {
+      const willPost = shouldPostOverride !== undefined ? shouldPostOverride : postImmediately;
+
+      if (willPost && targetInvoiceId) {
         // Ensure fiscal period is open
         try {
           const year = new Date(issueDate).getFullYear() || 2026;
@@ -529,10 +599,8 @@ export default function InvoicesPage() {
 
   const handleOpenCreateInvoice = () => {
     setEditingInvoiceId(null);
-    const prefix = formType === 'INVOICE' ? 'INV' : 'BILL';
-    const year = new Date().getFullYear();
-    const count = invoices.length + 1;
-    setInvoiceNumber(`${prefix}-${year}-${String(count).padStart(3, '0')}`);
+    setInvoiceNumber(getNextInvoiceNumber(formType, invoices));
+    setLineMode('simple');
     setIssueDate(getTodayDate());
     setDueDate(addDaysToDate(getTodayDate(), 30));
     setTaxAmount(0);
@@ -543,6 +611,19 @@ export default function InvoicesPage() {
     } else {
       setCounterpartyMode('new');
     }
+    const suggested = getSuggestedAccountForType(formType, ledgerAccounts);
+    setFormLines([
+      {
+        id: 'line-1',
+        description:
+          formType === 'INVOICE'
+            ? 'Consulting & Implementation Services'
+            : 'Vendor Goods / Operating Expense',
+        accountId: suggested?.id || '',
+        quantity: 1,
+        unitPrice: 1250,
+      },
+    ]);
     setNewCounterpartyName('');
     setIsCreatingInvoice(true);
   };
@@ -558,6 +639,7 @@ export default function InvoicesPage() {
           counterpartyId?: string;
           issueDate: string;
           dueDate: string;
+          currency?: string;
           taxCents?: string | number;
           lines?: Array<{
             description: string;
@@ -572,6 +654,9 @@ export default function InvoicesPage() {
 
       setEditingInvoiceId(inv.id);
       setFormType(inv.invoiceType || 'INVOICE');
+      if (inv.currency) {
+        setFormCurrency(inv.currency);
+      }
       if (inv.counterpartyId) {
         setSelectedCounterpartyId(inv.counterpartyId);
         setCounterpartyMode('select');
@@ -592,6 +677,9 @@ export default function InvoicesPage() {
             unitPrice: Number(l.unitCostCents || 0) / 100,
           })),
         );
+        setLineMode(inv.lines.length > 1 ? 'itemized' : 'simple');
+      } else {
+        setLineMode('simple');
       }
       setIsCreatingInvoice(true);
     } catch {
@@ -780,7 +868,7 @@ export default function InvoicesPage() {
                 type="button"
                 size="sm"
                 variant={formType === 'INVOICE' ? 'default' : 'outline'}
-                onClick={() => setFormType('INVOICE')}
+                onClick={() => handleSwitchFormType('INVOICE')}
                 className="rounded-full cursor-pointer"
               >
                 <ArrowDownLeft className="w-3.5 h-3.5 mr-1 text-emerald-400" />
@@ -790,7 +878,7 @@ export default function InvoicesPage() {
                 type="button"
                 size="sm"
                 variant={formType === 'BILL' ? 'default' : 'outline'}
-                onClick={() => setFormType('BILL')}
+                onClick={() => handleSwitchFormType('BILL')}
                 className="rounded-full cursor-pointer"
               >
                 <ArrowUpRight className="w-3.5 h-3.5 mr-1 text-blue-400" />
@@ -799,7 +887,11 @@ export default function InvoicesPage() {
             </div>
 
             {/* Form */}
-            <form id="invoice-modal-form" onSubmit={handleCreateInvoice} className="space-y-5 pt-3">
+            <form
+              id="invoice-modal-form"
+              onSubmit={(e) => handleCreateInvoice(e)}
+              className="space-y-5 pt-3"
+            >
               {/* Row 1: Counterparty & Invoice Number */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {/* Counterparty Selection */}
@@ -877,17 +969,27 @@ export default function InvoicesPage() {
 
                 {/* Invoice Number */}
                 <div className="space-y-1.5">
-                  <Label
-                    htmlFor="invoiceNumber"
-                    className="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
-                  >
-                    {formType === 'INVOICE' ? 'Invoice #' : 'Bill #'}
-                  </Label>
+                  <div className="flex justify-between items-center">
+                    <Label
+                      htmlFor="invoiceNumber"
+                      className="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
+                    >
+                      {formType === 'INVOICE' ? 'Invoice #' : 'Bill #'}
+                    </Label>
+                    <button
+                      type="button"
+                      onClick={() => setInvoiceNumber(getNextInvoiceNumber(formType, invoices))}
+                      className="text-[11px] text-primary hover:underline flex items-center gap-1 cursor-pointer font-medium"
+                      title="Re-generate next sequential number"
+                    >
+                      <RotateCw className="w-3 h-3" /> Auto-Sequence
+                    </button>
+                  </div>
                   <Input
                     id="invoiceNumber"
                     value={invoiceNumber}
                     onChange={(e) => setInvoiceNumber(e.target.value)}
-                    placeholder="INV-2026-001"
+                    placeholder={formType === 'INVOICE' ? 'INV-2026-001' : 'BILL-2026-001'}
                     required
                   />
                 </div>
@@ -994,49 +1096,117 @@ export default function InvoicesPage() {
                 </div>
               </div>
 
-              {/* Line Items Section */}
-              <div className="space-y-2.5 pt-2">
-                <div className="flex justify-between items-center">
-                  <Label className="text-sm font-semibold tracking-wide">
-                    Line Items & Ledger Accounts
-                  </Label>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={handleAddLine}
-                    className="text-xs h-8 cursor-pointer"
-                  >
-                    <Plus className="w-3.5 h-3.5 mr-1" /> Add Line Item
-                  </Button>
+              {/* Line Items Mode Switcher & Content */}
+              <div className="space-y-3 pt-2">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 p-1 bg-muted/60 rounded-lg border border-border/60 self-start">
+                    <button
+                      type="button"
+                      onClick={() => setLineMode('simple')}
+                      className={`px-3 py-1 text-xs font-semibold rounded-md transition-all cursor-pointer ${
+                        lineMode === 'simple'
+                          ? 'bg-background shadow-xs text-foreground font-bold'
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      ⚡ Quick 1-Line Mode
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setLineMode('itemized')}
+                      className={`px-3 py-1 text-xs font-semibold rounded-md transition-all cursor-pointer ${
+                        lineMode === 'itemized'
+                          ? 'bg-background shadow-xs text-foreground font-bold'
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      Detailed Itemized Mode
+                    </button>
+                  </div>
+
+                  {lineMode === 'itemized' && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handleAddLine}
+                      className="text-xs h-8 cursor-pointer self-end sm:self-auto"
+                    >
+                      <Plus className="w-3.5 h-3.5 mr-1" /> Add Line Item
+                    </Button>
+                  )}
                 </div>
 
-                <div className="space-y-2 border border-border/60 rounded-lg p-3 bg-muted/20">
-                  {formLines.map((line) => (
-                    <div
-                      key={line.id}
-                      className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end pb-3 border-b border-border/30 last:border-0 last:pb-0"
-                    >
+                {lineMode === 'simple' ? (
+                  /* Quick Simple Mode Card */
+                  <div className="rounded-xl border border-border/70 p-4 bg-muted/20 space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
                       {/* Description */}
-                      <div className="md:col-span-4 space-y-1">
-                        <Label className="text-xs text-muted-foreground">Description</Label>
+                      <div className="md:col-span-8 space-y-1.5">
+                        <Label className="text-xs font-semibold text-muted-foreground">
+                          Description / Purpose
+                        </Label>
                         <Input
-                          placeholder="e.g. Monthly Retainer, Server Infrastructure"
-                          value={line.description}
-                          onChange={(e) => handleUpdateLine(line.id, 'description', e.target.value)}
+                          placeholder={
+                            formType === 'INVOICE'
+                              ? 'e.g. Consulting & Implementation Services'
+                              : 'e.g. Vendor Goods / Operating Expense'
+                          }
+                          value={formLines[0]?.description || ''}
+                          onChange={(e) =>
+                            handleUpdateLine(
+                              formLines[0]?.id || 'line-1',
+                              'description',
+                              e.target.value,
+                            )
+                          }
                           required
                         />
                       </div>
 
-                      {/* General Ledger Account */}
-                      <div className="md:col-span-3 space-y-1">
-                        <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                          <BookOpen className="w-3 h-3" /> GL Account
+                      {/* Amount */}
+                      <div className="md:col-span-4 space-y-1.5">
+                        <Label className="text-xs font-semibold text-muted-foreground">
+                          Amount ({getCurrencySymbol(formCurrency)})
                         </Label>
+                        <div className="relative">
+                          <Input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={formLines[0]?.unitPrice ?? 0}
+                            onChange={(e) => {
+                              const val = Number(e.target.value);
+                              handleUpdateLine(formLines[0]?.id || 'line-1', 'unitPrice', val);
+                              handleUpdateLine(formLines[0]?.id || 'line-1', 'quantity', 1);
+                            }}
+                            className="pl-8 tabular-nums font-medium"
+                            required
+                          />
+                          <span className="absolute left-2.5 top-2.5 text-xs font-semibold text-muted-foreground">
+                            {getCurrencySymbol(formCurrency)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Auto-allocated GL Account */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-2 border-t border-border/40 text-xs">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-muted-foreground flex items-center gap-1 font-medium">
+                          <BookOpen className="w-3.5 h-3.5 text-primary" /> Auto-allocated Ledger
+                          Account:
+                        </span>
                         <select
-                          value={line.accountId}
-                          onChange={(e) => handleUpdateLine(line.id, 'accountId', e.target.value)}
-                          className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-xs ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 cursor-pointer"
+                          value={formLines[0]?.accountId || ''}
+                          onChange={(e) =>
+                            handleUpdateLine(
+                              formLines[0]?.id || 'line-1',
+                              'accountId',
+                              e.target.value,
+                            )
+                          }
+                          className="h-8 rounded-md border border-input bg-background px-2.5 py-1 text-xs font-medium cursor-pointer"
                           required
                         >
                           {ledgerAccounts.map((acc) => (
@@ -1046,86 +1216,123 @@ export default function InvoicesPage() {
                           ))}
                         </select>
                       </div>
-
-                      {/* Quantity */}
-                      <div className="md:col-span-2 space-y-1">
-                        <Label className="text-xs text-muted-foreground">Qty</Label>
-                        <Input
-                          type="number"
-                          step="1"
-                          min="1"
-                          value={line.quantity}
-                          onChange={(e) =>
-                            handleUpdateLine(line.id, 'quantity', Number(e.target.value))
-                          }
-                          required
-                        />
-                      </div>
-
-                      {/* Unit Price */}
-                      <div className="md:col-span-2 space-y-1">
-                        <Label className="text-xs text-muted-foreground">Unit Price ($)</Label>
-                        <div className="relative">
+                      <span className="text-[11px] text-muted-foreground italic">
+                        {formType === 'INVOICE'
+                          ? 'Balances with AR 1200 on post'
+                          : 'Balances with AP 2010 on post'}
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  /* Itemized Breakdown Table */
+                  <div className="space-y-2 border border-border/60 rounded-lg p-3 bg-muted/20">
+                    {formLines.map((line) => (
+                      <div
+                        key={line.id}
+                        className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end pb-3 border-b border-border/30 last:border-0 last:pb-0"
+                      >
+                        {/* Description */}
+                        <div className="md:col-span-4 space-y-1">
+                          <Label className="text-xs text-muted-foreground">Description</Label>
                           <Input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            value={line.unitPrice}
+                            placeholder="e.g. Monthly Retainer, Server Infrastructure"
+                            value={line.description}
                             onChange={(e) =>
-                              handleUpdateLine(line.id, 'unitPrice', Number(e.target.value))
+                              handleUpdateLine(line.id, 'description', e.target.value)
                             }
-                            className="pl-7 tabular-nums"
                             required
                           />
-                          <span className="absolute left-2.5 top-2.5 text-xs text-muted-foreground">
-                            $
-                          </span>
+                        </div>
+
+                        {/* General Ledger Account */}
+                        <div className="md:col-span-3 space-y-1">
+                          <Label className="text-xs text-muted-foreground flex items-center gap-1">
+                            <BookOpen className="w-3 h-3" /> GL Account
+                          </Label>
+                          <select
+                            value={line.accountId}
+                            onChange={(e) => handleUpdateLine(line.id, 'accountId', e.target.value)}
+                            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-xs ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 cursor-pointer"
+                            required
+                          >
+                            {ledgerAccounts.map((acc) => (
+                              <option key={acc.id} value={acc.id}>
+                                {acc.accountCode} - {acc.name} ({acc.classification})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {/* Quantity */}
+                        <div className="md:col-span-2 space-y-1">
+                          <Label className="text-xs text-muted-foreground">Qty</Label>
+                          <Input
+                            type="number"
+                            step="1"
+                            min="1"
+                            value={line.quantity}
+                            onChange={(e) =>
+                              handleUpdateLine(line.id, 'quantity', Number(e.target.value))
+                            }
+                            required
+                          />
+                        </div>
+
+                        {/* Unit Price */}
+                        <div className="md:col-span-2 space-y-1">
+                          <Label className="text-xs text-muted-foreground">
+                            Unit Price ({getCurrencySymbol(formCurrency)})
+                          </Label>
+                          <div className="relative">
+                            <Input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              value={line.unitPrice}
+                              onChange={(e) =>
+                                handleUpdateLine(line.id, 'unitPrice', Number(e.target.value))
+                              }
+                              className="pl-7 tabular-nums"
+                              required
+                            />
+                            <span className="absolute left-2.5 top-2.5 text-xs text-muted-foreground">
+                              {getCurrencySymbol(formCurrency)}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Remove Line */}
+                        <div className="md:col-span-1 flex justify-end pb-1">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            disabled={formLines.length === 1}
+                            onClick={() => handleRemoveLine(line.id)}
+                            className="h-9 w-9 text-muted-foreground hover:text-rose-500 hover:bg-rose-500/10 cursor-pointer"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
                         </div>
                       </div>
-
-                      {/* Remove Line */}
-                      <div className="md:col-span-1 flex justify-end pb-1">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          disabled={formLines.length === 1}
-                          onClick={() => handleRemoveLine(line.id)}
-                          className="h-9 w-9 text-muted-foreground hover:text-rose-500 hover:bg-rose-500/10 cursor-pointer"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
-              {/* Totals & Posting Options */}
+              {/* Totals & Summary */}
               <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 pt-2 border-t border-border/50">
-                {/* Left: General Ledger sync options */}
-                <div className="space-y-3 max-w-sm">
-                  <label className="flex items-start gap-2.5 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={postImmediately}
-                      onChange={(e) => setPostImmediately(e.target.checked)}
-                      className="mt-1 h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary cursor-pointer"
-                    />
-                    <div>
-                      <span className="text-sm font-medium">
-                        Post to General Ledger Immediately
-                      </span>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        Generates a balanced double-entry journal entry and updates ledger accounts
-                        (
-                        {formType === 'INVOICE'
-                          ? 'Debit AR 1200 / Credit Revenue 4010'
-                          : 'Debit Expense 5010 / Credit AP 2010'}
-                        ).
-                      </p>
-                    </div>
-                  </label>
+                {/* Left: Financial posting context */}
+                <div className="space-y-1.5 max-w-sm text-xs text-muted-foreground">
+                  <span className="font-semibold text-foreground flex items-center gap-1.5">
+                    <ShieldCheck className="w-4 h-4 text-emerald-500" />
+                    Double-Entry General Ledger Integration
+                  </span>
+                  <p>
+                    {formType === 'INVOICE'
+                      ? 'Posting automatically records Debit AR (1200) and Credit Revenue (4010).'
+                      : 'Posting automatically records Debit Expense (5010/6010) and Credit AP (2010).'}
+                  </p>
                 </div>
 
                 {/* Right: Calculations */}
@@ -1137,7 +1344,7 @@ export default function InvoicesPage() {
                     </span>
                   </div>
                   <div className="flex justify-between items-center text-sm text-muted-foreground">
-                    <span>Sales Tax ($):</span>
+                    <span>Sales Tax ({getCurrencySymbol(formCurrency)}):</span>
                     <Input
                       type="number"
                       step="0.01"
@@ -1157,43 +1364,52 @@ export default function InvoicesPage() {
               </div>
 
               {/* Modal Footer Actions */}
-              <div className="border-t border-border/50 flex justify-end gap-3 pt-4">
+              <div className="border-t border-border/50 flex flex-col sm:flex-row items-center justify-between gap-3 pt-4">
                 <Button
                   type="button"
                   variant="outline"
                   onClick={() => setIsCreatingInvoice(false)}
                   disabled={isSubmitting}
-                  className="cursor-pointer"
+                  className="w-full sm:w-auto cursor-pointer"
                 >
                   Cancel
                 </Button>
-                <Button
-                  type="submit"
-                  disabled={isSubmitting || isLoadingDeps}
-                  className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold px-6 cursor-pointer"
-                >
-                  {isSubmitting ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      {editingInvoiceId ? 'Saving Changes...' : 'Creating...'}
-                    </>
-                  ) : (
-                    <>
-                      {editingInvoiceId ? (
-                        <Edit2 className="w-4 h-4 mr-2" />
-                      ) : (
-                        <Plus className="w-4 h-4 mr-2" />
-                      )}
-                      {editingInvoiceId
-                        ? postImmediately
-                          ? 'Update & Post to Ledger'
-                          : 'Save Changes'
-                        : postImmediately
-                          ? 'Create & Post Invoice'
-                          : 'Save as Draft'}
-                    </>
-                  )}
-                </Button>
+
+                <div className="flex items-center gap-2.5 w-full sm:w-auto justify-end">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={(e) => handleCreateInvoice(e, false)}
+                    disabled={isSubmitting || isLoadingDeps}
+                    className="flex-1 sm:flex-initial cursor-pointer"
+                  >
+                    {isSubmitting ? (
+                      <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
+                    ) : (
+                      <FileText className="w-4 h-4 mr-1.5 text-muted-foreground" />
+                    )}
+                    Save as Draft
+                  </Button>
+
+                  <Button
+                    type="button"
+                    onClick={(e) => handleCreateInvoice(e, true)}
+                    disabled={isSubmitting || isLoadingDeps}
+                    className="flex-1 sm:flex-initial bg-primary hover:bg-primary/90 text-primary-foreground font-semibold px-5 cursor-pointer shadow-sm"
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Posting...
+                      </>
+                    ) : (
+                      <>
+                        <Send className="w-4 h-4 mr-2" />
+                        {editingInvoiceId ? 'Update & Post to Ledger' : 'Post to Ledger'}
+                      </>
+                    )}
+                  </Button>
+                </div>
               </div>
             </form>
           </div>

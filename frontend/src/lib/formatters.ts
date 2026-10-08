@@ -58,3 +58,32 @@ export function formatIsoDate(dateString: string): string {
     day: 'numeric',
   });
 }
+
+export function getCurrencySymbol(currency = 'USD'): string {
+  const curr = (currency || 'USD').toUpperCase();
+  switch (curr) {
+    case 'MYR':
+      return 'RM';
+    case 'EUR':
+      return '€';
+    case 'GBP':
+      return '£';
+    case 'SGD':
+      return 'S$';
+    case 'CAD':
+      return 'C$';
+    case 'AUD':
+      return 'A$';
+    case 'INR':
+      return '₹';
+    case 'PKR':
+      return 'Rs';
+    case 'JPY':
+    case 'CNY':
+      return '¥';
+    case 'AED':
+      return 'AED';
+    default:
+      return '$';
+  }
+}
