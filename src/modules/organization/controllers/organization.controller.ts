@@ -50,6 +50,17 @@ export class OrganizationController {
     return { data: tenant };
   }
 
+  @Patch(':id')
+  @HttpCode(HttpStatus.OK)
+  async updateOrganization(
+    @CurrentUser() user: TenantSessionContext,
+    @Param('id') tenantId: string,
+    @Body() dto: { legalName?: string; timezone?: string },
+  ) {
+    const tenant = await this.orgService.updateOrganization(tenantId, user.userId, dto);
+    return { data: tenant };
+  }
+
   @Post(':id/members')
   @HttpCode(HttpStatus.CREATED)
   async inviteMember(

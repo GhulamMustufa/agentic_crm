@@ -19,6 +19,11 @@ export interface TenantMembershipEntity {
   status: 'ACTIVE' | 'INVITED' | 'INACTIVE';
   createdAt: Date;
   updatedAt: Date;
+  user?: {
+    id: string;
+    email: string;
+    fullName: string;
+  };
 }
 
 export interface TenantSettingsEntity {

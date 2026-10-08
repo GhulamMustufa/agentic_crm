@@ -211,4 +211,19 @@ export class OrganizationService {
       requireReceiptAboveCents: dto.requireReceiptAboveCents ?? existing.requireReceiptAboveCents,
     });
   }
+
+  async updateOrganization(
+    tenantId: string,
+    userId: string,
+    dto: { legalName?: string; timezone?: string },
+  ): Promise<TenantEntity> {
+    const membership = await this.tenantRepo.findMembership(tenantId, userId);
+    if (!membership || membership.roleCode !== 'OWNER') {
+      throw new AuthorizationError('Only an Owner may update organization details');
+    }
+    return this.tenantRepo.updateTenant(tenantId, {
+      legalName: dto.legalName?.trim(),
+      timezone: dto.timezone,
+    });
+  }
 }

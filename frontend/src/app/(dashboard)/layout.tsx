@@ -14,6 +14,7 @@ import {
   X,
   Bot,
   LogOut,
+  Settings,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -27,6 +28,7 @@ const navigation = [
   { name: 'Transactions', href: '/transactions', icon: Receipt },
   { name: 'Invoices', href: '/invoices', icon: FileText },
   { name: 'Reports', href: '/reports', icon: BarChart3 },
+  { name: 'Settings', href: '/settings', icon: Settings },
 ];
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -104,6 +106,43 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             );
           })}
         </nav>
+        <div className="p-4 border-t shrink-0">
+          <div className="flex items-center justify-between">
+            <Link
+              href="/settings"
+              onClick={() => setMobileMenuOpen(false)}
+              className="flex items-center gap-3 overflow-hidden group hover:opacity-80 transition-opacity"
+            >
+              <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-medium shrink-0 group-hover:bg-primary/20 transition-colors">
+                {currentUser?.fullName
+                  ? currentUser.fullName
+                      .split(' ')
+                      .map((n) => n[0])
+                      .join('')
+                      .slice(0, 2)
+                      .toUpperCase()
+                  : 'US'}
+              </div>
+              <div className="flex flex-col min-w-0">
+                <span className="text-sm font-medium leading-none truncate group-hover:text-primary transition-colors">
+                  {currentUser?.fullName || 'Active User'}
+                </span>
+                <span className="text-xs text-muted-foreground mt-1 truncate">
+                  {currentUser?.email || 'Admin'}
+                </span>
+              </div>
+            </Link>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="text-muted-foreground hover:text-foreground shrink-0 h-8 w-8"
+              onClick={handleLogout}
+              title="Sign out"
+            >
+              <LogOut className="w-4 h-4" />
+            </Button>
+          </div>
+        </div>
       </div>
 
       {/* Desktop sidebar */}
@@ -134,8 +173,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </nav>
         <div className="p-4 border-t">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3 overflow-hidden">
-              <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-medium shrink-0">
+            <Link
+              href="/settings"
+              className="flex items-center gap-3 overflow-hidden group hover:opacity-80 transition-opacity"
+            >
+              <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-medium shrink-0 group-hover:bg-primary/20 transition-colors">
                 {currentUser?.fullName
                   ? currentUser.fullName
                       .split(' ')
@@ -146,14 +188,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   : 'US'}
               </div>
               <div className="flex flex-col min-w-0">
-                <span className="text-sm font-medium leading-none truncate">
+                <span className="text-sm font-medium leading-none truncate group-hover:text-primary transition-colors">
                   {currentUser?.fullName || 'Active User'}
                 </span>
                 <span className="text-xs text-muted-foreground mt-1 truncate">
                   {currentUser?.email || 'Admin'}
                 </span>
               </div>
-            </div>
+            </Link>
             <Button
               variant="ghost"
               size="icon"
@@ -181,6 +223,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </Button>
           <div className="flex-1" />
           <ThemeToggle />
+          <Button
+            variant="ghost"
+            size="icon"
+            className="md:hidden text-muted-foreground hover:text-foreground h-9 w-9"
+            onClick={handleLogout}
+            title="Sign out"
+          >
+            <LogOut className="w-4 h-4" />
+          </Button>
         </header>
 
         {/* Page content */}

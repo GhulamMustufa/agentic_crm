@@ -30,7 +30,9 @@ export class PrismaTenantRepository implements ITenantRepository {
     };
   }
 
-  private toMembershipEntity(model: TenantMembership): TenantMembershipEntity {
+  private toMembershipEntity(
+    model: TenantMembership & { user?: { id: string; email: string; fullName: string } | null },
+  ): TenantMembershipEntity {
     return {
       id: model.id,
       tenantId: model.tenantId,
@@ -39,6 +41,13 @@ export class PrismaTenantRepository implements ITenantRepository {
       status: model.status as 'ACTIVE' | 'INVITED' | 'INACTIVE',
       createdAt: model.createdAt,
       updatedAt: model.updatedAt,
+      user: model.user
+        ? {
+            id: model.user.id,
+            email: model.user.email,
+            fullName: model.user.fullName,
+          }
+        : undefined,
     };
   }
 
@@ -162,6 +171,8 @@ export class PrismaTenantRepository implements ITenantRepository {
   async listTenantMembers(tenantId: string): Promise<TenantMembershipEntity[]> {
     const memberships = await this.prisma.tenantMembership.findMany({
       where: { tenantId },
+      include: { user: true },
+      orderBy: { createdAt: 'asc' },
     });
 
     return memberships.map((mem) => this.toMembershipEntity(mem));
