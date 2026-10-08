@@ -65,7 +65,8 @@ interface TrialBalanceRow {
 }
 
 interface TrialBalanceData {
-  rows: TrialBalanceRow[];
+  rows?: TrialBalanceRow[];
+  items?: TrialBalanceRow[];
   totalDebitCents: string | number;
   totalCreditCents: string | number;
   isBalanced: boolean;
@@ -97,7 +98,11 @@ export default function ReportsPage() {
           setBalanceSheet(bsRes.value.data);
         }
         if (tbRes.status === 'fulfilled' && tbRes.value.data) {
-          setTrialBalance(tbRes.value.data);
+          const rawTb = tbRes.value.data as any;
+          setTrialBalance({
+            ...rawTb,
+            rows: rawTb.rows || rawTb.items || [],
+          });
         }
       } catch (err) {
         console.warn('Could not fetch ledger reports:', err);
@@ -126,7 +131,7 @@ export default function ReportsPage() {
     (pnl?.revenues && pnl.revenues.length > 0) ||
     (pnl?.expenses && pnl.expenses.length > 0) ||
     (balanceSheet?.assets && balanceSheet.assets.length > 0) ||
-    (trialBalance?.rows && trialBalance.rows.length > 0);
+    (trialBalance?.rows || trialBalance?.items || []).length > 0;
 
   return (
     <div className="flex flex-col gap-6">
@@ -459,7 +464,7 @@ export default function ReportsPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {trialBalance?.rows.map((row) => {
+                    {(trialBalance?.rows || trialBalance?.items || []).map((row) => {
                       const dr = Number(row.debitCents || 0) / 100;
                       const cr = Number(row.creditCents || 0) / 100;
                       return (
