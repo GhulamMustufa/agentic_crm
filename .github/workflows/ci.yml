@@ -30,9 +30,20 @@ jobs:
           --health-timeout 5s
           --health-retries 5
 
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
     env:
       NODE_ENV: test
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/agentic_business_os?schema=public&sslmode=disable
+      REDIS_URL: redis://localhost:6379
       JWT_SECRET: ci-secret-jwt-signing-key-minimum-32-chars-long
       JWT_REFRESH_SECRET: ci-refresh-jwt-signing-key-minimum-32-chars
       STORAGE_DRIVER: memory

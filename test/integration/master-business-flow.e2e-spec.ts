@@ -48,7 +48,7 @@ describe('Master End-to-End Business Lifecycle (10 Domains Unified)', () => {
 
   afterAll(async () => {
     if (app) {
-      await app.close();
+      await Promise.race([app.close(), new Promise((resolve) => setTimeout(resolve, 5000))]);
     }
   });
 

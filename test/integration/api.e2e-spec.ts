@@ -31,7 +31,7 @@ describe('End-to-End API Test Suite (Phase 0)', () => {
 
   afterAll(async () => {
     if (app) {
-      await app.close();
+      await Promise.race([app.close(), new Promise((resolve) => setTimeout(resolve, 5000))]);
     }
   });
 

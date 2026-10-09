@@ -69,7 +69,7 @@ describe('Real-World End-to-End Master Scenarios (6 Variations & Object Storage)
 
   afterAll(async () => {
     if (app) {
-      await app.close();
+      await Promise.race([app.close(), new Promise((resolve) => setTimeout(resolve, 5000))]);
     }
   });
 
