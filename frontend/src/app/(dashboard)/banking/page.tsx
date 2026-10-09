@@ -26,8 +26,13 @@ import {
   HelpCircle,
   FileDown,
   X,
-  Layers,
   CheckCircle,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
+  ChevronLeft,
+  ChevronRight,
+  Layers,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -212,6 +217,89 @@ export default function BankingPage() {
       setIsLoadingStatements(false);
     }
   }, []);
+
+  type StatementSortColumn =
+    'filename' | 'account' | 'period' | 'moneyOut' | 'moneyIn' | 'status' | 'uploaded';
+
+  const [statementSort, setStatementSort] = React.useState<{
+    column: StatementSortColumn | null;
+    direction: 'asc' | 'desc';
+  }>({ column: null, direction: 'asc' });
+
+  const [statementPage, setStatementPage] = React.useState(1);
+  const statementPageSize = 10;
+
+  const toggleStatementSort = (col: StatementSortColumn) => {
+    setStatementSort((prev) => {
+      if (prev.column === col) {
+        if (prev.direction === 'asc') return { column: col, direction: 'desc' };
+        return { column: null, direction: 'asc' };
+      }
+      return { column: col, direction: 'asc' };
+    });
+  };
+
+  const renderStatementSortIcon = (col: StatementSortColumn) => {
+    if (statementSort.column !== col) {
+      return (
+        <ArrowUpDown className="w-3 h-3 ml-1 opacity-40 group-hover:opacity-100 transition-opacity shrink-0 inline" />
+      );
+    }
+    return statementSort.direction === 'asc' ? (
+      <ArrowUp className="w-3 h-3 ml-1 text-primary shrink-0 inline" />
+    ) : (
+      <ArrowDown className="w-3 h-3 ml-1 text-primary shrink-0 inline" />
+    );
+  };
+
+  const sortedStatements = React.useMemo(() => {
+    const list = [...statements];
+    if (!statementSort.column) return list;
+    return list.sort((a, b) => {
+      let cmp = 0;
+      switch (statementSort.column) {
+        case 'filename':
+          cmp = (a.fileName || '').localeCompare(b.fileName || '');
+          break;
+        case 'account': {
+          const accA =
+            accounts.find((x) => x.id === a.bankAccountId)?.institutionName || a.bankDetected || '';
+          const accB =
+            accounts.find((x) => x.id === b.bankAccountId)?.institutionName || b.bankDetected || '';
+          cmp = accA.localeCompare(accB);
+          break;
+        }
+        case 'period':
+          cmp =
+            new Date(a.statementStartDate || '').getTime() -
+            new Date(b.statementStartDate || '').getTime();
+          break;
+        case 'moneyOut':
+          cmp = Number(a.totalDebitsCents || 0) - Number(b.totalDebitsCents || 0);
+          break;
+        case 'moneyIn':
+          cmp = Number(a.totalCreditsCents || 0) - Number(b.totalCreditsCents || 0);
+          break;
+        case 'status':
+          cmp = (a.status || '').localeCompare(b.status || '');
+          break;
+        case 'uploaded':
+          cmp = new Date(a.createdAt || '').getTime() - new Date(b.createdAt || '').getTime();
+          break;
+      }
+      return statementSort.direction === 'asc' ? cmp : -cmp;
+    });
+  }, [statements, statementSort, accounts]);
+
+  React.useEffect(() => {
+    setStatementPage(1);
+  }, [statementSort, statements.length]);
+
+  const totalStatementPages = Math.max(1, Math.ceil(sortedStatements.length / statementPageSize));
+  const paginatedStatements = React.useMemo(() => {
+    const start = (statementPage - 1) * statementPageSize;
+    return sortedStatements.slice(start, start + statementPageSize);
+  }, [sortedStatements, statementPage, statementPageSize]);
 
   // Individual Queue Item Worker (Unified Object Storage & Background Queue)
   const processQueueItem = React.useCallback(
@@ -1338,18 +1426,74 @@ export default function BankingPage() {
               <Table>
                 <TableHeader>
                   <TableRow className="hover:bg-transparent border-b border-border/50">
-                    <TableHead className="text-xs font-semibold">Statement File</TableHead>
-                    <TableHead className="text-xs font-semibold">Bank / Account</TableHead>
-                    <TableHead className="text-xs font-semibold">Period</TableHead>
-                    <TableHead className="text-xs font-semibold text-right">Money Out</TableHead>
-                    <TableHead className="text-xs font-semibold text-right">Money In</TableHead>
-                    <TableHead className="text-xs font-semibold text-center">Status</TableHead>
-                    <TableHead className="text-xs font-semibold">Uploaded</TableHead>
+                    <TableHead
+                      className="text-xs font-semibold cursor-pointer hover:text-foreground transition-colors group select-none"
+                      onClick={() => toggleStatementSort('filename')}
+                    >
+                      <div className="flex items-center">
+                        Statement File
+                        {renderStatementSortIcon('filename')}
+                      </div>
+                    </TableHead>
+                    <TableHead
+                      className="text-xs font-semibold cursor-pointer hover:text-foreground transition-colors group select-none"
+                      onClick={() => toggleStatementSort('account')}
+                    >
+                      <div className="flex items-center">
+                        Bank / Account
+                        {renderStatementSortIcon('account')}
+                      </div>
+                    </TableHead>
+                    <TableHead
+                      className="text-xs font-semibold cursor-pointer hover:text-foreground transition-colors group select-none"
+                      onClick={() => toggleStatementSort('period')}
+                    >
+                      <div className="flex items-center">
+                        Period
+                        {renderStatementSortIcon('period')}
+                      </div>
+                    </TableHead>
+                    <TableHead
+                      className="text-xs font-semibold text-right cursor-pointer hover:text-foreground transition-colors group select-none"
+                      onClick={() => toggleStatementSort('moneyOut')}
+                    >
+                      <div className="flex items-center justify-end">
+                        Money Out
+                        {renderStatementSortIcon('moneyOut')}
+                      </div>
+                    </TableHead>
+                    <TableHead
+                      className="text-xs font-semibold text-right cursor-pointer hover:text-foreground transition-colors group select-none"
+                      onClick={() => toggleStatementSort('moneyIn')}
+                    >
+                      <div className="flex items-center justify-end">
+                        Money In
+                        {renderStatementSortIcon('moneyIn')}
+                      </div>
+                    </TableHead>
+                    <TableHead
+                      className="text-xs font-semibold text-center cursor-pointer hover:text-foreground transition-colors group select-none"
+                      onClick={() => toggleStatementSort('status')}
+                    >
+                      <div className="flex items-center justify-center">
+                        Status
+                        {renderStatementSortIcon('status')}
+                      </div>
+                    </TableHead>
+                    <TableHead
+                      className="text-xs font-semibold cursor-pointer hover:text-foreground transition-colors group select-none"
+                      onClick={() => toggleStatementSort('uploaded')}
+                    >
+                      <div className="flex items-center">
+                        Uploaded
+                        {renderStatementSortIcon('uploaded')}
+                      </div>
+                    </TableHead>
                     <TableHead className="text-xs font-semibold text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {statements.map((stmt) => {
+                  {paginatedStatements.map((stmt) => {
                     const linkedAccount = accounts.find((a) => a.id === stmt.bankAccountId);
                     const debitsNum = Number(stmt.totalDebitsCents || 0) / 100;
                     const creditsNum = Number(stmt.totalCreditsCents || 0) / 100;
@@ -1496,6 +1640,48 @@ export default function BankingPage() {
                   })}
                 </TableBody>
               </Table>
+              {sortedStatements.length > statementPageSize && (
+                <div className="flex items-center justify-between px-4 py-3 border-t border-border/50 bg-muted/20">
+                  <div className="text-xs text-muted-foreground">
+                    Showing{' '}
+                    <span className="font-medium text-foreground">
+                      {(statementPage - 1) * statementPageSize + 1}
+                    </span>{' '}
+                    to{' '}
+                    <span className="font-medium text-foreground">
+                      {Math.min(statementPage * statementPageSize, sortedStatements.length)}
+                    </span>{' '}
+                    of{' '}
+                    <span className="font-medium text-foreground">{sortedStatements.length}</span>{' '}
+                    statements
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 px-2 text-xs gap-1"
+                      onClick={() => setStatementPage((p) => Math.max(1, p - 1))}
+                      disabled={statementPage <= 1}
+                    >
+                      <ChevronLeft className="w-3.5 h-3.5" />
+                      Previous
+                    </Button>
+                    <span className="text-xs text-muted-foreground font-mono">
+                      Page {statementPage} of {totalStatementPages}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 px-2 text-xs gap-1"
+                      onClick={() => setStatementPage((p) => Math.min(totalStatementPages, p + 1))}
+                      disabled={statementPage >= totalStatementPages}
+                    >
+                      Next
+                      <ChevronRight className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </CardContent>

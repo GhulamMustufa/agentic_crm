@@ -15,6 +15,8 @@ import {
   UploadCloud,
   FileSpreadsheet,
   ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react';
@@ -74,6 +76,37 @@ export default function TransactionsPage() {
   const [currentPage, setCurrentPage] = React.useState(1);
   const pageSize = 50;
 
+  type SortColumn = 'date' | 'payee' | 'account' | 'inflow' | 'outflow' | 'status';
+  const [columnSort, setColumnSort] = React.useState<{
+    column: SortColumn | null;
+    direction: 'asc' | 'desc';
+  }>({ column: null, direction: 'asc' });
+
+  const toggleColumnSort = (col: SortColumn) => {
+    setColumnSort((prev) => {
+      if (prev.column === col) {
+        if (prev.direction === 'asc') {
+          return { column: col, direction: 'desc' };
+        }
+        return { column: null, direction: 'asc' };
+      }
+      return { column: col, direction: 'asc' };
+    });
+  };
+
+  const renderSortIcon = (col: SortColumn) => {
+    if (columnSort.column !== col) {
+      return (
+        <ArrowUpDown className="w-3 h-3 ml-1 opacity-40 group-hover:opacity-100 transition-opacity shrink-0 inline" />
+      );
+    }
+    return columnSort.direction === 'asc' ? (
+      <ArrowUp className="w-3 h-3 ml-1 text-primary shrink-0 inline" />
+    ) : (
+      <ArrowDown className="w-3 h-3 ml-1 text-primary shrink-0 inline" />
+    );
+  };
+
   const loadData = React.useCallback(async () => {
     setIsLoading(true);
     try {
@@ -125,19 +158,45 @@ export default function TransactionsPage() {
     loadData();
   }, [loadData]);
 
-  // Reset to first page whenever search, status filter, or sorting order changes
+  // Reset to first page whenever search, status filter, or sorting changes
   React.useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, statusFilter, sortOrder]);
+  }, [searchTerm, statusFilter, sortOrder, columnSort]);
 
-  // Preserve statement chronological order (Page 1 top -> Page 5 bottom) by default
+  // Handle column sorting or statement chronological order
   const sortedList = React.useMemo(() => {
     const copy = [...transactions];
+    if (columnSort.column) {
+      return copy.sort((a, b) => {
+        let cmp = 0;
+        switch (columnSort.column) {
+          case 'date':
+            cmp = new Date(a.date).getTime() - new Date(b.date).getTime();
+            break;
+          case 'payee':
+            cmp = a.cleanPayee.localeCompare(b.cleanPayee);
+            break;
+          case 'account':
+            cmp = a.accountName.localeCompare(b.accountName);
+            break;
+          case 'inflow':
+            cmp = a.inflow - b.inflow;
+            break;
+          case 'outflow':
+            cmp = a.outflow - b.outflow;
+            break;
+          case 'status':
+            cmp = a.status.localeCompare(b.status);
+            break;
+        }
+        return columnSort.direction === 'asc' ? cmp : -cmp;
+      });
+    }
     if (sortOrder === 'DESC') {
       return copy.reverse();
     }
     return copy;
-  }, [transactions, sortOrder]);
+  }, [transactions, sortOrder, columnSort]);
 
   const filtered = sortedList.filter((tx) => {
     const matchesSearch =
@@ -522,16 +581,50 @@ export default function TransactionsPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-[120px]">Date</TableHead>
-                    <TableHead>Payee & Bank Memo</TableHead>
-                    <TableHead>General Ledger Account</TableHead>
-                    <TableHead className="text-right text-emerald-600 dark:text-emerald-400 font-semibold">
-                      Deposit (Inflow)
+                    <TableHead
+                      className="w-[125px] cursor-pointer hover:text-foreground select-none group"
+                      onClick={() => toggleColumnSort('date')}
+                    >
+                      <div className="flex items-center">Date {renderSortIcon('date')}</div>
                     </TableHead>
-                    <TableHead className="text-right text-foreground font-semibold">
-                      Expense (Outflow)
+                    <TableHead
+                      className="cursor-pointer hover:text-foreground select-none group"
+                      onClick={() => toggleColumnSort('payee')}
+                    >
+                      <div className="flex items-center">
+                        Payee & Bank Memo {renderSortIcon('payee')}
+                      </div>
                     </TableHead>
-                    <TableHead className="w-[160px]">Status</TableHead>
+                    <TableHead
+                      className="cursor-pointer hover:text-foreground select-none group"
+                      onClick={() => toggleColumnSort('account')}
+                    >
+                      <div className="flex items-center">
+                        General Ledger Account {renderSortIcon('account')}
+                      </div>
+                    </TableHead>
+                    <TableHead
+                      className="text-right text-emerald-600 dark:text-emerald-400 font-semibold cursor-pointer hover:text-emerald-700 select-none group"
+                      onClick={() => toggleColumnSort('inflow')}
+                    >
+                      <div className="flex items-center justify-end">
+                        Deposit (Inflow) {renderSortIcon('inflow')}
+                      </div>
+                    </TableHead>
+                    <TableHead
+                      className="text-right text-foreground font-semibold cursor-pointer select-none group"
+                      onClick={() => toggleColumnSort('outflow')}
+                    >
+                      <div className="flex items-center justify-end">
+                        Expense (Outflow) {renderSortIcon('outflow')}
+                      </div>
+                    </TableHead>
+                    <TableHead
+                      className="w-[160px] cursor-pointer hover:text-foreground select-none group"
+                      onClick={() => toggleColumnSort('status')}
+                    >
+                      <div className="flex items-center">Status {renderSortIcon('status')}</div>
+                    </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>

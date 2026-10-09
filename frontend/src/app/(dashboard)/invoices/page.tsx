@@ -24,6 +24,11 @@ import {
   RotateCw,
   ShieldCheck,
   ShieldAlert,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -414,6 +419,90 @@ export default function InvoicesPage() {
     return matchesTab && matchesSearch;
   });
 
+  type InvoiceSortColumn =
+    | 'type'
+    | 'invoiceNumber'
+    | 'counterpartyName'
+    | 'issueDate'
+    | 'dueDate'
+    | 'totalAmount'
+    | 'status';
+
+  const [columnSort, setColumnSort] = React.useState<{
+    column: InvoiceSortColumn | null;
+    direction: 'asc' | 'desc';
+  }>({ column: null, direction: 'asc' });
+
+  const [currentPage, setCurrentPage] = React.useState(1);
+  const pageSize = 25;
+
+  const toggleColumnSort = (col: InvoiceSortColumn) => {
+    setColumnSort((prev) => {
+      if (prev.column === col) {
+        if (prev.direction === 'asc') {
+          return { column: col, direction: 'desc' };
+        }
+        return { column: null, direction: 'asc' };
+      }
+      return { column: col, direction: 'asc' };
+    });
+  };
+
+  const renderSortIcon = (col: InvoiceSortColumn) => {
+    if (columnSort.column !== col) {
+      return (
+        <ArrowUpDown className="w-3 h-3 ml-1 opacity-40 group-hover:opacity-100 transition-opacity shrink-0 inline" />
+      );
+    }
+    return columnSort.direction === 'asc' ? (
+      <ArrowUp className="w-3 h-3 ml-1 text-primary shrink-0 inline" />
+    ) : (
+      <ArrowDown className="w-3 h-3 ml-1 text-primary shrink-0 inline" />
+    );
+  };
+
+  React.useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, activeTab, columnSort]);
+
+  const sortedInvoices = React.useMemo(() => {
+    const list = [...filteredInvoices];
+    if (!columnSort.column) return list;
+    return list.sort((a, b) => {
+      let cmp = 0;
+      switch (columnSort.column) {
+        case 'type':
+          cmp = a.type.localeCompare(b.type);
+          break;
+        case 'invoiceNumber':
+          cmp = a.invoiceNumber.localeCompare(b.invoiceNumber);
+          break;
+        case 'counterpartyName':
+          cmp = a.counterpartyName.localeCompare(b.counterpartyName);
+          break;
+        case 'issueDate':
+          cmp = new Date(a.issueDate).getTime() - new Date(b.issueDate).getTime();
+          break;
+        case 'dueDate':
+          cmp = new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
+          break;
+        case 'totalAmount':
+          cmp = a.totalAmount - b.totalAmount;
+          break;
+        case 'status':
+          cmp = a.status.localeCompare(b.status);
+          break;
+      }
+      return columnSort.direction === 'asc' ? cmp : -cmp;
+    });
+  }, [filteredInvoices, columnSort]);
+
+  const totalPages = Math.max(1, Math.ceil(sortedInvoices.length / pageSize));
+  const paginatedInvoices = React.useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return sortedInvoices.slice(start, start + pageSize);
+  }, [sortedInvoices, currentPage, pageSize]);
+
   // Line item manipulation
   const handleAddLine = () => {
     const defaultAccount = getSuggestedAccountForType(formType, ledgerAccounts);
@@ -777,11 +866,15 @@ export default function InvoicesPage() {
             <ArrowDownLeft className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-emerald-500" />
           </CardHeader>
           <CardContent className="p-3.5 sm:p-5 pt-0 sm:pt-0">
-            <div className="text-lg sm:text-2xl font-bold tabular-nums text-emerald-600 dark:text-emerald-400">
-              {formatCurrency(receivablesTotal, primaryCurrency)}
-            </div>
+            {loading ? (
+              <div className="h-7 w-28 bg-muted animate-pulse rounded my-0.5" />
+            ) : (
+              <div className="text-lg sm:text-2xl font-bold tabular-nums text-emerald-600 dark:text-emerald-400">
+                {formatCurrency(receivablesTotal, primaryCurrency)}
+              </div>
+            )}
             <p className="text-[11px] text-muted-foreground mt-0.5 sm:mt-1 truncate">
-              Sales invoices in General Ledger
+              {loading ? 'Calculating customer receivables...' : 'Sales invoices in General Ledger'}
             </p>
           </CardContent>
         </Card>
@@ -792,11 +885,15 @@ export default function InvoicesPage() {
             <ArrowUpRight className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-rose-500" />
           </CardHeader>
           <CardContent className="p-3.5 sm:p-5 pt-0 sm:pt-0">
-            <div className="text-lg sm:text-2xl font-bold tabular-nums text-foreground">
-              {formatCurrency(payablesTotal, primaryCurrency)}
-            </div>
+            {loading ? (
+              <div className="h-7 w-28 bg-muted animate-pulse rounded my-0.5" />
+            ) : (
+              <div className="text-lg sm:text-2xl font-bold tabular-nums text-foreground">
+                {formatCurrency(payablesTotal, primaryCurrency)}
+              </div>
+            )}
             <p className="text-[11px] text-muted-foreground mt-0.5 sm:mt-1 truncate">
-              Vendor bills awaiting payout
+              {loading ? 'Calculating supplier payables...' : 'Vendor bills awaiting payout'}
             </p>
           </CardContent>
         </Card>
@@ -807,15 +904,23 @@ export default function InvoicesPage() {
             <AlertTriangle className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-rose-500" />
           </CardHeader>
           <CardContent className="p-3.5 sm:p-5 pt-0 sm:pt-0">
-            <div
-              className={`text-lg sm:text-2xl font-bold tabular-nums ${
-                overdueCount > 0 ? 'text-rose-500' : 'text-emerald-500'
-              }`}
-            >
-              {overdueCount} {overdueCount === 1 ? 'Invoice' : 'Invoices'}
-            </div>
+            {loading ? (
+              <div className="h-7 w-20 bg-muted animate-pulse rounded my-0.5" />
+            ) : (
+              <div
+                className={`text-lg sm:text-2xl font-bold tabular-nums ${
+                  overdueCount > 0 ? 'text-rose-500' : 'text-emerald-500'
+                }`}
+              >
+                {overdueCount} {overdueCount === 1 ? 'Invoice' : 'Invoices'}
+              </div>
+            )}
             <p className="text-[11px] text-muted-foreground mt-0.5 sm:mt-1 truncate">
-              {overdueCount > 0 ? 'Action required for collection' : 'Zero overdue balances'}
+              {loading
+                ? 'Auditing payment terms...'
+                : overdueCount > 0
+                  ? 'Action required for collection'
+                  : 'Zero overdue balances'}
             </p>
           </CardContent>
         </Card>
@@ -826,11 +931,15 @@ export default function InvoicesPage() {
             <ShieldCheck className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-emerald-500" />
           </CardHeader>
           <CardContent className="p-3.5 sm:p-5 pt-0 sm:pt-0">
-            <div className="text-lg sm:text-2xl font-bold text-emerald-600 dark:text-emerald-400">
-              100% Audit Ready
-            </div>
+            {loading ? (
+              <div className="h-7 w-28 bg-muted animate-pulse rounded my-0.5" />
+            ) : (
+              <div className="text-lg sm:text-2xl font-bold text-emerald-600 dark:text-emerald-400">
+                100% Audit Ready
+              </div>
+            )}
             <p className="text-[11px] text-muted-foreground mt-0.5 sm:mt-1 truncate">
-              Automated reversal on voiding
+              {loading ? 'Verifying reversal invariants...' : 'Automated reversal on voiding'}
             </p>
           </CardContent>
         </Card>
@@ -844,7 +953,7 @@ export default function InvoicesPage() {
             size="sm"
             onClick={() => setActiveTab('ALL')}
           >
-            All Items ({invoices.length})
+            All Items {loading ? '' : `(${invoices.length})`}
           </Button>
           <Button
             variant={activeTab === 'RECEIVABLE' ? 'default' : 'outline'}
@@ -865,7 +974,7 @@ export default function InvoicesPage() {
             size="sm"
             onClick={() => setActiveTab('OVERDUE')}
           >
-            ⚠️ Overdue ({overdueCount})
+            ⚠️ Overdue {loading ? '' : `(${overdueCount})`}
           </Button>
         </div>
 
@@ -881,30 +990,12 @@ export default function InvoicesPage() {
         </div>
       </div>
 
-      {/* Invoices Table */}
+      {/* Invoices Table Card */}
       <Card>
         <CardContent className="p-0">
           {loading ? (
-            <div className="py-12 flex flex-col items-center justify-center text-muted-foreground gap-2">
-              <Loader2 className="w-6 h-6 animate-spin text-primary" />
-              <span className="text-sm">Loading financial documents...</span>
-            </div>
-          ) : filteredInvoices.length === 0 ? (
-            <div className="py-12 text-center text-muted-foreground space-y-3">
-              <FileText className="w-10 h-10 mx-auto text-muted-foreground/60" />
-              <div>
-                <h4 className="font-semibold text-sm">No Invoices Found</h4>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Create a sales invoice or vendor bill to record it in your General Ledger.
-                </p>
-              </div>
-              <Button size="sm" onClick={handleOpenCreateInvoice}>
-                <Plus className="w-4 h-4 mr-1" /> Create Invoice
-              </Button>
-            </div>
-          ) : (
-            <>
-              {/* Desktop Table View */}
+            <div>
+              {/* Desktop Skeleton */}
               <div className="hidden md:block">
                 <Table>
                   <TableHeader>
@@ -920,7 +1011,154 @@ export default function InvoicesPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredInvoices.map((inv) => (
+                    {Array.from({ length: 6 }).map((_, i) => (
+                      <TableRow key={i}>
+                        <TableCell>
+                          <div className="h-5 w-24 bg-muted animate-pulse rounded" />
+                        </TableCell>
+                        <TableCell>
+                          <div className="h-4 w-28 bg-muted animate-pulse rounded" />
+                        </TableCell>
+                        <TableCell>
+                          <div className="h-4 w-36 bg-muted animate-pulse rounded" />
+                        </TableCell>
+                        <TableCell>
+                          <div className="h-4 w-20 bg-muted animate-pulse rounded" />
+                        </TableCell>
+                        <TableCell>
+                          <div className="h-4 w-20 bg-muted animate-pulse rounded" />
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="h-4 w-20 bg-muted animate-pulse rounded ml-auto" />
+                        </TableCell>
+                        <TableCell>
+                          <div className="h-5 w-20 bg-muted animate-pulse rounded" />
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="h-7 w-20 bg-muted animate-pulse rounded ml-auto" />
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* Mobile Skeleton */}
+              <div className="md:hidden divide-y divide-border">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="p-4 space-y-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="space-y-1.5 flex-1">
+                        <div className="h-4 w-24 bg-muted animate-pulse rounded" />
+                        <div className="h-4 w-36 bg-muted animate-pulse rounded" />
+                      </div>
+                      <div className="h-5 w-16 bg-muted animate-pulse rounded shrink-0" />
+                    </div>
+                    <div className="flex items-center justify-between pt-1">
+                      <div className="h-3 w-28 bg-muted animate-pulse rounded" />
+                      <div className="h-6 w-20 bg-muted animate-pulse rounded" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : invoices.length === 0 ? (
+            <div className="py-12 text-center text-muted-foreground space-y-3">
+              <FileText className="w-10 h-10 mx-auto text-muted-foreground/60" />
+              <div>
+                <h4 className="font-semibold text-sm">No Invoices Found</h4>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Create a sales invoice or vendor bill to record it in your General Ledger.
+                </p>
+              </div>
+              <Button size="sm" onClick={handleOpenCreateInvoice}>
+                <Plus className="w-4 h-4 mr-1" /> Create Invoice
+              </Button>
+            </div>
+          ) : sortedInvoices.length === 0 ? (
+            <div className="py-12 text-center text-muted-foreground space-y-3">
+              <Search className="w-8 h-8 mx-auto text-muted-foreground/60" />
+              <div>
+                <h4 className="font-semibold text-sm">No Matching Invoices Found</h4>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Try adjusting your search criteria or switching to a different tab.
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setSearchTerm('');
+                  setActiveTab('ALL');
+                }}
+              >
+                Reset Filters
+              </Button>
+            </div>
+          ) : (
+            <>
+              {/* Desktop Table View */}
+              <div className="hidden md:block">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead
+                        className="cursor-pointer hover:text-foreground select-none group"
+                        onClick={() => toggleColumnSort('type')}
+                      >
+                        <div className="flex items-center">Type {renderSortIcon('type')}</div>
+                      </TableHead>
+                      <TableHead
+                        className="cursor-pointer hover:text-foreground select-none group"
+                        onClick={() => toggleColumnSort('invoiceNumber')}
+                      >
+                        <div className="flex items-center">
+                          Document # {renderSortIcon('invoiceNumber')}
+                        </div>
+                      </TableHead>
+                      <TableHead
+                        className="cursor-pointer hover:text-foreground select-none group"
+                        onClick={() => toggleColumnSort('counterpartyName')}
+                      >
+                        <div className="flex items-center">
+                          Customer / Vendor {renderSortIcon('counterpartyName')}
+                        </div>
+                      </TableHead>
+                      <TableHead
+                        className="cursor-pointer hover:text-foreground select-none group"
+                        onClick={() => toggleColumnSort('issueDate')}
+                      >
+                        <div className="flex items-center">
+                          Issue Date {renderSortIcon('issueDate')}
+                        </div>
+                      </TableHead>
+                      <TableHead
+                        className="cursor-pointer hover:text-foreground select-none group"
+                        onClick={() => toggleColumnSort('dueDate')}
+                      >
+                        <div className="flex items-center">
+                          Due Date {renderSortIcon('dueDate')}
+                        </div>
+                      </TableHead>
+                      <TableHead
+                        className="text-right cursor-pointer hover:text-foreground select-none group"
+                        onClick={() => toggleColumnSort('totalAmount')}
+                      >
+                        <div className="flex items-center justify-end">
+                          Total Amount {renderSortIcon('totalAmount')}
+                        </div>
+                      </TableHead>
+                      <TableHead
+                        className="cursor-pointer hover:text-foreground select-none group"
+                        onClick={() => toggleColumnSort('status')}
+                      >
+                        <div className="flex items-center">Status {renderSortIcon('status')}</div>
+                      </TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {paginatedInvoices.map((inv) => (
                       <TableRow key={inv.id}>
                         <TableCell>
                           {inv.type === 'ACCOUNTS_RECEIVABLE' ? (
@@ -1008,7 +1246,7 @@ export default function InvoicesPage() {
 
               {/* Mobile Card List View */}
               <div className="md:hidden divide-y divide-border">
-                {filteredInvoices.map((inv) => (
+                {paginatedInvoices.map((inv) => (
                   <div key={inv.id} className="p-4 space-y-3">
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
@@ -1061,16 +1299,16 @@ export default function InvoicesPage() {
                             className="h-7 text-xs text-primary cursor-pointer px-2.5"
                           >
                             {postingInvoiceId === inv.id ? (
-                              <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                              <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
                             ) : (
-                              <Send className="w-3 h-3 mr-1" />
+                              <Send className="w-3.5 h-3.5 mr-1" />
                             )}
                             Record to Books
                           </Button>
                         ) : inv.status === 'POSTED' || inv.status === 'OVERDUE' ? (
                           <div className="flex items-center gap-2">
                             <span className="text-[11px] text-muted-foreground flex items-center gap-1">
-                              <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
                               In Books
                             </span>
                             <Button
@@ -1096,6 +1334,49 @@ export default function InvoicesPage() {
                   </div>
                 ))}
               </div>
+
+              {/* Pagination Controls */}
+              {sortedInvoices.length > pageSize && (
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 border-t bg-muted/20">
+                  <div className="text-xs text-muted-foreground">
+                    Showing{' '}
+                    <span className="font-medium text-foreground">
+                      {(currentPage - 1) * pageSize + 1}
+                    </span>{' '}
+                    to{' '}
+                    <span className="font-medium text-foreground">
+                      {Math.min(currentPage * pageSize, sortedInvoices.length)}
+                    </span>{' '}
+                    of <span className="font-medium text-foreground">{sortedInvoices.length}</span>{' '}
+                    invoices
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                      disabled={currentPage === 1}
+                      className="h-8 px-2.5 text-xs"
+                    >
+                      <ChevronLeft className="w-3.5 h-3.5 mr-1" />
+                      Previous
+                    </Button>
+                    <span className="text-xs font-mono px-2 text-muted-foreground">
+                      Page {currentPage} of {totalPages}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                      disabled={currentPage >= totalPages}
+                      className="h-8 px-2.5 text-xs"
+                    >
+                      Next
+                      <ChevronRight className="w-3.5 h-3.5 ml-1" />
+                    </Button>
+                  </div>
+                </div>
+              )}
             </>
           )}
         </CardContent>
