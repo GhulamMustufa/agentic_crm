@@ -64,7 +64,7 @@ jobs:
         run: npm run typecheck
 
       - name: Apply Database Schema to Test Database
-        run: npx prisma db push --skip-generate
+        run: npx prisma db push --accept-data-loss
 
       - name: Run Test Suites (Unit & Master Integration E2E)
         run: npm run test
