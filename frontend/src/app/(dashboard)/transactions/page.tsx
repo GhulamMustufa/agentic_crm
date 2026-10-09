@@ -15,6 +15,8 @@ import {
   UploadCloud,
   FileSpreadsheet,
   ArrowUpDown,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -69,6 +71,8 @@ export default function TransactionsPage() {
   const [sortOrder, setSortOrder] = React.useState<'STATEMENT_ASC' | 'DESC'>('STATEMENT_ASC');
   const [transactions, setTransactions] = React.useState<TransactionItem[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
+  const [currentPage, setCurrentPage] = React.useState(1);
+  const pageSize = 50;
 
   const loadData = React.useCallback(async () => {
     setIsLoading(true);
@@ -121,6 +125,11 @@ export default function TransactionsPage() {
     loadData();
   }, [loadData]);
 
+  // Reset to first page whenever search, status filter, or sorting order changes
+  React.useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, statusFilter, sortOrder]);
+
   // Preserve statement chronological order (Page 1 top -> Page 5 bottom) by default
   const sortedList = React.useMemo(() => {
     const copy = [...transactions];
@@ -141,6 +150,12 @@ export default function TransactionsPage() {
     if (statusFilter === 'ALL') return true;
     return tx.status === statusFilter;
   });
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const paginatedList = React.useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filtered.slice(start, start + pageSize);
+  }, [filtered, currentPage, pageSize]);
 
   // Calculate totals
   const totalInflows = transactions.reduce((acc, t) => acc + t.inflow, 0);
@@ -261,11 +276,15 @@ export default function TransactionsPage() {
             <ArrowDownLeft className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-emerald-500 shrink-0" />
           </CardHeader>
           <CardContent className="p-3.5 sm:p-5 pt-0 sm:pt-0">
-            <div className="text-lg sm:text-2xl font-bold tabular-nums text-emerald-600 dark:text-emerald-400 truncate font-mono">
-              +{formatCurrency(totalInflows, primaryCurrency)}
-            </div>
+            {isLoading ? (
+              <div className="h-7 w-28 bg-muted animate-pulse rounded my-0.5" />
+            ) : (
+              <div className="text-lg sm:text-2xl font-bold tabular-nums text-emerald-600 dark:text-emerald-400 truncate font-mono">
+                +{formatCurrency(totalInflows, primaryCurrency)}
+              </div>
+            )}
             <p className="text-[11px] sm:text-xs text-muted-foreground mt-1 sm:mt-1.5 truncate">
-              Customer payments & credits
+              {isLoading ? 'Calculating inflows...' : 'Customer payments & credits'}
             </p>
           </CardContent>
         </Card>
@@ -278,11 +297,15 @@ export default function TransactionsPage() {
             <ArrowUpRight className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-rose-500 shrink-0" />
           </CardHeader>
           <CardContent className="p-3.5 sm:p-5 pt-0 sm:pt-0">
-            <div className="text-lg sm:text-2xl font-bold tabular-nums text-foreground truncate font-mono">
-              -{formatCurrency(totalOutflows, primaryCurrency)}
-            </div>
+            {isLoading ? (
+              <div className="h-7 w-28 bg-muted animate-pulse rounded my-0.5" />
+            ) : (
+              <div className="text-lg sm:text-2xl font-bold tabular-nums text-foreground truncate font-mono">
+                -{formatCurrency(totalOutflows, primaryCurrency)}
+              </div>
+            )}
             <p className="text-[11px] sm:text-xs text-muted-foreground mt-1 sm:mt-1.5 truncate">
-              Vendor payments & costs
+              {isLoading ? 'Calculating outflows...' : 'Vendor payments & costs'}
             </p>
           </CardContent>
         </Card>
@@ -295,11 +318,17 @@ export default function TransactionsPage() {
             <Sparkles className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-primary shrink-0" />
           </CardHeader>
           <CardContent className="p-3.5 sm:p-5 pt-0 sm:pt-0">
-            <div className="text-lg sm:text-2xl font-bold text-primary tabular-nums truncate">
-              {reconciliationRate}%
-            </div>
+            {isLoading ? (
+              <div className="h-7 w-20 bg-muted animate-pulse rounded my-0.5" />
+            ) : (
+              <div className="text-lg sm:text-2xl font-bold text-primary tabular-nums truncate">
+                {reconciliationRate}%
+              </div>
+            )}
             <p className="text-[11px] sm:text-xs text-muted-foreground mt-1 sm:mt-1.5 truncate">
-              {reconciledCount} of {transactions.length} verified in books
+              {isLoading
+                ? 'Checking ledger...'
+                : `${reconciledCount} of ${transactions.length} verified in books`}
             </p>
           </CardContent>
         </Card>
@@ -312,11 +341,15 @@ export default function TransactionsPage() {
             <ShieldCheck className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-emerald-500 shrink-0" />
           </CardHeader>
           <CardContent className="p-3.5 sm:p-5 pt-0 sm:pt-0">
-            <div className="text-lg sm:text-2xl font-bold text-emerald-600 dark:text-emerald-400 truncate">
-              100% Balanced
-            </div>
+            {isLoading ? (
+              <div className="h-7 w-28 bg-muted animate-pulse rounded my-0.5" />
+            ) : (
+              <div className="text-lg sm:text-2xl font-bold text-emerald-600 dark:text-emerald-400 truncate">
+                100% Balanced
+              </div>
+            )}
             <p className="text-[11px] sm:text-xs text-muted-foreground mt-1 sm:mt-1.5 truncate">
-              Debits strictly match credits
+              {isLoading ? 'Verifying double-entry...' : 'Debits strictly match credits'}
             </p>
           </CardContent>
         </Card>
@@ -330,7 +363,7 @@ export default function TransactionsPage() {
             size="sm"
             onClick={() => setStatusFilter('ALL')}
           >
-            All Transactions ({transactions.length})
+            All Transactions {isLoading ? '' : `(${transactions.length})`}
           </Button>
           <Button
             variant={statusFilter === 'RECONCILED' ? 'default' : 'outline'}
@@ -369,8 +402,76 @@ export default function TransactionsPage() {
         </div>
       </div>
 
-      {/* Main Transactions Table or Empty State */}
-      {transactions.length === 0 ? (
+      {/* Main Content Area */}
+      {isLoading ? (
+        <Card>
+          <CardContent className="p-0">
+            {/* Desktop Skeleton Table */}
+            <div className="hidden md:block">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-[120px]">Date</TableHead>
+                    <TableHead>Payee & Bank Memo</TableHead>
+                    <TableHead>General Ledger Account</TableHead>
+                    <TableHead className="text-right text-emerald-600 dark:text-emerald-400 font-semibold">
+                      Deposit (Inflow)
+                    </TableHead>
+                    <TableHead className="text-right text-foreground font-semibold">
+                      Expense (Outflow)
+                    </TableHead>
+                    <TableHead className="w-[160px]">Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {Array.from({ length: 8 }).map((_, i) => (
+                    <TableRow key={i}>
+                      <TableCell>
+                        <div className="h-4 w-20 bg-muted animate-pulse rounded" />
+                      </TableCell>
+                      <TableCell className="space-y-1.5">
+                        <div className="h-4 w-40 bg-muted animate-pulse rounded" />
+                        <div className="h-3 w-56 bg-muted/60 animate-pulse rounded" />
+                      </TableCell>
+                      <TableCell>
+                        <div className="h-4 w-32 bg-muted animate-pulse rounded" />
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="h-4 w-16 bg-muted animate-pulse rounded ml-auto" />
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="h-4 w-16 bg-muted animate-pulse rounded ml-auto" />
+                      </TableCell>
+                      <TableCell>
+                        <div className="h-6 w-24 bg-muted animate-pulse rounded" />
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+
+            {/* Mobile Skeleton List */}
+            <div className="md:hidden divide-y divide-border">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} className="p-4 space-y-2">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="space-y-1.5 flex-1">
+                      <div className="h-4 w-36 bg-muted animate-pulse rounded" />
+                      <div className="h-3 w-48 bg-muted/60 animate-pulse rounded" />
+                    </div>
+                    <div className="h-4 w-16 bg-muted animate-pulse rounded shrink-0" />
+                  </div>
+                  <div className="flex items-center justify-between pt-1">
+                    <div className="h-3 w-28 bg-muted animate-pulse rounded" />
+                    <div className="h-5 w-20 bg-muted animate-pulse rounded" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      ) : transactions.length === 0 ? (
         <Card className="py-16 text-center border-dashed">
           <CardContent className="space-y-4 max-w-md mx-auto">
             <div className="w-12 h-12 rounded-full bg-primary/10 text-primary flex items-center justify-center mx-auto">
@@ -391,6 +492,26 @@ export default function TransactionsPage() {
                 </Link>
               </Button>
             </div>
+          </CardContent>
+        </Card>
+      ) : filtered.length === 0 ? (
+        <Card className="py-12 text-center">
+          <CardContent className="space-y-3 max-w-sm mx-auto">
+            <Search className="w-8 h-8 text-muted-foreground mx-auto" />
+            <h3 className="text-base font-semibold">No matching transactions found</h3>
+            <p className="text-xs text-muted-foreground">
+              Try adjusting your search terms or clearing the status filter.
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setSearchTerm('');
+                setStatusFilter('ALL');
+              }}
+            >
+              Reset Filters
+            </Button>
           </CardContent>
         </Card>
       ) : (
@@ -414,7 +535,7 @@ export default function TransactionsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filtered.map((tx) => (
+                  {paginatedList.map((tx) => (
                     <TableRow key={tx.id}>
                       <TableCell className="font-mono text-xs text-muted-foreground">
                         {formatIsoDate(tx.date)}
@@ -466,7 +587,7 @@ export default function TransactionsPage() {
 
             {/* Mobile Card / List View */}
             <div className="md:hidden divide-y divide-border">
-              {filtered.map((tx) => (
+              {paginatedList.map((tx) => (
                 <div key={tx.id} className="p-4 space-y-2">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
@@ -508,6 +629,49 @@ export default function TransactionsPage() {
                 </div>
               ))}
             </div>
+
+            {/* Pagination Footer */}
+            {filtered.length > pageSize && (
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 border-t bg-muted/20">
+                <div className="text-xs text-muted-foreground">
+                  Showing{' '}
+                  <span className="font-medium text-foreground">
+                    {(currentPage - 1) * pageSize + 1}
+                  </span>{' '}
+                  to{' '}
+                  <span className="font-medium text-foreground">
+                    {Math.min(currentPage * pageSize, filtered.length)}
+                  </span>{' '}
+                  of <span className="font-medium text-foreground">{filtered.length}</span>{' '}
+                  transactions
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                    className="h-8 px-2.5 text-xs"
+                  >
+                    <ChevronLeft className="w-3.5 h-3.5 mr-1" />
+                    Previous
+                  </Button>
+                  <span className="text-xs font-mono px-2 text-muted-foreground">
+                    Page {currentPage} of {totalPages}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={currentPage >= totalPages}
+                    className="h-8 px-2.5 text-xs"
+                  >
+                    Next
+                    <ChevronRight className="w-3.5 h-3.5 ml-1" />
+                  </Button>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}

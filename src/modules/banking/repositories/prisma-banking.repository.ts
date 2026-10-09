@@ -566,14 +566,50 @@ export class PrismaBankingRepository implements IBankingRepository {
         ...(options?.bankAccountId ? { bankAccountId: options.bankAccountId } : {}),
         ...(options?.status ? { status: options.status } : {}),
       },
-      include: {
+      select: {
+        id: true,
+        tenantId: true,
+        bankStatementId: true,
+        bankAccountId: true,
+        pageNumber: true,
+        sourceSequence: true,
+        sourceRowIndex: true,
+        transactionDate: true,
+        valueDate: true,
+        direction: true,
+        amountCents: true,
+        signedAmountCents: true,
+        runningBalanceCents: true,
+        rawDescription: true,
+        rawPrimaryText: true,
+        rawContinuationText: true,
+        rawReferenceText: true,
+        bankReference: true,
+        counterpartyAccount: true,
+        normalizedPayee: true,
+        normalizedDescription: true,
+        categorySuggestion: true,
+        extractionMethod: true,
+        extractionConfidence: true,
+        entityResolutionConfidence: true,
+        accountingConfidence: true,
+        riskLevel: true,
+        transactionFingerprint: true,
+        referenceNumber: true,
+        transactionHash: true,
+        status: true,
+        createdAt: true,
         bankAccount: {
           select: { currency: true },
         },
       },
-      orderBy: [{ transactionDate: 'asc' }, { createdAt: 'asc' }],
+      orderBy: [{ transactionDate: 'asc' }, { sourceSequence: 'asc' }, { createdAt: 'asc' }],
     });
-    return items.map((t) => this.toBankTransactionEntity(t));
+    return items.map((t) =>
+      this.toBankTransactionEntity(
+        t as unknown as BankTransaction & { bankAccount?: { currency: string } | null },
+      ),
+    );
   }
 
   async updateTransactionStatus(
