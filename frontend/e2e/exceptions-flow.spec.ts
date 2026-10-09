@@ -38,7 +38,7 @@ test.describe('Exception Center Review & Resolution Flow', () => {
         createdAt: '2026-10-06T09:15:00.000Z',
         type: 'AMBIGUOUS_TRANSACTION',
         exceptionType: 'ambiguous_category',
-        reason: "Ambiguous Category: Cloudflare Hosting",
+        reason: 'Ambiguous Category: Cloudflare Hosting',
         severity: 'medium',
         aiRecommendation:
           'Match to recurring vendor Cloudflare Inc. and allocate to 6010 Hosting Expense.',
@@ -103,9 +103,7 @@ test.describe('Exception Center Review & Resolution Flow', () => {
     await secondException.click();
 
     // 5. Verify Detail Pane Updated for Second Exception
-    await expect(
-      page.getByText(/match to recurring vendor cloudflare inc/i).first(),
-    ).toBeVisible();
+    await expect(page.getByText(/match to recurring vendor cloudflare inc/i).first()).toBeVisible();
 
     // 6. Approve the Proposal
     const approveButton = page.getByRole('button', { name: /approve & record/i });
