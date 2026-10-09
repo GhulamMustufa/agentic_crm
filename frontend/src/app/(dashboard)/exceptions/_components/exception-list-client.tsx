@@ -24,6 +24,8 @@ import {
   ChevronRight,
   LayoutList,
   Table2,
+  X,
+  AlertCircle,
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -351,16 +353,21 @@ export function ExceptionListClient({
     });
   };
 
+  // Pre-flight Batch Confirmation Modal State
+  const [confirmBatchModalOpen, setConfirmBatchModalOpen] = React.useState(false);
+  const [batchActionType, setBatchActionType] = React.useState<'APPROVE' | 'REJECT'>('APPROVE');
+
+  const selectAllFilteredExceptions = () => {
+    setSelectedExceptionIds(new Set(filteredExceptions.map((e) => e.id)));
+    toast.info(`Selected all ${filteredExceptions.length} exceptions across all pages.`);
+  };
+
   const highConfidenceExceptions = React.useMemo(() => {
     return filteredExceptions.filter((e) => e.confidenceScore >= 90);
   }, [filteredExceptions]);
 
   const selectAllHighConfidence = () => {
-    setSelectedExceptionIds((prev) => {
-      const next = new Set(prev);
-      highConfidenceExceptions.forEach((e) => next.add(e.id));
-      return next;
-    });
+    setSelectedExceptionIds(new Set(highConfidenceExceptions.map((e) => e.id)));
     toast.info(`Selected ${highConfidenceExceptions.length} high-confidence exceptions (≥90%).`);
   };
 
@@ -371,28 +378,99 @@ export function ExceptionListClient({
     }, 0);
   }, [selectedExceptionIds, exceptions]);
 
-  const handleBatchApproveSelected = () => {
-    if (selectedExceptionIds.size === 0 || batchResolveMutation.isPending) return;
-    batchResolveMutation.mutate({
-      ids: Array.from(selectedExceptionIds),
-      action: 'APPROVE',
-    });
+  // Smart Financial Partitioning: Approvable vs. Critical Anomalies
+  const batchItems = React.useMemo(() => {
+    const selectedList = exceptions.filter((e) => selectedExceptionIds.has(e.id));
+    const isAnomaly = (e: ExceptionItem) =>
+      e.type === 'OUT_OF_BALANCE_TRANSACTION' ||
+      e.type === 'DUPLICATE_STATEMENT' ||
+      e.type === 'DUPLICATE' ||
+      e.type === 'DUPLICATE_TRANSACTION' ||
+      e.type === 'INVOICE_TOTAL_MISMATCH' ||
+      e.type === 'AI_FAILURE';
+
+    const approvable = selectedList.filter((e) => !isAnomaly(e));
+    const anomalies = selectedList.filter((e) => isAnomaly(e));
+
+    const categoryBreakdown: Record<string, { count: number; totalAmount: number; name: string }> =
+      {};
+    for (const item of approvable) {
+      const code = item.suggestedAccountCode || '5020';
+      const catName = item.suggestedCategory || 'Operating Expense';
+      if (!categoryBreakdown[code]) {
+        categoryBreakdown[code] = { count: 0, totalAmount: 0, name: catName };
+      }
+      categoryBreakdown[code].count += 1;
+      categoryBreakdown[code].totalAmount += item.amount;
+    }
+
+    const approvableTotal = approvable.reduce((sum, e) => sum + e.amount, 0);
+
+    return {
+      selectedList,
+      approvable,
+      anomalies,
+      categoryBreakdown,
+      approvableTotal,
+    };
+  }, [selectedExceptionIds, exceptions]);
+
+  const handleOpenBatchApprove = () => {
+    if (selectedExceptionIds.size === 0) return;
+    setBatchActionType('APPROVE');
+    setConfirmBatchModalOpen(true);
   };
 
-  const handleBatchDismissSelected = () => {
-    if (selectedExceptionIds.size === 0 || batchResolveMutation.isPending) return;
-    batchResolveMutation.mutate({
-      ids: Array.from(selectedExceptionIds),
-      action: 'REJECT',
-    });
+  const handleOpenBatchDismiss = () => {
+    if (selectedExceptionIds.size === 0) return;
+    setBatchActionType('REJECT');
+    setConfirmBatchModalOpen(true);
   };
 
   const handleBatchApproveHighConfidence = () => {
     if (highConfidenceExceptions.length === 0 || batchResolveMutation.isPending) return;
-    batchResolveMutation.mutate({
-      ids: highConfidenceExceptions.map((e) => e.id),
-      action: 'APPROVE',
-    });
+    setSelectedExceptionIds(new Set(highConfidenceExceptions.map((e) => e.id)));
+    setBatchActionType('APPROVE');
+    setConfirmBatchModalOpen(true);
+  };
+
+  const handleExecuteBatch = () => {
+    if (batchActionType === 'APPROVE') {
+      if (batchItems.approvable.length === 0) {
+        toast.error(
+          'No approvable transactions in selection. Critical anomalies must be reviewed individually.',
+        );
+        return;
+      }
+      batchResolveMutation.mutate(
+        {
+          ids: batchItems.approvable.map((e) => e.id),
+          action: 'APPROVE',
+        },
+        {
+          onSuccess: () => {
+            setConfirmBatchModalOpen(false);
+            if (batchItems.anomalies.length > 0) {
+              toast.info(
+                `${batchItems.anomalies.length} items with critical anomalies remain in the queue for manual review.`,
+              );
+            }
+          },
+        },
+      );
+    } else {
+      batchResolveMutation.mutate(
+        {
+          ids: Array.from(selectedExceptionIds),
+          action: 'REJECT',
+        },
+        {
+          onSuccess: () => {
+            setConfirmBatchModalOpen(false);
+          },
+        },
+      );
+    }
   };
 
   const handleApprove = () => {
@@ -665,7 +743,39 @@ export function ExceptionListClient({
         </Card>
       ) : viewMode === 'table' ? (
         <Card className="flex-1 flex flex-col overflow-hidden">
-          <CardContent className="p-0 flex-1 overflow-auto">
+          <CardContent className="p-0 flex-1 overflow-auto flex flex-col">
+            {isAllOnPageSelected && filteredExceptions.length > paginatedExceptions.length && (
+              <div className="flex items-center justify-between px-4 py-2 bg-primary/10 border-b border-primary/20 text-xs shrink-0">
+                <div className="flex items-center gap-1.5 flex-wrap text-foreground">
+                  <span>
+                    All <strong>{paginatedExceptions.length}</strong> exceptions on this page are
+                    selected.
+                  </span>
+                  {selectedExceptionIds.size !== filteredExceptions.length ? (
+                    <button
+                      type="button"
+                      onClick={selectAllFilteredExceptions}
+                      className="font-semibold text-primary underline underline-offset-2 hover:text-primary/80 cursor-pointer ml-1"
+                    >
+                      Select all {filteredExceptions.length} exceptions matching this filter
+                    </button>
+                  ) : (
+                    <span className="text-primary font-semibold ml-1">
+                      ✓ All {filteredExceptions.length} exceptions in this filter are selected.
+                    </span>
+                  )}
+                </div>
+                {selectedExceptionIds.size === filteredExceptions.length && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedExceptionIds(new Set())}
+                    className="text-muted-foreground hover:text-foreground text-[11px] underline cursor-pointer"
+                  >
+                    Clear selection
+                  </button>
+                )}
+              </div>
+            )}
             <Table>
               <TableHeader>
                 <TableRow>
@@ -877,6 +987,33 @@ export function ExceptionListClient({
                 </span>
               )}
             </div>
+            {isAllOnPageSelected && filteredExceptions.length > paginatedExceptions.length && (
+              <div className="p-2.5 rounded-xl bg-primary/10 border border-primary/20 text-[11px] text-foreground shrink-0 space-y-1">
+                <div>
+                  All <strong>{paginatedExceptions.length}</strong> items on this page are selected.
+                </div>
+                {selectedExceptionIds.size !== filteredExceptions.length ? (
+                  <button
+                    type="button"
+                    onClick={selectAllFilteredExceptions}
+                    className="font-semibold text-primary underline hover:text-primary/80 cursor-pointer block"
+                  >
+                    Select all {filteredExceptions.length} exceptions in this filter
+                  </button>
+                ) : (
+                  <div className="font-semibold text-primary flex items-center justify-between">
+                    <span>✓ All {filteredExceptions.length} exceptions selected</span>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedExceptionIds(new Set())}
+                      className="text-muted-foreground underline text-[10px] cursor-pointer"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
             {paginatedExceptions.map((exc) => {
               const isSelected = selectedId === exc.id;
               const isOutflow = exc.direction === 'OUTFLOW';
@@ -1213,7 +1350,7 @@ export function ExceptionListClient({
             size="sm"
             className="h-8 text-xs px-3 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold gap-1.5 shadow-sm cursor-pointer"
             disabled={batchResolveMutation.isPending}
-            onClick={handleBatchApproveSelected}
+            onClick={handleOpenBatchApprove}
           >
             {batchResolveMutation.isPending ? (
               <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -1227,7 +1364,7 @@ export function ExceptionListClient({
             variant="outline"
             className="h-8 text-xs px-2.5 text-destructive border-destructive/30 hover:bg-destructive/10 gap-1.5 cursor-pointer"
             disabled={batchResolveMutation.isPending}
-            onClick={handleBatchDismissSelected}
+            onClick={handleOpenBatchDismiss}
           >
             <XCircle className="w-3.5 h-3.5" />
             Dismiss
@@ -1240,6 +1377,217 @@ export function ExceptionListClient({
           >
             Clear
           </Button>
+        </div>
+      )}
+
+      {/* Pre-Flight Batch Resolution Confirmation Modal */}
+      {confirmBatchModalOpen && (
+        <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div
+            className="bg-card border border-border shadow-2xl rounded-2xl max-w-lg w-full max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-150"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="batch-confirm-title"
+          >
+            {/* Modal Header */}
+            <div className="flex items-start justify-between p-5 border-b border-border/80 bg-muted/20">
+              <div className="flex items-start gap-3">
+                <div
+                  className={`p-2 rounded-xl shrink-0 ${
+                    batchActionType === 'APPROVE'
+                      ? 'bg-primary/10 text-primary'
+                      : 'bg-destructive/10 text-destructive'
+                  }`}
+                >
+                  {batchActionType === 'APPROVE' ? (
+                    <ShieldCheck className="w-5 h-5" />
+                  ) : (
+                    <XCircle className="w-5 h-5" />
+                  )}
+                </div>
+                <div>
+                  <h3 id="batch-confirm-title" className="text-base font-bold text-foreground">
+                    {batchActionType === 'APPROVE'
+                      ? 'Pre-Flight Batch Approval Review'
+                      : 'Confirm Batch Dismissal'}
+                  </h3>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {batchActionType === 'APPROVE'
+                      ? 'Review financial impact and general ledger partitions before recording.'
+                      : 'Dismissed transactions are excluded from books and will not post to the ledger.'}
+                  </p>
+                </div>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground cursor-pointer rounded-lg"
+                onClick={() => setConfirmBatchModalOpen(false)}
+                disabled={batchResolveMutation.isPending}
+              >
+                <X className="w-4 h-4" />
+                <span className="sr-only">Close</span>
+              </Button>
+            </div>
+
+            {/* Modal Content */}
+            <div className="p-5 space-y-4 overflow-y-auto">
+              {batchActionType === 'APPROVE' ? (
+                <>
+                  {/* Summary Metric Cards */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="p-3 bg-muted/40 rounded-xl border border-border/60">
+                      <div className="text-[11px] font-medium text-muted-foreground">
+                        Approvable For Posting
+                      </div>
+                      <div className="text-lg font-bold text-foreground mt-0.5">
+                        {batchItems.approvable.length}{' '}
+                        <span className="text-xs font-normal text-muted-foreground">txns</span>
+                      </div>
+                      <div className="text-xs font-mono font-semibold text-primary mt-0.5">
+                        {formatCurrency(batchItems.approvableTotal, tenantCurrency)}
+                      </div>
+                    </div>
+                    <div className="p-3 bg-muted/40 rounded-xl border border-border/60">
+                      <div className="text-[11px] font-medium text-muted-foreground">
+                        Excluded / Anomalies
+                      </div>
+                      <div className="text-lg font-bold text-foreground mt-0.5">
+                        {batchItems.anomalies.length}{' '}
+                        <span className="text-xs font-normal text-muted-foreground">txns</span>
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-0.5">
+                        Requires manual review
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Safety Partition Alert if anomalies exist */}
+                  {batchItems.anomalies.length > 0 && (
+                    <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl flex items-start gap-2.5 text-xs text-amber-800 dark:text-amber-300">
+                      <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                      <div>
+                        <strong className="font-semibold">
+                          {batchItems.anomalies.length} Critical Anomaly{' '}
+                          {batchItems.anomalies.length === 1 ? 'Item' : 'Items'} Excluded:
+                        </strong>{' '}
+                        Items flagged with critical severity or reconciliation discrepancy will not
+                        be auto-posted. They remain safely in your review queue.
+                      </div>
+                    </div>
+                  )}
+
+                  {/* General Ledger Category Allocation Breakdown */}
+                  {Object.keys(batchItems.categoryBreakdown).length > 0 && (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-xs font-semibold text-foreground px-0.5">
+                        <span>Ledger Account Allocation Breakdown</span>
+                        <span className="text-muted-foreground font-normal text-[11px]">
+                          Offset: Acct 1010
+                        </span>
+                      </div>
+                      <div className="border border-border/70 rounded-xl divide-y divide-border/50 max-h-44 overflow-y-auto bg-muted/20">
+                        {Object.entries(batchItems.categoryBreakdown).map(([code, item]) => (
+                          <div
+                            key={code}
+                            className="p-2.5 flex items-center justify-between text-xs hover:bg-muted/30"
+                          >
+                            <div>
+                              <div className="font-medium text-foreground">
+                                <span className="font-mono text-muted-foreground mr-1.5">
+                                  {code}
+                                </span>
+                                {item.name}
+                              </div>
+                              <div className="text-[11px] text-muted-foreground mt-0.5">
+                                {item.count} {item.count === 1 ? 'transaction' : 'transactions'}
+                              </div>
+                            </div>
+                            <div className="text-right font-mono font-semibold text-foreground">
+                              {formatCurrency(item.totalAmount, tenantCurrency)}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Accounting Invariant Notice */}
+                  <div className="text-[11px] text-muted-foreground flex items-center gap-1.5 px-0.5">
+                    <ShieldCheck className="w-3.5 h-3.5 text-primary shrink-0" />
+                    <span>
+                      Deterministic double-entry balanced postings (Debits = Credits). Auditable via
+                      General Ledger journal records.
+                    </span>
+                  </div>
+                </>
+              ) : (
+                <div className="space-y-3">
+                  <div className="p-3.5 bg-destructive/10 border border-destructive/20 rounded-xl text-xs text-destructive flex items-start gap-2.5">
+                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                    <div>
+                      <strong className="font-semibold">
+                        Dismiss {selectedExceptionIds.size} transactions:
+                      </strong>
+                      <p className="mt-1 text-muted-foreground text-[11px]">
+                        These items will be marked as dismissed and excluded from your financial
+                        statements without creating journal entries.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="p-3 bg-muted/40 rounded-xl border border-border/60 text-xs">
+                    <div className="text-muted-foreground">Total Value:</div>
+                    <div className="text-base font-mono font-bold text-foreground mt-0.5">
+                      {formatCurrency(selectedTotalAmount, tenantCurrency)}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 border-t border-border/80 bg-muted/10 flex items-center justify-end gap-2.5">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setConfirmBatchModalOpen(false)}
+                disabled={batchResolveMutation.isPending}
+                className="h-8 text-xs cursor-pointer"
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleExecuteBatch}
+                disabled={
+                  batchResolveMutation.isPending ||
+                  (batchActionType === 'APPROVE' && batchItems.approvable.length === 0)
+                }
+                className={`h-8 text-xs font-semibold cursor-pointer ${
+                  batchActionType === 'APPROVE'
+                    ? 'bg-primary hover:bg-primary/90 text-primary-foreground'
+                    : 'bg-destructive hover:bg-destructive/90 text-destructive-foreground'
+                }`}
+              >
+                {batchResolveMutation.isPending ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />
+                    Processing...
+                  </>
+                ) : batchActionType === 'APPROVE' ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 mr-1.5" />
+                    Post {batchItems.approvable.length} to General Ledger
+                  </>
+                ) : (
+                  <>
+                    <XCircle className="w-3.5 h-3.5 mr-1.5" />
+                    Dismiss {selectedExceptionIds.size} Items
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
         </div>
       )}
     </div>
