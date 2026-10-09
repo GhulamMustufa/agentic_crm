@@ -115,7 +115,7 @@ export default function TransactionsPage() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [tenantCurrency]);
 
   React.useEffect(() => {
     loadData();

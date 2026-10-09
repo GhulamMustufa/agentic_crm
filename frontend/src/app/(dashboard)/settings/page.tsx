@@ -110,24 +110,11 @@ export default function SettingsPage() {
   const [newPassword, setNewPassword] = React.useState('');
   const [updatingPassword, setUpdatingPassword] = React.useState(false);
 
-  React.useEffect(() => {
-    const user = authStorage.getAuthUser();
-    const activeTenantId = authStorage.getActiveTenantId();
-    setCurrentUser(user);
-    setTenantId(activeTenantId);
-
-    if (activeTenantId) {
-      loadSettingsData(activeTenantId);
-    } else {
-      setLoading(false);
-    }
-  }, []);
-
-  const loadSettingsData = async (tid: string) => {
+  const loadSettingsData = React.useCallback(async (tid: string) => {
     try {
       setLoading(true);
       const [settingsRes, orgRes, membersRes] = await Promise.allSettled([
-        apiClient.get<{ data: any }>(`/organizations/${tid}/settings`),
+        apiClient.get<{ data: Record<string, unknown> }>(`/organizations/${tid}/settings`),
         apiClient.get<{ data: TenantDetails }>(`/organizations/${tid}`),
         apiClient.get<{ data: TeamMember[] }>(`/organizations/${tid}/members`),
       ]);
@@ -137,8 +124,8 @@ export default function SettingsPage() {
         setAiSettings({
           allowAiAutoPosting: Boolean(s.allowAiAutoPosting),
           autoPostMinConfidence: Number(s.autoPostMinConfidence ?? 0.95),
-          maxAutoPostAmountCents: s.maxAutoPostAmountCents ?? 500000,
-          requireReceiptAboveCents: s.requireReceiptAboveCents ?? 7500,
+          maxAutoPostAmountCents: (s.maxAutoPostAmountCents as number | string) ?? 500000,
+          requireReceiptAboveCents: (s.requireReceiptAboveCents as number | string) ?? 7500,
         });
       }
 
@@ -158,7 +145,20 @@ export default function SettingsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  React.useEffect(() => {
+    const user = authStorage.getAuthUser();
+    const activeTenantId = authStorage.getActiveTenantId();
+    setCurrentUser(user);
+    setTenantId(activeTenantId);
+
+    if (activeTenantId) {
+      loadSettingsData(activeTenantId);
+    } else {
+      setLoading(false);
+    }
+  }, [loadSettingsData]);
 
   const handleSaveAiGuardrails = async () => {
     if (!tenantId) return;

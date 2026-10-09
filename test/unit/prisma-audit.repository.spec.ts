@@ -34,7 +34,9 @@ describe('PrismaAuditRepository (Live PostgreSQL Integration)', () => {
   });
 
   afterAll(async () => {
-    if (!isDbConnected) {return;}
+    if (!isDbConnected) {
+      return;
+    }
     try {
       await prisma.auditEvent.deleteMany({ where: { tenantId } });
       await prisma.tenant.delete({ where: { id: tenantId } });
@@ -44,7 +46,9 @@ describe('PrismaAuditRepository (Live PostgreSQL Integration)', () => {
   });
 
   it('initializes first event with GENESIS_HASH and saves to database', async () => {
-    if (!isDbConnected) {return;}
+    if (!isDbConnected) {
+      return;
+    }
     const event = await auditService.log({
       tenantId,
       action: 'ORGANIZATION_CREATED',
@@ -66,7 +70,9 @@ describe('PrismaAuditRepository (Live PostgreSQL Integration)', () => {
   });
 
   it('chains sequential events cryptographically in database', async () => {
-    if (!isDbConnected) {return;}
+    if (!isDbConnected) {
+      return;
+    }
     const event1 = await repository.getLatestEvent(tenantId);
     expect(event1).not.toBeNull();
 
@@ -97,7 +103,9 @@ describe('PrismaAuditRepository (Live PostgreSQL Integration)', () => {
   });
 
   it('lists events and supports countEvents query', async () => {
-    if (!isDbConnected) {return;}
+    if (!isDbConnected) {
+      return;
+    }
     const count = await repository.countEvents(tenantId);
     expect(count).toBe(3);
 
@@ -107,7 +115,9 @@ describe('PrismaAuditRepository (Live PostgreSQL Integration)', () => {
   });
 
   it('detects tampering when database event record hash is modified', async () => {
-    if (!isDbConnected) {return;}
+    if (!isDbConnected) {
+      return;
+    }
     const events = await repository.listEvents(tenantId, { limit: 10 });
     const secondEvent = events[1];
     expect(secondEvent).toBeDefined();
