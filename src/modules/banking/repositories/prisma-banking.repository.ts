@@ -434,9 +434,12 @@ export class PrismaBankingRepository implements IBankingRepository {
     await this.ensureTenantExists(firstInput.tenantId);
 
     const createdItems: BankTransactionEntity[] = [];
-    for (const input of inputs) {
-      const created = await this.prisma.bankTransaction.create({
-        data: {
+    const BATCH_SIZE = 1000;
+
+    for (let i = 0; i < inputs.length; i += BATCH_SIZE) {
+      const chunk = inputs.slice(i, i + BATCH_SIZE);
+      const createdChunk = await this.prisma.bankTransaction.createManyAndReturn({
+        data: chunk.map((input) => ({
           tenantId: input.tenantId,
           bankStatementId: input.bankStatementId,
           bankAccountId: input.bankAccountId,
@@ -469,9 +472,12 @@ export class PrismaBankingRepository implements IBankingRepository {
           referenceNumber: input.referenceNumber,
           transactionHash: input.transactionHash,
           status: 'UNRECONCILED',
-        },
+        })),
       });
-      createdItems.push(this.toBankTransactionEntity(created));
+
+      for (const item of createdChunk) {
+        createdItems.push(this.toBankTransactionEntity(item));
+      }
     }
 
     return createdItems;
@@ -503,6 +509,37 @@ export class PrismaBankingRepository implements IBankingRepository {
       },
     });
     return item ? this.toBankTransactionEntity(item) : null;
+  }
+
+  async findBankTransactionsByHashes(
+    tenantId: string,
+    bankAccountId: string,
+    transactionHashes: string[],
+  ): Promise<Map<string, BankTransactionEntity>> {
+    const result = new Map<string, BankTransactionEntity>();
+    if (transactionHashes.length === 0) {
+      return result;
+    }
+
+    const BATCH_SIZE = 1000;
+    for (let i = 0; i < transactionHashes.length; i += BATCH_SIZE) {
+      const chunk = transactionHashes.slice(i, i + BATCH_SIZE);
+      const items = await this.prisma.bankTransaction.findMany({
+        where: {
+          tenantId,
+          bankAccountId,
+          transactionHash: { in: chunk },
+        },
+      });
+
+      for (const item of items) {
+        if (item.transactionHash) {
+          result.set(item.transactionHash, this.toBankTransactionEntity(item));
+        }
+      }
+    }
+
+    return result;
   }
 
   async listTransactionsByStatementId(
@@ -557,6 +594,28 @@ export class PrismaBankingRepository implements IBankingRepository {
     return this.toBankTransactionEntity(updated);
   }
 
+  async updateTransactionStatuses(
+    tenantId: string,
+    ids: string[],
+    status: BankTransactionStatus,
+  ): Promise<void> {
+    if (ids.length === 0) {
+      return;
+    }
+
+    const BATCH_SIZE = 1000;
+    for (let i = 0; i < ids.length; i += BATCH_SIZE) {
+      const chunk = ids.slice(i, i + BATCH_SIZE);
+      await this.prisma.bankTransaction.updateMany({
+        where: {
+          tenantId,
+          id: { in: chunk },
+        },
+        data: { status },
+      });
+    }
+  }
+
   // --- Proposals ---
   async createProposal(input: CreateProposalInput): Promise<ProposalEntity> {
     await this.ensureTenantExists(input.tenantId);
@@ -580,6 +639,45 @@ export class PrismaBankingRepository implements IBankingRepository {
     });
 
     return this.toProposalEntity(created);
+  }
+
+  async createProposals(inputs: CreateProposalInput[]): Promise<ProposalEntity[]> {
+    const firstInput = inputs[0];
+    if (!firstInput) {
+      return [];
+    }
+
+    await this.ensureTenantExists(firstInput.tenantId);
+
+    const createdItems: ProposalEntity[] = [];
+    const BATCH_SIZE = 1000;
+
+    for (let i = 0; i < inputs.length; i += BATCH_SIZE) {
+      const chunk = inputs.slice(i, i + BATCH_SIZE);
+      const createdChunk = await this.prisma.proposal.createManyAndReturn({
+        data: chunk.map((input) => ({
+          tenantId: input.tenantId,
+          bankTransactionId: input.bankTransactionId,
+          invoiceId: input.invoiceId,
+          counterpartyId: input.counterpartyId,
+          proposalType: input.proposalType,
+          debitAccountId: input.debitAccountId,
+          creditAccountId: input.creditAccountId,
+          amountCents: input.amountCents,
+          confidenceScore: input.confidenceScore,
+          evidence: (input.evidence as unknown as Prisma.InputJsonValue) ?? [],
+          rationale: input.rationale,
+          status: 'PROPOSED',
+          autoPostEligible: input.autoPostEligible,
+        })),
+      });
+
+      for (const item of createdChunk) {
+        createdItems.push(this.toProposalEntity(item));
+      }
+    }
+
+    return createdItems;
   }
 
   async findProposalById(tenantId: string, id: string): Promise<ProposalEntity | null> {
@@ -671,6 +769,42 @@ export class PrismaBankingRepository implements IBankingRepository {
     });
 
     return this.toExceptionItemEntity(created);
+  }
+
+  async createExceptionItems(inputs: CreateExceptionInput[]): Promise<ExceptionItemEntity[]> {
+    const firstInput = inputs[0];
+    if (!firstInput) {
+      return [];
+    }
+
+    await this.ensureTenantExists(firstInput.tenantId);
+
+    const createdItems: ExceptionItemEntity[] = [];
+    const BATCH_SIZE = 1000;
+
+    for (let i = 0; i < inputs.length; i += BATCH_SIZE) {
+      const chunk = inputs.slice(i, i + BATCH_SIZE);
+      const createdChunk = await this.prisma.bankingExceptionItem.createManyAndReturn({
+        data: chunk.map((input) => ({
+          tenantId: input.tenantId,
+          entityType: input.entityType,
+          entityId: input.entityId,
+          exceptionType: input.exceptionType,
+          severity: input.severity,
+          reason: input.reason,
+          evidence: (input.evidence as unknown as Prisma.InputJsonValue) ?? Prisma.JsonNull,
+          proposedResolution:
+            (input.proposedResolution as unknown as Prisma.InputJsonValue) ?? Prisma.JsonNull,
+          status: 'OPEN',
+        })),
+      });
+
+      for (const item of createdChunk) {
+        createdItems.push(this.toExceptionItemEntity(item));
+      }
+    }
+
+    return createdItems;
   }
 
   async findExceptionItemById(tenantId: string, id: string): Promise<ExceptionItemEntity | null> {

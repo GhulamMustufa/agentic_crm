@@ -1,4 +1,5 @@
 import { NestFactory } from '@nestjs/core';
+import { json, urlencoded } from 'express';
 import helmet from 'helmet';
 
 import { AppModule } from './app.module';
@@ -13,6 +14,10 @@ async function bootstrap() {
   });
 
   const config = app.get(AppConfigService);
+
+  // Increase payload limit for large multi-page bank statements & document OCR (up to 50MB)
+  app.use(json({ limit: '50mb' }));
+  app.use(urlencoded({ extended: true, limit: '50mb' }));
 
   // Global Exception Filter
   app.useGlobalFilters(new GlobalExceptionFilter());

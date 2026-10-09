@@ -37,6 +37,11 @@ export class MemoryStorageService implements IObjectStorage {
     { data: Buffer; contentType?: string; metadata?: Record<string, string> }
   >();
 
+  constructor(
+    @Inject(AppConfigService)
+    private readonly config?: AppConfigService,
+  ) {}
+
   async putObject(
     key: string,
     data: Buffer | Uint8Array,
@@ -65,8 +70,13 @@ export class MemoryStorageService implements IObjectStorage {
     this.store.delete(key);
   }
 
+  private getBaseUrl(): string {
+    const port = this.config?.get('PORT') || 4000;
+    return `http://localhost:${port}/api/v1`;
+  }
+
   async getPresignedUrl(key: string, _expiresInSeconds = 900): Promise<string> {
-    return `https://mock-storage.local/${key}?mock-token=${Date.now()}`;
+    return `${this.getBaseUrl()}/storage/download/${encodeURIComponent(key)}`;
   }
 
   async getPresignedUploadUrl(
@@ -74,7 +84,7 @@ export class MemoryStorageService implements IObjectStorage {
     _contentType: string,
     _expiresInSeconds = 900,
   ): Promise<string> {
-    return `https://mock-storage.local/upload/${key}?mock-token=${Date.now()}`;
+    return `${this.getBaseUrl()}/storage/upload/${encodeURIComponent(key)}`;
   }
 
   clear(): void {
@@ -89,10 +99,13 @@ export class S3StorageService implements IObjectStorage {
 
   constructor(@Inject(AppConfigService) private readonly config: AppConfigService) {
     this.bucket = this.config.get('S3_BUCKET') || 'uploads';
-    const endpoint = this.config.get('S3_ENDPOINT') || undefined;
-    const region = this.config.get('S3_REGION') || 'ap-southeast-1';
-    const accessKeyId = this.config.get('S3_ACCESS_KEY');
-    const secretAccessKey = this.config.get('S3_SECRET_KEY');
+    const endpoint =
+      this.config.get('S3_ENDPOINT') || this.config.get('AWS_ENDPOINT_URL_S3') || undefined;
+    const region =
+      this.config.get('S3_REGION') || this.config.get('AWS_REGION') || 'ap-southeast-1';
+    const accessKeyId = this.config.get('S3_ACCESS_KEY') || this.config.get('AWS_ACCESS_KEY_ID');
+    const secretAccessKey =
+      this.config.get('S3_SECRET_KEY') || this.config.get('AWS_SECRET_ACCESS_KEY');
 
     this.client = new S3Client({
       region,

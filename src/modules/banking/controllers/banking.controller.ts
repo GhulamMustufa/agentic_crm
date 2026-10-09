@@ -10,8 +10,11 @@ import {
   HttpCode,
   HttpStatus,
   Inject,
+  Sse,
+  MessageEvent,
 } from '@nestjs/common';
 import { Queue } from 'bullmq';
+import { Observable } from 'rxjs';
 
 import { AuthorizationError } from '../../../core/errors/app-error';
 import { CurrentUser } from '../../../core/security/decorators/auth.decorators';
@@ -151,23 +154,130 @@ export class BankingController {
 
   @Get('statements/jobs/:id')
   @HttpCode(HttpStatus.OK)
-  async getJobStatus(@CurrentUser() user: TenantSessionContext, @Param('id') id: string) {
-    this.requireTenant(user);
+  async getJobStatus(
+    @CurrentUser() user: TenantSessionContext,
+    @Param('id') id: string,
+    @Query('fileName') fileName?: string,
+  ) {
+    const tenantId = this.requireTenant(user);
     const job = await this.statementQueue.getJob(id);
-    if (!job) {
-      return { data: { id, state: 'not_found' } };
+    if (job) {
+      const state = await job.getState();
+      const progress = job.progress;
+      let result = state === 'completed' ? serializeBigInt(job.returnvalue) : null;
+
+      // If job completed in BullMQ but returnvalue needs statement re-fetch:
+      if (state === 'completed' && !result) {
+        const recent = await this.bankProcessingService.findRecentStatement(tenantId, fileName);
+        if (recent) {
+          const fullResult = await this.bankProcessingService.getStatementUploadResult(
+            tenantId,
+            recent.id,
+          );
+          if (fullResult) {
+            result = serializeBigInt(fullResult);
+          }
+        }
+      }
+
+      return {
+        data: {
+          id: job.id,
+          state,
+          progress,
+          result,
+          failedReason: job.failedReason,
+        },
+      };
     }
-    const state = await job.getState();
-    const progress = job.progress;
-    return {
-      data: {
-        id: job.id,
-        state,
-        progress,
-        result: state === 'completed' ? serializeBigInt(job.returnvalue) : null,
-        failedReason: job.failedReason,
-      },
-    };
+
+    // Fallback to PostgreSQL database state if BullMQ job has expired or was purged
+    const recentStatement = await this.bankProcessingService.findRecentStatement(
+      tenantId,
+      fileName,
+    );
+    if (recentStatement) {
+      const isFresh = Date.now() - new Date(recentStatement.createdAt).getTime() < 30 * 60 * 1000;
+      if (isFresh) {
+        if (recentStatement.status === 'PARSED' || recentStatement.status === 'RECONCILED') {
+          const fullResult = await this.bankProcessingService.getStatementUploadResult(
+            tenantId,
+            recentStatement.id,
+          );
+          return {
+            data: {
+              id,
+              state: 'completed',
+              progress: { percent: 100, stage: 'COMPLETE', step: 4 },
+              result: fullResult ? serializeBigInt(fullResult) : null,
+            },
+          };
+        } else if (recentStatement.status === 'FAILED') {
+          return {
+            data: {
+              id,
+              state: 'failed',
+              failedReason: recentStatement.errorMessage || 'Statement processing failed',
+            },
+          };
+        } else if (
+          recentStatement.status === 'PROCESSING' ||
+          recentStatement.status === 'UPLOADED'
+        ) {
+          return {
+            data: {
+              id,
+              state: 'active',
+              progress: { percent: 50, stage: 'PROCESSING', step: 2 },
+              result: null,
+            },
+          };
+        }
+      }
+    }
+
+    return { data: { id, state: 'not_found' } };
+  }
+
+  @Sse('statements/stream/:id')
+  streamJobStatus(
+    @CurrentUser() user: TenantSessionContext,
+    @Param('id') id: string,
+    @Query('fileName') fileName?: string,
+  ): Observable<MessageEvent> {
+    return new Observable<MessageEvent>((observer) => {
+      let isSubscribed = true;
+      const poll = async () => {
+        if (!isSubscribed) {
+          return;
+        }
+        try {
+          const res = await this.getJobStatus(user, id, fileName);
+          observer.next({ data: JSON.stringify(res.data) } as MessageEvent);
+          if (
+            res.data.state === 'completed' ||
+            res.data.state === 'failed' ||
+            res.data.state === 'not_found'
+          ) {
+            observer.complete();
+            isSubscribed = false;
+            return;
+          }
+        } catch (err: unknown) {
+          observer.error(err);
+          isSubscribed = false;
+          return;
+        }
+        if (isSubscribed) {
+          setTimeout(poll, 1500);
+        }
+      };
+
+      poll();
+      return () => {
+        isSubscribed = false;
+      };
+    });
   }
 
   @Get('statements')

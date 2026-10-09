@@ -33,22 +33,44 @@ export class StatementProcessor extends WorkerHost {
     try {
       // 1. Download from S3/Neon Object Storage
       this.logger.debug(`Downloading object ${dto.objectKey} from storage...`);
+      await job.updateProgress({
+        stage: 'DOWNLOADING',
+        percent: 15,
+        message: 'Downloading statement from secure storage...',
+        step: 1,
+      });
       const buffer = await this.storageService.getObject(dto.objectKey);
 
       // 2. Format content for parser (UTF-8 for CSV, Base64 for PDF)
       const content =
         dto.mimeType === 'text/csv' ? buffer.toString('utf-8') : buffer.toString('base64');
 
-      // 3. Process exactly as we did before, but now in the background
+      // 3. Process with fine-grained progress tracking
       this.logger.debug(`Parsing statement ${dto.fileName}...`);
-      const result = await this.bankProcessingService.processStatementUpload(tenantId, userId, {
-        bankAccountId: dto.bankAccountId,
-        fileName: dto.fileName,
-        mimeType: dto.mimeType,
-        content,
-        manualBankName: dto.manualBankName,
-        manualAccountType: dto.manualAccountType,
-        manualAccountNumberLast4: dto.manualAccountNumberLast4,
+      const result = await this.bankProcessingService.processStatementUpload(
+        tenantId,
+        userId,
+        {
+          bankAccountId: dto.bankAccountId,
+          fileName: dto.fileName,
+          mimeType: dto.mimeType,
+          content,
+          manualBankName: dto.manualBankName,
+          manualAccountType: dto.manualAccountType,
+          manualAccountNumberLast4: dto.manualAccountNumberLast4,
+        },
+        {
+          onProgress: async (progress) => {
+            await job.updateProgress(progress);
+          },
+        },
+      );
+
+      await job.updateProgress({
+        stage: 'COMPLETE',
+        percent: 100,
+        message: 'Statement processed and reconciled successfully',
+        step: 4,
       });
 
       this.logger.log(`Successfully processed statement job ${job.id}`);

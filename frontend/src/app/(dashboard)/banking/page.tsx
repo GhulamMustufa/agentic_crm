@@ -25,6 +25,9 @@ import {
   ExternalLink,
   HelpCircle,
   FileDown,
+  X,
+  Layers,
+  CheckCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -115,8 +118,34 @@ interface BankStatementRecord {
   createdAt: string;
 }
 
-const ACTIVE_JOB_STORAGE_KEY = 'agentic_os_active_banking_job';
-const LAST_RESULT_STORAGE_KEY = 'agentic_os_last_upload_result';
+interface BatchQueueItem {
+  id: string;
+  file?: File;
+  fileName: string;
+  fileSize: number;
+  mimeType: string;
+  status:
+    | 'QUEUED'
+    | 'UPLOADING'
+    | 'EXTRACTING'
+    | 'VALIDATING'
+    | 'CATEGORIZING'
+    | 'RECONCILING'
+    | 'COMPLETED'
+    | 'FAILED';
+  stageName: string;
+  progress: number;
+  step: number;
+  jobId?: string;
+  statementId?: string;
+  transactionsCount?: number;
+  errorMessage?: string;
+  result?: UploadResult | null;
+  startedAt: number;
+  completedAt?: number;
+}
+
+const BATCH_QUEUE_STORAGE_KEY = 'agentic_os_active_batch_queue';
 
 export default function BankingPage() {
   const [accounts, setAccounts] = React.useState<BankAccount[]>([]);
@@ -153,17 +182,10 @@ export default function BankingPage() {
   >('CHECKING');
   const [manualLast4, setManualLast4] = React.useState('');
 
-  // Upload State
+  // Multi-File Batch Upload Queue State
   const [isDragging, setIsDragging] = React.useState(false);
-  const [isUploading, setIsUploading] = React.useState(false);
-  const [uploadProgress, setUploadProgress] = React.useState(0);
-  const [activeStep, setActiveStep] = React.useState<number>(1);
-  const [processingStage, setProcessingStage] = React.useState<
-    'idle' | 'uploading' | 'extracting' | 'classifying' | 'reconciling' | 'complete' | 'error'
-  >('idle');
-  const [activeJobFileName, setActiveJobFileName] = React.useState<string>('');
-  const [uploadResult, setUploadResult] = React.useState<UploadResult | null>(null);
-
+  const [batchQueue, setBatchQueue] = React.useState<BatchQueueItem[]>([]);
+  const inFlightIdsRef = React.useRef<Set<string>>(new Set());
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const loadAccounts = React.useCallback(async () => {
@@ -191,145 +213,276 @@ export default function BankingPage() {
     }
   }, []);
 
-  const pollJob = React.useCallback(
-    async (jobId: string, fileName?: string) => {
-      setIsUploading(true);
-      if (fileName) {
-        setActiveJobFileName(fileName);
-      }
+  // Individual Queue Item Worker (Unified Object Storage & Background Queue)
+  const processQueueItem = React.useCallback(
+    async (item: BatchQueueItem) => {
+      if (inFlightIdsRef.current.has(item.id)) return;
+      inFlightIdsRef.current.add(item.id);
 
-      let attempts = 0;
-      let completed = false;
+      const targetAccountId = selectedAccountId || undefined;
 
-      while (attempts < 120 && !completed) {
-        attempts++;
-        try {
-          const statusRes = await apiClient.get<{
-            data: {
-              id: string;
-              state: string;
-              result: UploadResult | null;
-              failedReason?: string;
-              progress?: number;
-            };
-          }>(`/banking/statements/jobs/${jobId}`, { silent: true });
+      const updateItem = (updater: Partial<BatchQueueItem>) => {
+        setBatchQueue((prev) => prev.map((q) => (q.id === item.id ? { ...q, ...updater } : q)));
+      };
 
-          const { state, result, failedReason, progress } = statusRes.data;
+      try {
+        updateItem({
+          status: 'UPLOADING',
+          stageName: 'Uploading to secure object storage...',
+          progress: 15,
+          step: 1,
+        });
 
-          if (state === 'completed' && result) {
-            setActiveStep(4);
-            setProcessingStage('complete');
-            setUploadProgress(100);
-            setUploadResult(result);
-            try {
-              localStorage.removeItem(ACTIVE_JOB_STORAGE_KEY);
-              localStorage.setItem(
-                LAST_RESULT_STORAGE_KEY,
-                JSON.stringify({ result, timestamp: Date.now() }),
-              );
-            } catch (e) {
-              console.error('Failed to save to localStorage:', e);
-            }
-            loadAccounts();
-            loadStatements();
-            toast.success(
-              `Statement ${fileName ? `"${fileName}"` : ''} processed and reconciled successfully!`,
-            );
-            completed = true;
-            break;
-          } else if (state === 'failed') {
-            try {
-              localStorage.removeItem(ACTIVE_JOB_STORAGE_KEY);
-            } catch (e) {}
-            setProcessingStage('error');
-            loadStatements();
-            toast.error(failedReason || 'Statement parsing failed during background processing');
-            break;
-          } else if (state === 'active') {
-            setActiveStep(3);
-            setProcessingStage('classifying');
-            setUploadProgress((prev) => Math.min(Math.max(prev, 60) + Math.random() * 5, 92));
-          } else if (state === 'waiting' || state === 'delayed') {
-            setActiveStep(2);
-            setProcessingStage('extracting');
-            setUploadProgress((prev) => Math.max(prev, 35));
-          } else if (state === 'not_found') {
-            // If the job was cleaned up by BullMQ, refresh statements list
-            try {
-              localStorage.removeItem(ACTIVE_JOB_STORAGE_KEY);
-            } catch (e) {}
-            await loadStatements();
-            await loadAccounts();
-            break;
-          }
-        } catch (pollErr: any) {
-          console.warn('Job polling retry tick:', pollErr);
+        if (!item.file) {
+          throw new Error(
+            'File object is no longer available in memory. Please select the file again.',
+          );
         }
 
-        await new Promise((resolve) => setTimeout(resolve, 2500));
-      }
+        const isPdf = item.fileName.endsWith('.pdf') || item.mimeType.includes('pdf');
+        const mimeType = isPdf ? ('application/pdf' as const) : ('text/csv' as const);
 
-      setIsUploading(false);
+        // 1. Request presigned upload URL from backend (S3 in production, Local Storage in development)
+        const presignedRes = await apiClient.post<{ data: { url: string; objectKey: string } }>(
+          '/banking/statements/presigned-url',
+          {
+            fileName: item.fileName,
+            mimeType,
+          },
+        );
+        const { url, objectKey } = presignedRes.data;
+
+        updateItem({ progress: 30 });
+
+        // 2. Stream binary directly to Object Storage (0 server memory overhead)
+        const uploadRes = await fetch(url, {
+          method: 'PUT',
+          body: item.file,
+          headers: { 'Content-Type': mimeType },
+        });
+
+        if (!uploadRes.ok) {
+          throw new Error(`Object storage upload failed with status ${uploadRes.status}`);
+        }
+
+        updateItem({
+          status: 'EXTRACTING',
+          stageName: 'Reading document layout & tables...',
+          progress: 45,
+          step: 2,
+        });
+
+        // 3. Queue background parsing & reconciliation
+        const payload: any = {
+          fileName: item.fileName,
+          mimeType,
+          objectKey,
+        };
+        if (targetAccountId && targetAccountId !== 'NEW_MANUAL') {
+          payload.bankAccountId = targetAccountId;
+        } else if (targetAccountId === 'NEW_MANUAL') {
+          payload.manualBankName = manualBankName.trim();
+          payload.manualAccountType = manualAccountType;
+          payload.manualAccountNumberLast4 = manualLast4.trim();
+        }
+
+        const queueRes = await apiClient.post<{ data: { jobId: string; status: string } }>(
+          '/banking/statements/queue-upload',
+          payload,
+        );
+
+        const jobId = queueRes.data.jobId;
+        updateItem({ jobId });
+
+        // 4. Poll & stream job status from BullMQ with database fallback
+        let attempts = 0;
+        let completed = false;
+
+        while (attempts < 120 && !completed) {
+          attempts++;
+          try {
+            const statusRes = await apiClient.get<{
+              data: {
+                id: string;
+                state: string;
+                result: UploadResult | null;
+                failedReason?: string;
+                progress?:
+                  { percent?: number; stage?: string; step?: number; message?: string } | number;
+              };
+            }>(`/banking/statements/jobs/${jobId}?fileName=${encodeURIComponent(item.fileName)}`, {
+              silent: true,
+            });
+
+            const { state, result, failedReason, progress } = statusRes.data;
+
+            if (progress && typeof progress === 'object') {
+              if (progress.stage === 'DOWNLOADING' || progress.stage === 'EXTRACTING') {
+                updateItem({
+                  status: 'EXTRACTING',
+                  stageName: 'Reading document layout & tables...',
+                  step: 1,
+                  progress: progress.percent || 35,
+                });
+              } else if (progress.stage === 'VALIDATING') {
+                updateItem({
+                  status: 'VALIDATING',
+                  stageName: 'Verifying numbers & checksums...',
+                  step: 2,
+                  progress: progress.percent || 55,
+                });
+              } else if (progress.stage === 'CATEGORIZING') {
+                updateItem({
+                  status: 'CATEGORIZING',
+                  stageName: 'Auto-categorizing payees & proposals...',
+                  step: 3,
+                  progress: progress.percent || 75,
+                });
+              } else if (progress.stage === 'RECONCILING') {
+                updateItem({
+                  status: 'RECONCILING',
+                  stageName: 'Reconciling general ledger...',
+                  step: 4,
+                  progress: progress.percent || 95,
+                });
+              }
+            }
+
+            if (state === 'completed' && result) {
+              updateItem({
+                status: 'COMPLETED',
+                stageName: 'Reconciled',
+                progress: 100,
+                step: 4,
+                statementId: result.statement?.id,
+                transactionsCount: result.transactions?.length || 0,
+                result,
+                completedAt: Date.now(),
+              });
+              loadAccounts();
+              loadStatements();
+              toast.success(`Statement "${item.fileName}" reconciled successfully!`);
+              completed = true;
+              break;
+            } else if (state === 'failed') {
+              updateItem({
+                status: 'FAILED',
+                stageName: 'Failed',
+                progress: 100,
+                errorMessage: failedReason || 'Processing failed',
+              });
+              loadStatements();
+              toast.error(`"${item.fileName}": ${failedReason || 'Statement parsing failed'}`);
+              completed = true;
+              break;
+            } else if (state === 'active') {
+              updateItem({
+                status: 'VALIDATING',
+                stageName: 'Processing & reconciling...',
+                step: 2,
+              });
+            } else if (state === 'not_found') {
+              // Fallback to database check
+              const statementsRes = await apiClient.get<{ data: BankStatementRecord[] }>(
+                '/banking/statements',
+                { silent: true },
+              );
+              const list = statementsRes.data || [];
+              const match = list.find((s) => s.fileName === item.fileName);
+              if (match && (match.status === 'PARSED' || match.status === 'RECONCILED')) {
+                updateItem({
+                  status: 'COMPLETED',
+                  stageName: 'Reconciled',
+                  progress: 100,
+                  step: 4,
+                  completedAt: Date.now(),
+                });
+                toast.success(`Statement "${item.fileName}" completed!`);
+              } else {
+                updateItem({
+                  status: 'FAILED',
+                  stageName: 'Failed',
+                  progress: 100,
+                  errorMessage: 'Statement processing timed out or failed',
+                });
+              }
+              loadStatements();
+              loadAccounts();
+              completed = true;
+              break;
+            }
+          } catch (pollErr: any) {
+            console.warn('Queue item poll retry:', pollErr);
+          }
+
+          await new Promise((resolve) => setTimeout(resolve, 1500));
+        }
+      } catch (err: any) {
+        const errorMsg = err?.data?.message || err?.message || 'Upload processing failed';
+        updateItem({
+          status: 'FAILED',
+          stageName: 'Failed',
+          progress: 100,
+          errorMessage: errorMsg,
+        });
+        loadStatements();
+        toast.error(`"${item.fileName}": ${errorMsg}`);
+      } finally {
+        inFlightIdsRef.current.delete(item.id);
+      }
     },
-    [loadAccounts, loadStatements],
+    [
+      selectedAccountId,
+      manualBankName,
+      manualAccountType,
+      manualLast4,
+      loadAccounts,
+      loadStatements,
+    ],
   );
 
-  // Rehydrate active job or last result from localStorage on mount
+  // Queue Dispatcher Effect (Sequential Batch Queue Dispatcher, Concurrency = 1)
+  React.useEffect(() => {
+    const queuedItems = batchQueue.filter((item) => item.status === 'QUEUED');
+    const runningCount = batchQueue.filter(
+      (item) =>
+        item.status === 'UPLOADING' ||
+        item.status === 'EXTRACTING' ||
+        item.status === 'VALIDATING' ||
+        item.status === 'CATEGORIZING' ||
+        item.status === 'RECONCILING',
+    ).length;
+
+    if (runningCount === 0 && queuedItems.length > 0) {
+      const nextItem = queuedItems[0];
+      if (nextItem) {
+        processQueueItem(nextItem);
+      }
+    }
+  }, [batchQueue, processQueueItem]);
+
+  // Tab visibility and window focus listener for instant resyncing
+  React.useEffect(() => {
+    const handleVisibilitySync = () => {
+      if (document.visibilityState === 'visible') {
+        loadAccounts();
+        loadStatements();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilitySync);
+    window.addEventListener('focus', handleVisibilitySync);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilitySync);
+      window.removeEventListener('focus', handleVisibilitySync);
+    };
+  }, [loadAccounts, loadStatements]);
+
+  // Initial load on mount
   React.useEffect(() => {
     loadAccounts();
     loadStatements();
-
-    try {
-      const activeJobStr = localStorage.getItem(ACTIVE_JOB_STORAGE_KEY);
-      if (activeJobStr) {
-        const savedJob = JSON.parse(activeJobStr);
-        const isRecent = savedJob?.startedAt && Date.now() - savedJob.startedAt < 20 * 60 * 1000;
-        if (savedJob?.jobId && isRecent) {
-          setIsUploading(true);
-          setActiveJobFileName(savedJob.fileName || 'Statement');
-          setActiveStep(2);
-          setProcessingStage('extracting');
-          setUploadProgress(40);
-          pollJob(savedJob.jobId, savedJob.fileName);
-          return;
-        } else if (isRecent && savedJob?.fileName) {
-          // File was in flight during reload
-          setIsUploading(true);
-          setActiveJobFileName(savedJob.fileName);
-          setActiveStep(1);
-          setProcessingStage('uploading');
-          setUploadProgress(25);
-          apiClient
-            .get<{ data: BankStatementRecord[] }>('/banking/statements')
-            .then((res) => {
-              const list = res.data || [];
-              const match = list.find((s) => s.fileName === savedJob.fileName);
-              if (match) {
-                setStatements(list);
-                setIsUploading(false);
-                setProcessingStage('complete');
-                localStorage.removeItem(ACTIVE_JOB_STORAGE_KEY);
-              }
-            })
-            .catch(() => {});
-        } else {
-          localStorage.removeItem(ACTIVE_JOB_STORAGE_KEY);
-        }
-      }
-
-      // If no active job, check if recent result exists (< 30 min)
-      const lastResultStr = localStorage.getItem(LAST_RESULT_STORAGE_KEY);
-      if (lastResultStr) {
-        const saved = JSON.parse(lastResultStr);
-        if (saved?.result && Date.now() - saved.timestamp < 30 * 60 * 1000) {
-          setUploadResult(saved.result);
-          setProcessingStage('complete');
-        }
-      }
-    } catch (err) {
-      console.error('Error rehydrating upload state:', err);
-    }
-  }, [loadAccounts, loadStatements, pollJob]);
+  }, [loadAccounts, loadStatements]);
 
   const handleCreateAccount = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -378,110 +531,69 @@ export default function BankingPage() {
     }
   };
 
-  const handleFileProcess = async (file: File) => {
-    const targetAccountId = selectedAccountId || undefined;
+  const handleFilesProcess = (files: FileList | File[]) => {
+    const fileList = Array.from(files);
+    const validFiles = fileList.filter(
+      (f) =>
+        f.name.endsWith('.pdf') ||
+        f.name.endsWith('.csv') ||
+        f.type.includes('pdf') ||
+        f.type.includes('csv'),
+    );
 
-    setIsUploading(true);
-    setActiveJobFileName(file.name);
-    setProcessingStage('uploading');
-    setActiveStep(1);
-    setUploadProgress(15);
-    setUploadResult(null);
-
-    // Save initial in-flight state immediately
-    try {
-      localStorage.setItem(
-        ACTIVE_JOB_STORAGE_KEY,
-        JSON.stringify({
-          fileName: file.name,
-          startedAt: Date.now(),
-          selectedAccountId: targetAccountId,
-        }),
-      );
-    } catch (e) {}
-
-    try {
-      const isPdf = file.name.endsWith('.pdf') || file.type.includes('pdf');
-      const mimeType = isPdf ? ('application/pdf' as const) : ('text/csv' as const);
-
-      // 1. Get presigned URL
-      const presignedRes = await apiClient.post<{ data: { url: string; objectKey: string } }>(
-        '/banking/statements/presigned-url',
-        {
-          fileName: file.name,
-          mimeType,
-        },
-      );
-      const { url, objectKey } = presignedRes.data;
-
-      setUploadProgress(30);
-
-      // 2. Upload directly to S3 (Neon Object Storage)
-      const s3Res = await fetch(url, {
-        method: 'PUT',
-        body: file,
-        headers: {
-          'Content-Type': mimeType,
-        },
-      });
-
-      if (!s3Res.ok) {
-        throw new Error('Failed to upload file to storage bucket');
-      }
-
-      setActiveStep(2);
-      setProcessingStage('extracting');
-      setUploadProgress(50);
-
-      // 3. Queue the background processing job
-      const payload: any = {
-        fileName: file.name,
-        mimeType,
-        objectKey,
-      };
-      if (targetAccountId && targetAccountId !== 'NEW_MANUAL') {
-        payload.bankAccountId = targetAccountId;
-      } else if (targetAccountId === 'NEW_MANUAL') {
-        payload.manualBankName = manualBankName.trim();
-        payload.manualAccountType = manualAccountType;
-        payload.manualAccountNumberLast4 = manualLast4.trim();
-      }
-
-      const queueRes = await apiClient.post<{ data: { jobId: string; status: string } }>(
-        '/banking/statements/queue-upload',
-        payload,
-      );
-
-      const jobId = queueRes.data.jobId;
-
-      // Persist active BullMQ job to localStorage so page refreshes resume polling
-      try {
-        localStorage.setItem(
-          ACTIVE_JOB_STORAGE_KEY,
-          JSON.stringify({
-            jobId,
-            fileName: file.name,
-            startedAt: Date.now(),
-            selectedAccountId: targetAccountId,
-          }),
-        );
-      } catch (e) {
-        console.error('Failed to store active job:', e);
-      }
-
-      // 4. Poll for job completion
-      await pollJob(jobId, file.name);
-    } catch (err: any) {
-      setProcessingStage('error');
-      try {
-        localStorage.removeItem(ACTIVE_JOB_STORAGE_KEY);
-      } catch (e) {}
-      const errorMessage =
-        err?.response?.data?.message || err?.message || 'Statement processing failed';
-      toast.error(errorMessage);
-      console.error(err);
-      setIsUploading(false);
+    if (validFiles.length === 0) {
+      toast.error('Please select valid .PDF or .CSV statement files.');
+      return;
     }
+
+    const newItems: BatchQueueItem[] = validFiles.map((file) => ({
+      id: `${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      file,
+      fileName: file.name,
+      fileSize: file.size,
+      mimeType: file.name.endsWith('.pdf') ? 'application/pdf' : 'text/csv',
+      status: 'QUEUED',
+      stageName: 'Queued in batch...',
+      progress: 0,
+      step: 1,
+      startedAt: Date.now(),
+    }));
+
+    setBatchQueue((prev) => [...newItems, ...prev]);
+    toast.info(
+      `Added ${validFiles.length} statement${validFiles.length > 1 ? 's' : ''} to upload queue`,
+    );
+  };
+
+  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      handleFilesProcess(e.target.files);
+      e.target.value = '';
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      handleFilesProcess(e.dataTransfer.files);
+    }
+  };
+
+  const triggerUploadClick = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+      fileInputRef.current.click();
+    }
+  };
+
+  const handleClearCompleted = () => {
+    setBatchQueue((prev) => prev.filter((item) => item.status !== 'COMPLETED'));
+  };
+
+  const handleRemoveQueueItem = (id: string) => {
+    inFlightIdsRef.current.delete(id);
+    setBatchQueue((prev) => prev.filter((item) => item.id !== id));
   };
 
   const handleRetryStatement = async (statementId: string) => {
@@ -497,62 +609,6 @@ export default function BankingPage() {
       setRetryingId(null);
     }
   };
-
-  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      handleFileProcess(file);
-    }
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
-    const file = e.dataTransfer.files?.[0];
-    if (file) {
-      handleFileProcess(file);
-    }
-  };
-
-  const triggerUploadClick = () => {
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-      fileInputRef.current.click();
-    }
-  };
-
-  const handleResetUpload = () => {
-    try {
-      localStorage.removeItem(ACTIVE_JOB_STORAGE_KEY);
-      localStorage.removeItem(LAST_RESULT_STORAGE_KEY);
-    } catch (e) {}
-    setProcessingStage('idle');
-    setUploadResult(null);
-    setActiveJobFileName('');
-  };
-
-  const steps = [
-    {
-      num: 1,
-      title: 'Reading Document',
-      desc: 'Securely parsing PDF statement layout',
-    },
-    {
-      num: 2,
-      title: 'Verifying Numbers',
-      desc: 'Extracting opening, closing & line totals',
-    },
-    {
-      num: 3,
-      title: 'Auto-Categorizing',
-      desc: 'Matching vendor payees & accounts',
-    },
-    {
-      num: 4,
-      title: 'Books Reconciled',
-      desc: 'Confirming balanced debits & credits',
-    },
-  ];
 
   return (
     <div className="flex flex-col gap-8 max-w-7xl mx-auto w-full pb-12">
@@ -856,13 +912,18 @@ export default function BankingPage() {
 
         {/* Right Column (7 cols): Modern Statement Uploader & Stepper */}
         <div className="lg:col-span-7 flex flex-col gap-4">
-          <Card className="border-border/70 shadow-sm flex-1">
+          {/* Permanent Upload Dropzone Card */}
+          <Card className="border-border/70 shadow-sm">
             <CardHeader className="pb-3 border-b border-border/40">
               <div className="flex items-center justify-between">
                 <div>
-                  <CardTitle className="text-base font-semibold">Upload Bank Statement</CardTitle>
+                  <CardTitle className="text-base font-semibold flex items-center gap-2">
+                    <UploadCloud className="w-4 h-4 text-primary" />
+                    Upload Bank Statements
+                  </CardTitle>
                   <CardDescription className="text-xs mt-0.5">
-                    Drag and drop official PDF statements or CSV exports for instant reconciliation.
+                    Drag and drop single or batch PDF statements and CSV exports for automated
+                    multi-file reconciliation.
                   </CardDescription>
                 </div>
                 <Badge
@@ -874,9 +935,9 @@ export default function BankingPage() {
                 </Badge>
               </div>
             </CardHeader>
-            <CardContent className="pt-4 space-y-5">
+            <CardContent className="pt-4 space-y-4">
               {/* Manual Bank Details Form (Shown if Manual Selected) */}
-              {selectedAccountId === 'NEW_MANUAL' && !isUploading && (
+              {selectedAccountId === 'NEW_MANUAL' && (
                 <div className="p-4 bg-muted/40 rounded-xl space-y-3 border border-border/60 text-sm animate-in fade-in duration-200">
                   <div className="font-semibold text-xs uppercase tracking-wider text-muted-foreground">
                     Manual Bank Identifier
@@ -926,192 +987,302 @@ export default function BankingPage() {
                 </div>
               )}
 
-              {/* Hidden File Input */}
+              {/* Hidden File Input with multiple attribute */}
               <input
                 ref={fileInputRef}
                 type="file"
+                multiple
                 accept=".pdf,.csv,text/csv,application/pdf"
                 className="hidden"
                 onChange={handleFileInputChange}
               />
 
               {/* Upload Dropzone */}
-              {!isUploading && processingStage !== 'complete' ? (
-                <div
-                  className={`border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center text-center space-y-4 transition-all cursor-pointer ${
-                    isDragging
-                      ? 'border-primary bg-primary/10 ring-4 ring-primary/10'
-                      : 'hover:bg-muted/40 border-border/80 hover:border-primary/50'
-                  }`}
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                    setIsDragging(true);
-                  }}
-                  onDragLeave={() => setIsDragging(false)}
-                  onDrop={handleDrop}
-                  onClick={triggerUploadClick}
-                >
-                  <div className="w-14 h-14 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shadow-sm">
-                    <UploadCloud className="w-7 h-7" />
-                  </div>
-                  <div className="space-y-1">
-                    <h3 className="font-semibold text-base text-foreground">
-                      Click or drag bank statement here
-                    </h3>
-                    <p className="text-xs text-muted-foreground max-w-sm mx-auto">
-                      Seamlessly processes official statements in <strong>.PDF</strong> or{' '}
-                      <strong>.CSV</strong> formats.
-                    </p>
-                  </div>
+              <div
+                className={`border-2 border-dashed rounded-xl p-7 flex flex-col items-center justify-center text-center space-y-3 transition-all cursor-pointer ${
+                  isDragging
+                    ? 'border-primary bg-primary/10 ring-4 ring-primary/10'
+                    : 'hover:bg-muted/40 border-border/80 hover:border-primary/50'
+                }`}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setIsDragging(true);
+                }}
+                onDragLeave={() => setIsDragging(false)}
+                onDrop={handleDrop}
+                onClick={triggerUploadClick}
+              >
+                <div className="w-12 h-12 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shadow-sm">
+                  <UploadCloud className="w-6 h-6" />
+                </div>
+                <div className="space-y-1">
+                  <h3 className="font-semibold text-sm text-foreground">
+                    Click or drag bank statements here
+                  </h3>
+                  <p className="text-xs text-muted-foreground max-w-sm mx-auto">
+                    Select one or <strong>multiple statements (.PDF or .CSV)</strong> for automatic
+                    batch processing.
+                  </p>
+                </div>
 
-                  {/* Compatibility Badges */}
-                  <div className="flex flex-wrap items-center justify-center gap-1.5 pt-1">
-                    {['Maybank', 'Mercury', 'Chase', 'Stripe', 'Wise', 'Standard CSV'].map(
-                      (tag) => (
-                        <span
-                          key={tag}
-                          className="inline-flex items-center text-[11px] font-medium px-2 py-0.5 rounded-md bg-muted text-muted-foreground border border-border/50"
-                        >
-                          {tag}
-                        </span>
-                      ),
+                {/* Compatibility Badges */}
+                <div className="flex flex-wrap items-center justify-center gap-1.5 pt-1">
+                  {[
+                    'Maybank',
+                    'Mercury',
+                    'Chase',
+                    'Stripe',
+                    'Wise',
+                    'Standard CSV',
+                    'Multi-File Batch',
+                  ].map((tag) => (
+                    <span
+                      key={tag}
+                      className="inline-flex items-center text-[10px] font-medium px-2 py-0.5 rounded-md bg-muted text-muted-foreground border border-border/50"
+                    >
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Active Processing Queue Card (Rendered whenever batchQueue has items) */}
+          {batchQueue.length > 0 && (
+            <Card className="border-border/70 shadow-sm animate-in fade-in duration-300">
+              <CardHeader className="pb-3 border-b border-border/40">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Layers className="w-4 h-4 text-primary" />
+                    <div>
+                      <CardTitle className="text-sm font-semibold">
+                        Active Processing Queue
+                      </CardTitle>
+                      <CardDescription className="text-xs">
+                        {batchQueue.filter((i) => i.status === 'COMPLETED').length} of{' '}
+                        {batchQueue.length} completed
+                        {batchQueue.some(
+                          (i) => i.status !== 'COMPLETED' && i.status !== 'FAILED',
+                        ) && ' • Processing in background'}
+                      </CardDescription>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {batchQueue.some((i) => i.status === 'COMPLETED') && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 text-xs text-muted-foreground hover:text-foreground"
+                        onClick={handleClearCompleted}
+                      >
+                        Clear Completed
+                      </Button>
                     )}
                   </div>
                 </div>
-              ) : isUploading ? (
-                /* Sleek 4-Stage Stepper Pipeline */
-                <div className="space-y-6 py-2">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Loader2 className="w-4 h-4 animate-spin text-primary" />
-                      <div className="flex flex-col">
-                        <span className="font-semibold text-sm text-foreground">
-                          Processing Bank Statement...
-                        </span>
-                        {activeJobFileName && (
-                          <span className="text-[11px] text-muted-foreground font-mono truncate max-w-xs">
-                            {activeJobFileName}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <span className="font-mono text-xs font-semibold text-muted-foreground tabular-nums">
-                      {Math.round(uploadProgress)}%
-                    </span>
-                  </div>
+              </CardHeader>
+              <CardContent className="pt-4 space-y-3">
+                {batchQueue.map((item) => {
+                  const isDone = item.status === 'COMPLETED';
+                  const isFail = item.status === 'FAILED';
+                  const isRunning = !isDone && !isFail && item.status !== 'QUEUED';
+                  const isQueued = item.status === 'QUEUED';
 
-                  <Progress value={uploadProgress} className="h-2 rounded-full" />
-
-                  {/* Stepper Stages Grid */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
-                    {steps.map((step) => {
-                      const isDone = activeStep > step.num || processingStage === 'complete';
-                      const isCurrent = activeStep === step.num && processingStage !== 'complete';
-
-                      return (
-                        <div
-                          key={step.num}
-                          className={`p-3 rounded-xl border transition-all flex items-start gap-3 ${
-                            isDone
-                              ? 'border-emerald-500/30 bg-emerald-500/5'
-                              : isCurrent
-                                ? 'border-primary/50 bg-primary/5 ring-1 ring-primary/20 shadow-sm'
-                                : 'border-border/40 bg-muted/20 opacity-60'
-                          }`}
-                        >
+                  return (
+                    <div
+                      key={item.id}
+                      className={`p-3.5 rounded-xl border transition-all ${
+                        isDone
+                          ? 'border-emerald-500/30 bg-emerald-500/5'
+                          : isFail
+                            ? 'border-destructive/30 bg-destructive/5'
+                            : isRunning
+                              ? 'border-primary/40 bg-primary/5 ring-1 ring-primary/20'
+                              : 'border-border/60 bg-muted/20'
+                      }`}
+                    >
+                      {/* Item Top Row */}
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2.5 min-w-0">
                           <div
-                            className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5 font-mono text-xs font-semibold ${
+                            className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 text-xs font-semibold ${
                               isDone
                                 ? 'bg-emerald-500 text-white'
-                                : isCurrent
-                                  ? 'bg-primary text-primary-foreground animate-pulse'
-                                  : 'bg-muted text-muted-foreground'
+                                : isFail
+                                  ? 'bg-destructive text-destructive-foreground'
+                                  : isRunning
+                                    ? 'bg-primary text-primary-foreground'
+                                    : 'bg-muted text-muted-foreground'
                             }`}
                           >
-                            {isDone ? <Check className="w-3.5 h-3.5" /> : step.num}
+                            {isDone ? (
+                              <Check className="w-4 h-4" />
+                            ) : isFail ? (
+                              <AlertCircle className="w-4 h-4" />
+                            ) : isRunning ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <Clock className="w-4 h-4" />
+                            )}
                           </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="text-xs font-semibold text-foreground leading-snug">
-                              {step.title}
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="font-semibold text-xs text-foreground font-mono truncate max-w-[200px] sm:max-w-xs">
+                                {item.fileName}
+                              </span>
+                              <span className="text-[10px] text-muted-foreground">
+                                ({(item.fileSize / (1024 * 1024)).toFixed(2)} MB)
+                              </span>
                             </div>
-                            <div className="text-[11px] text-muted-foreground mt-0.5 truncate">
-                              {step.desc}
+                            <div className="text-[11px] text-muted-foreground truncate mt-0.5">
+                              {item.stageName}
                             </div>
                           </div>
                         </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              ) : (
-                /* Success / Completed Result View */
-                <div className="space-y-5 py-2 animate-in fade-in duration-300">
-                  <div className="p-4 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 rounded-xl flex items-start gap-3.5">
-                    <div className="w-9 h-9 rounded-lg bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center shrink-0 mt-0.5">
-                      <FileCheck2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-                    </div>
-                    <div className="space-y-1">
-                      <p className="font-semibold text-sm text-emerald-900 dark:text-emerald-200">
-                        Statement Successfully Reconciled & Recorded!
-                      </p>
-                      <p className="text-xs text-emerald-800/80 dark:text-emerald-300/80 font-mono">
-                        File: {uploadResult?.statement.fileName}
-                      </p>
-                    </div>
-                  </div>
 
-                  <div className="grid grid-cols-3 gap-3 text-center">
-                    <div className="p-3.5 bg-card border border-border/60 rounded-xl shadow-sm">
-                      <div className="text-2xl font-bold tabular-nums text-foreground">
-                        {uploadResult?.transactions?.length ?? 0}
-                      </div>
-                      <div className="text-xs text-muted-foreground mt-1 font-medium">
-                        Extracted Rows
-                      </div>
-                    </div>
-                    <div className="p-3.5 bg-card border border-border/60 rounded-xl shadow-sm">
-                      <div className="text-2xl font-bold tabular-nums text-blue-600 dark:text-blue-400">
-                        {uploadResult?.proposals?.length ?? 0}
-                      </div>
-                      <div className="text-xs text-muted-foreground mt-1 font-medium">
-                        AI Matches
-                      </div>
-                    </div>
-                    <div className="p-3.5 bg-card border border-border/60 rounded-xl shadow-sm">
-                      <div className="text-2xl font-bold tabular-nums text-amber-600 dark:text-amber-400">
-                        {uploadResult?.exceptions?.length ?? 0}
-                      </div>
-                      <div className="text-xs text-muted-foreground mt-1 font-medium">
-                        Needs Review
-                      </div>
-                    </div>
-                  </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          {isQueued && (
+                            <Badge
+                              variant="outline"
+                              className="text-[10px] bg-muted/60 text-muted-foreground border-border/70"
+                            >
+                              Queued
+                            </Badge>
+                          )}
+                          {isRunning && (
+                            <Badge
+                              variant="outline"
+                              className="text-[10px] bg-primary/10 text-primary border-primary/30 font-medium"
+                            >
+                              <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                              {item.progress}%
+                            </Badge>
+                          )}
+                          {isDone && (
+                            <Badge
+                              variant="outline"
+                              className="text-[10px] bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 font-medium"
+                            >
+                              Reconciled ✓
+                            </Badge>
+                          )}
+                          {isFail && (
+                            <Badge variant="destructive" className="text-[10px]">
+                              Failed
+                            </Badge>
+                          )}
 
-                  <div className="flex flex-col sm:flex-row gap-2.5 pt-2">
-                    <Button asChild className="flex-1 h-9">
-                      <Link href="/transactions">
-                        View Transactions <ArrowRight className="w-4 h-4 ml-1.5" />
-                      </Link>
-                    </Button>
-                    {(uploadResult?.exceptions?.length ?? 0) > 0 && (
-                      <Button
-                        asChild
-                        variant="outline"
-                        className="flex-1 h-9 border-amber-500/30 text-amber-800 dark:text-amber-200 bg-amber-500/10 hover:bg-amber-500/20"
-                      >
-                        <Link href="/exceptions">
-                          Review Approvals ({uploadResult?.exceptions.length})
-                        </Link>
-                      </Button>
-                    )}
-                    <Button variant="ghost" size="sm" className="h-9" onClick={handleResetUpload}>
-                      Upload Another
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 text-muted-foreground hover:text-foreground rounded-md"
+                            onClick={() => handleRemoveQueueItem(item.id)}
+                            title="Dismiss from queue"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </Button>
+                        </div>
+                      </div>
+
+                      {/* Progress Bar (for In-Flight & Queued) */}
+                      {!isDone && !isFail && (
+                        <div className="mt-2.5 space-y-1">
+                          <Progress value={item.progress} className="h-1.5 rounded-full" />
+                        </div>
+                      )}
+
+                      {/* Completed Summary & Action Buttons */}
+                      {isDone && (
+                        <div className="mt-3 pt-2.5 border-t border-emerald-500/20 flex flex-wrap items-center justify-between gap-2 text-xs">
+                          <div className="flex items-center gap-3 text-muted-foreground">
+                            <span>
+                              <strong className="text-foreground font-mono">
+                                {item.transactionsCount || item.result?.transactions?.length || 0}
+                              </strong>{' '}
+                              rows
+                            </span>
+                            <span>•</span>
+                            <span>
+                              <strong className="text-blue-600 dark:text-blue-400 font-mono">
+                                {item.result?.proposals?.length || 0}
+                              </strong>{' '}
+                              AI matches
+                            </span>
+                            {(item.result?.exceptions?.length ?? 0) > 0 && (
+                              <>
+                                <span>•</span>
+                                <span>
+                                  <strong className="text-amber-600 dark:text-amber-400 font-mono">
+                                    {item.result?.exceptions?.length}
+                                  </strong>{' '}
+                                  needs review
+                                </span>
+                              </>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <Button asChild size="sm" variant="outline" className="h-7 text-xs">
+                              <Link href="/transactions">
+                                View Transactions <ArrowRight className="w-3 h-3 ml-1" />
+                              </Link>
+                            </Button>
+                            {(item.result?.exceptions?.length ?? 0) > 0 && (
+                              <Button
+                                asChild
+                                size="sm"
+                                variant="outline"
+                                className="h-7 text-xs border-amber-500/30 text-amber-800 dark:text-amber-200 bg-amber-500/10 hover:bg-amber-500/20"
+                              >
+                                <Link href="/exceptions">
+                                  Review Approvals ({item.result?.exceptions?.length})
+                                </Link>
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Failure Message & Action */}
+                      {isFail && (
+                        <div className="mt-2.5 pt-2 border-t border-destructive/20 flex items-center justify-between gap-2 text-xs">
+                          <span className="text-destructive font-medium truncate">
+                            {item.errorMessage || 'Statement processing failed'}
+                          </span>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-6 text-[11px] px-2"
+                            onClick={() => {
+                              if (item.file) {
+                                setBatchQueue((prev) =>
+                                  prev.map((q) =>
+                                    q.id === item.id
+                                      ? {
+                                          ...q,
+                                          status: 'QUEUED',
+                                          progress: 0,
+                                          errorMessage: undefined,
+                                          stageName: 'Queued in batch...',
+                                        }
+                                      : q,
+                                  ),
+                                );
+                              } else if (item.statementId) {
+                                handleRetryStatement(item.statementId);
+                              }
+                            }}
+                          >
+                            Retry
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </CardContent>
+            </Card>
+          )}
         </div>
       </div>
 

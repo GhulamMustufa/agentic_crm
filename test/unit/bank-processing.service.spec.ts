@@ -723,4 +723,61 @@ describe('BankProcessingService - AI Accountant Workflow', () => {
     const txs = await bankingRepo.listTransactionsByStatementId(tenantId, failed!.id);
     expect(txs.length).toBe(0);
   });
+
+  it('should utilize batch creation and report periodic progress for large statements', async () => {
+    const transactionsCount = 60;
+    const mockTxs = Array.from({ length: transactionsCount }, (_, i) => ({
+      date: '2026-05-01',
+      description: `Bulk Transaction ${i + 1}`,
+      amountCents: 1000n,
+      sourceSequence: i + 1,
+      runningBalanceCents: 1000000n + BigInt(i + 1) * 1000n,
+      rawPrimaryText: `Bulk Transaction ${i + 1}`,
+    }));
+
+    vi.spyOn(pdfParser, 'parse').mockResolvedValueOnce({
+      startDate: '2026-05-01',
+      endDate: '2026-05-31',
+      openingBalanceCents: 1000000n,
+      closingBalanceCents: 1000000n + BigInt(transactionsCount) * 1000n,
+      totalDebitsCents: 0n,
+      totalCreditsCents: BigInt(transactionsCount) * 1000n,
+      pageCount: 5,
+      extractionMode: 'NATIVE_LAYOUT',
+      bankDetected: 'MAYBANK',
+      transactions: mockTxs,
+    });
+
+    const createProposalsSpy = vi.spyOn(bankingRepo, 'createProposals');
+    const progressUpdates: Array<{ stage: string; percent: number; message: string }> = [];
+
+    const result = await bankProcessingService.processStatementUpload(
+      tenantId,
+      userId,
+      {
+        bankAccountId: operatingBankAccountId,
+        fileName: 'large_statement.pdf',
+        mimeType: 'application/pdf',
+        content: '%PDF-1.4 mock %%EOF',
+      },
+      {
+        onProgress: async (p) => {
+          progressUpdates.push({
+            stage: p.stage,
+            percent: p.percent,
+            message: p.message,
+          });
+        },
+      },
+    );
+
+    expect(result.transactions.length).toBe(transactionsCount);
+    expect(result.proposals.length).toBe(transactionsCount);
+    // Batch proposal insertion was used
+    expect(createProposalsSpy).toHaveBeenCalled();
+    // Progress callback was invoked with categorization messages
+    expect(progressUpdates.length).toBeGreaterThan(0);
+    const catUpdate = progressUpdates.find((u) => u.stage === 'CATEGORIZING');
+    expect(catUpdate).toBeDefined();
+  });
 });

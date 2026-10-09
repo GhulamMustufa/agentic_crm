@@ -294,6 +294,25 @@ export class InMemoryBankingRepository implements IBankingRepository {
     return null;
   }
 
+  async findBankTransactionsByHashes(
+    tenantId: string,
+    bankAccountId: string,
+    transactionHashes: string[],
+  ): Promise<Map<string, BankTransactionEntity>> {
+    const hashSet = new Set(transactionHashes);
+    const result = new Map<string, BankTransactionEntity>();
+    for (const tx of this.transactions.values()) {
+      if (
+        tx.tenantId === tenantId &&
+        tx.bankAccountId === bankAccountId &&
+        hashSet.has(tx.transactionHash)
+      ) {
+        result.set(tx.transactionHash, { ...tx });
+      }
+    }
+    return result;
+  }
+
   async listTransactionsByStatementId(
     tenantId: string,
     statementId: string,
@@ -338,6 +357,19 @@ export class InMemoryBankingRepository implements IBankingRepository {
     return { ...tx };
   }
 
+  async updateTransactionStatuses(
+    tenantId: string,
+    ids: string[],
+    status: BankTransactionStatus,
+  ): Promise<void> {
+    const idSet = new Set(ids);
+    for (const [id, tx] of this.transactions.entries()) {
+      if (tx.tenantId === tenantId && idSet.has(id)) {
+        this.transactions.set(id, { ...tx, status });
+      }
+    }
+  }
+
   // Proposals
   async createProposal(input: CreateProposalInput): Promise<ProposalEntity> {
     const prop: ProposalEntity = {
@@ -359,6 +391,32 @@ export class InMemoryBankingRepository implements IBankingRepository {
     };
     this.proposals.set(prop.id, { ...prop });
     return { ...prop };
+  }
+
+  async createProposals(inputs: CreateProposalInput[]): Promise<ProposalEntity[]> {
+    const results: ProposalEntity[] = [];
+    for (const input of inputs) {
+      const prop: ProposalEntity = {
+        id: uuidv4(),
+        tenantId: input.tenantId,
+        bankTransactionId: input.bankTransactionId,
+        invoiceId: input.invoiceId,
+        counterpartyId: input.counterpartyId,
+        proposalType: input.proposalType,
+        debitAccountId: input.debitAccountId,
+        creditAccountId: input.creditAccountId,
+        amountCents: input.amountCents,
+        confidenceScore: input.confidenceScore,
+        evidence: input.evidence,
+        rationale: input.rationale,
+        status: 'PROPOSED',
+        autoPostEligible: input.autoPostEligible,
+        createdAt: new Date(),
+      };
+      this.proposals.set(prop.id, { ...prop });
+      results.push({ ...prop });
+    }
+    return results;
   }
 
   async findProposalById(tenantId: string, id: string): Promise<ProposalEntity | null> {
@@ -437,6 +495,29 @@ export class InMemoryBankingRepository implements IBankingRepository {
     };
     this.exceptions.set(exc.id, { ...exc });
     return { ...exc };
+  }
+
+  async createExceptionItems(inputs: CreateExceptionInput[]): Promise<ExceptionItemEntity[]> {
+    const results: ExceptionItemEntity[] = [];
+    for (const input of inputs) {
+      const exc: ExceptionItemEntity = {
+        id: uuidv4(),
+        tenantId: input.tenantId,
+        entityType: input.entityType,
+        entityId: input.entityId,
+        exceptionType: input.exceptionType,
+        severity: input.severity,
+        reason: input.reason,
+        evidence: input.evidence,
+        proposedResolution: input.proposedResolution,
+        status: 'OPEN',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+      this.exceptions.set(exc.id, { ...exc });
+      results.push({ ...exc });
+    }
+    return results;
   }
 
   async findExceptionItemById(tenantId: string, id: string): Promise<ExceptionItemEntity | null> {

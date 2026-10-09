@@ -42,16 +42,11 @@ export class DocumentInspectorService {
       };
     }
 
-    // 2. Encryption detection
-    const isEncrypted = rawStr.includes('/Encrypt');
-    if (isEncrypted) {
-      reasons.push('Document contains /Encrypt dictionary marker');
-    }
-
-    // 3. Extract text content and page metrics
+    // 2. Extract text content, encryption detection and page metrics
     let pageCount = 1;
     let fullText = '';
     let isSearchableText = false;
+    let isEncrypted = false;
 
     try {
       const mod = pdfParseModule as unknown as Record<string, unknown>;
@@ -85,12 +80,33 @@ export class DocumentInspectorService {
       }
     } catch (err: unknown) {
       const errorMsg = err instanceof Error ? err.message : String(err);
-      this.logger.warn(`PDF parse warning during inspection: ${errorMsg}`);
-      reasons.push(`Text extraction encountered parser warning: ${errorMsg}`);
-      fullText = rawBuffer.toString('utf-8');
+      const lower = errorMsg.toLowerCase();
+      if (
+        lower.includes('password') ||
+        lower.includes('encrypt') ||
+        lower.includes('bad password') ||
+        lower.includes('security handler') ||
+        rawStr.includes('/Encrypt')
+      ) {
+        isEncrypted = true;
+        reasons.push(`Document is password-protected or encrypted: ${errorMsg}`);
+        fullText = '';
+      } else {
+        this.logger.warn(`PDF parse warning during inspection: ${errorMsg}`);
+        reasons.push(`Text extraction encountered parser warning: ${errorMsg}`);
+        fullText = rawBuffer.toString('utf-8');
+      }
     }
 
     const totalCharacters = fullText.trim().length;
+    // If text extraction returned 0 characters and raw stream has /Encrypt marker, mark as encrypted
+    if (totalCharacters === 0 && rawStr.includes('/Encrypt') && !isEncrypted) {
+      isEncrypted = true;
+      reasons.push(
+        'Document contains /Encrypt dictionary and text extraction produced 0 characters',
+      );
+    }
+
     const averageCharsPerPage = pageCount > 0 ? Math.round(totalCharacters / pageCount) : 0;
 
     // A document is considered natively searchable text if it has >= 40 characters per page average

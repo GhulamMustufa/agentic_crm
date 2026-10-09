@@ -25,6 +25,8 @@ import {
   BANKING_REPOSITORY_TOKEN,
   type IBankingRepository,
   type CreateBankTransactionInput,
+  type CreateProposalInput,
+  type CreateExceptionInput,
 } from '../domain/banking.repository.interface';
 import {
   createBankAccountSchema,
@@ -36,6 +38,7 @@ import {
 import { CsvStatementParser } from '../parsers/csv-statement.parser';
 import { PdfStatementParser, MalformedPdfError } from '../parsers/pdf-statement.parser';
 
+import type { AiClassificationResult } from './ai-accountant.service';
 import type { BankAccountEntity } from '../domain/bank-account.entity';
 import type { BankStatementEntity, BankStatementStatus } from '../domain/bank-statement.entity';
 import type {
@@ -164,7 +167,16 @@ export class BankProcessingService {
     tenantId: string,
     userId: string,
     rawDto: UploadStatementInput,
-    options?: { simulateAiTimeout?: boolean; simulateAiFailure?: boolean },
+    options?: {
+      simulateAiTimeout?: boolean;
+      simulateAiFailure?: boolean;
+      onProgress?: (progress: {
+        stage: string;
+        percent: number;
+        message: string;
+        step: number;
+      }) => Promise<void> | void;
+    },
   ): Promise<{
     statement: BankStatementEntity;
     transactions: BankTransactionEntity[];
@@ -198,11 +210,24 @@ export class BankProcessingService {
     this.processingLocks.add(lockKey);
 
     try {
+      await options?.onProgress?.({
+        stage: 'EXTRACTING',
+        percent: 25,
+        message: 'Extracting document text and layout...',
+        step: 1,
+      });
+
       // 2. Compute File SHA-256 for exact statement duplicate detection
       const fileSha256 = computeSha256(dto.content);
       const existingByHash = await this.bankingRepo.findBankStatementByHash(tenantId, fileSha256);
       if (existingByHash) {
-        if (existingByHash.status !== 'FAILED') {
+        const isStaleProcessing =
+          existingByHash.status === 'PROCESSING' &&
+          Date.now() - new Date(existingByHash.createdAt).getTime() > 2 * 60 * 1000;
+        if (existingByHash.status === 'FAILED' || isStaleProcessing) {
+          // Delete the previously failed or stale statement to allow a clean retry without unique constraint collision
+          await this.bankingRepo.deleteBankStatement(tenantId, existingByHash.id);
+        } else {
           // Flag Duplicate Statement Exception
           const exception = await this.bankingRepo.createExceptionItem({
             tenantId,
@@ -216,9 +241,6 @@ export class BankProcessingService {
           throw new ConflictError(
             `Duplicate statement rejected: file matches existing statement ${existingByHash.id} (Exception: ${exception.id})`,
           );
-        } else {
-          // Delete the previously failed statement to allow a clean retry without unique constraint collision
-          await this.bankingRepo.deleteBankStatement(tenantId, existingByHash.id);
         }
       }
 
@@ -272,6 +294,13 @@ export class BankProcessingService {
       }
 
       // 3.25 Deterministic Financial Validation Engine (Phase 6)
+      await options?.onProgress?.({
+        stage: 'VALIDATING',
+        percent: 50,
+        message: 'Verifying mathematical checksums and running balances...',
+        step: 2,
+      });
+
       const validation = this.validationService.validate(parsedData);
       if (!validation.isValid) {
         const failedStatement = await this.bankingRepo.createBankStatement({
@@ -389,17 +418,24 @@ export class BankProcessingService {
           parsedData.endDate,
         );
         if (existingByPeriod) {
-          const exc = await this.bankingRepo.createExceptionItem({
-            tenantId,
-            entityType: 'STATEMENT',
-            entityId: existingByPeriod.id,
-            exceptionType: 'DUPLICATE_STATEMENT',
-            severity: 'HIGH',
-            reason: `Statement covering period ${parsedData.startDate} to ${parsedData.endDate} already exists for bank account ${bankAccount.accountName}`,
-          });
-          throw new ConflictError(
-            `Statement period (${parsedData.startDate} to ${parsedData.endDate}) already uploaded for this account. Exception: ${exc.id}`,
-          );
+          const isStaleProcessing =
+            existingByPeriod.status === 'PROCESSING' &&
+            Date.now() - new Date(existingByPeriod.createdAt).getTime() > 2 * 60 * 1000;
+          if (existingByPeriod.status === 'FAILED' || isStaleProcessing) {
+            await this.bankingRepo.deleteBankStatement(tenantId, existingByPeriod.id);
+          } else {
+            const exc = await this.bankingRepo.createExceptionItem({
+              tenantId,
+              entityType: 'STATEMENT',
+              entityId: existingByPeriod.id,
+              exceptionType: 'DUPLICATE_STATEMENT',
+              severity: 'HIGH',
+              reason: `Statement covering period ${parsedData.startDate} to ${parsedData.endDate} already exists for bank account ${bankAccount.accountName}`,
+            });
+            throw new ConflictError(
+              `Statement period (${parsedData.startDate} to ${parsedData.endDate}) already uploaded for this account. Exception: ${exc.id}`,
+            );
+          }
         }
       }
 
@@ -498,36 +534,46 @@ export class BankProcessingService {
       });
 
       // 6. Process Transactions & Duplicate Line Detection
+      const activeBankAccount = bankAccount;
       const validLinesToPersist: Array<CreateBankTransactionInput> = [];
       const generatedExceptions: ExceptionItemEntity[] = [];
       const seenHashesInBatch = new Set<string>();
 
-      for (let idx = 0; idx < parsedData.transactions.length; idx++) {
-        const line = parsedData.transactions[idx]!;
-        const sourceSequence = line.sourceSequence !== undefined ? line.sourceSequence : idx + 1;
-        const pageNumber = line.pageNumber !== undefined ? line.pageNumber : 1;
-
-        // If line has an explicit source sequence (from a structured statement parser),
-        // we incorporate sourceSequence so legitimate same-day repeated transactions are preserved.
-        // For unsequenced CSV rows, we preserve original duplicate-row detection.
-        const txHash = computeTransactionHash(
+      const computedHashes = parsedData.transactions.map((line) => {
+        return computeTransactionHash(
           tenantId,
-          bankAccount.id,
+          activeBankAccount.id,
           line.date,
           line.amountCents,
           line.description,
           line.sourceSequence,
         );
+      });
 
-        // Check duplicate transaction line (both in database and within current batch)
-        const existingTx = await this.bankingRepo.findBankTransactionByHash(
-          tenantId,
-          bankAccount.id,
-          txHash,
-        );
+      const existingTxMap = this.bankingRepo.findBankTransactionsByHashes
+        ? await this.bankingRepo.findBankTransactionsByHashes(
+            tenantId,
+            activeBankAccount.id,
+            computedHashes,
+          )
+        : new Map<string, BankTransactionEntity>();
+
+      const duplicateExceptionInputs: CreateExceptionInput[] = [];
+
+      for (let idx = 0; idx < parsedData.transactions.length; idx++) {
+        const line = parsedData.transactions[idx]!;
+        const sourceSequence = line.sourceSequence !== undefined ? line.sourceSequence : idx + 1;
+        const pageNumber = line.pageNumber !== undefined ? line.pageNumber : 1;
+        const txHash = computedHashes[idx]!;
+
+        const existingTx =
+          existingTxMap.get(txHash) ??
+          (!this.bankingRepo.findBankTransactionsByHashes
+            ? await this.bankingRepo.findBankTransactionByHash(tenantId, bankAccount.id, txHash)
+            : null);
+
         if (existingTx || seenHashesInBatch.has(txHash)) {
-          // Line-level duplicate detected! Exclude from batch and raise exception
-          const exc = await this.bankingRepo.createExceptionItem({
+          duplicateExceptionInputs.push({
             tenantId,
             entityType: 'BANK_TRANSACTION',
             entityId: existingTx?.id || statement.id,
@@ -536,7 +582,6 @@ export class BankProcessingService {
             reason: `Transaction line duplicate: '${line.description}' on ${line.date} for $${Number(line.amountCents) / 100} already recorded`,
             evidence: [{ transactionHash: txHash, existingTxId: existingTx?.id }],
           });
-          generatedExceptions.push(exc);
           continue;
         }
         seenHashesInBatch.add(txHash);
@@ -571,6 +616,19 @@ export class BankProcessingService {
         });
       }
 
+      if (duplicateExceptionInputs.length > 0) {
+        if (this.bankingRepo.createExceptionItems) {
+          const createdDupExceptions =
+            await this.bankingRepo.createExceptionItems(duplicateExceptionInputs);
+          generatedExceptions.push(...createdDupExceptions);
+        } else {
+          for (const excInput of duplicateExceptionInputs) {
+            const exc = await this.bankingRepo.createExceptionItem(excInput);
+            generatedExceptions.push(exc);
+          }
+        }
+      }
+
       const persistedTransactions =
         await this.bankingRepo.createBankTransactions(validLinesToPersist);
 
@@ -583,8 +641,33 @@ export class BankProcessingService {
       const generatedProposals: ProposalEntity[] = [];
 
       // 8. Classification, Entity Matching & Journal Proposals
+      await options?.onProgress?.({
+        stage: 'CATEGORIZING',
+        percent: 75,
+        message: 'Auto-categorizing payees and generating journal proposals...',
+        step: 3,
+      });
+
       try {
-        for (const tx of persistedTransactions) {
+        const evalResults: AiClassificationResult[] = [];
+        const proposalInputs: CreateProposalInput[] = [];
+
+        for (let idx = 0; idx < persistedTransactions.length; idx++) {
+          const tx = persistedTransactions[idx]!;
+
+          if ((idx + 1) % 500 === 0 || idx === persistedTransactions.length - 1) {
+            const percent = Math.min(
+              93,
+              75 + Math.round(((idx + 1) / persistedTransactions.length) * 18),
+            );
+            await options?.onProgress?.({
+              stage: 'CATEGORIZING',
+              percent,
+              message: `Categorizing payees and generating proposals (${(idx + 1).toLocaleString()} / ${persistedTransactions.length.toLocaleString()})...`,
+              step: 3,
+            });
+          }
+
           const evalResult = await this.aiAccountant.evaluateTransaction(
             tenantId,
             tx,
@@ -599,11 +682,10 @@ export class BankProcessingService {
             },
             options,
           );
+          evalResults.push(evalResult);
 
           const absAmount = tx.amountCents >= 0n ? tx.amountCents : -tx.amountCents;
-
-          // Persist proposal to staging table (Untrusted Advisory - ADR-0004)
-          let proposal = await this.bankingRepo.createProposal({
+          proposalInputs.push({
             tenantId,
             bankTransactionId: tx.id,
             invoiceId: evalResult.suggestedInvoiceId,
@@ -617,15 +699,42 @@ export class BankProcessingService {
             rationale: evalResult.rationale,
             autoPostEligible: evalResult.autoPostEligible,
           });
+        }
 
-          // 9. Deterministic 6-Stage Gate for Autonomous Posting
+        if (proposalInputs.length > 0) {
+          await options?.onProgress?.({
+            stage: 'CATEGORIZING',
+            percent: 94,
+            message: `Saving ${proposalInputs.length.toLocaleString()} proposals to staging...`,
+            step: 3,
+          });
+        }
+
+        let createdProposals: ProposalEntity[] = [];
+        if (this.bankingRepo.createProposals) {
+          createdProposals = await this.bankingRepo.createProposals(proposalInputs);
+        } else {
+          for (const input of proposalInputs) {
+            createdProposals.push(await this.bankingRepo.createProposal(input));
+          }
+        }
+
+        // 9. Deterministic 6-Stage Gate for Autonomous Posting & Exception Handling
+        const proposedTxIds: string[] = [];
+        const exceptionInputs: CreateExceptionInput[] = [];
+        const txCurrency = bankAccount.currency || 'MYR';
+
+        for (let i = 0; i < createdProposals.length; i++) {
+          let proposal = createdProposals[i]!;
+          const tx = persistedTransactions[i]!;
+          const evalResult = evalResults[i]!;
+
           let passedGate = false;
           if (
             proposal.autoPostEligible &&
             proposal.confidenceScore >= 0.95 &&
             !evalResult.isAmbiguous
           ) {
-            // Deterministic Verification
             try {
               await this.executeDeterministicGateAndPost(tenantId, userId, proposal, tx);
               passedGate = true;
@@ -639,16 +748,14 @@ export class BankProcessingService {
           }
 
           if (!passedGate) {
-            // Route to Exception Center for human review
-            await this.bankingRepo.updateTransactionStatus(tenantId, tx.id, 'PROPOSED');
+            proposedTxIds.push(tx.id);
             const excType = evalResult.isAmbiguous
               ? 'AMBIGUOUS_TRANSACTION'
               : evalResult.proposalType === 'INVOICE_MATCH'
                 ? 'UNMATCHED_PAYMENT'
                 : 'EXTRACTION_UNCERTAIN';
 
-            const txCurrency = bankAccount.currency || 'MYR';
-            const exc = await this.bankingRepo.createExceptionItem({
+            exceptionInputs.push({
               tenantId,
               entityType: 'PROPOSAL',
               entityId: proposal.id,
@@ -677,10 +784,33 @@ export class BankProcessingService {
                 suggestedCreditAccountId: evalResult.suggestedCreditAccountId,
               },
             });
-            generatedExceptions.push(exc);
           }
 
           generatedProposals.push(proposal);
+        }
+
+        // Batch update transaction status to PROPOSED
+        if (proposedTxIds.length > 0) {
+          if (this.bankingRepo.updateTransactionStatuses) {
+            await this.bankingRepo.updateTransactionStatuses(tenantId, proposedTxIds, 'PROPOSED');
+          } else {
+            for (const txId of proposedTxIds) {
+              await this.bankingRepo.updateTransactionStatus(tenantId, txId, 'PROPOSED');
+            }
+          }
+        }
+
+        // Batch persist exception items
+        if (exceptionInputs.length > 0) {
+          if (this.bankingRepo.createExceptionItems) {
+            const createdExceptions = await this.bankingRepo.createExceptionItems(exceptionInputs);
+            generatedExceptions.push(...createdExceptions);
+          } else {
+            for (const excInput of exceptionInputs) {
+              const exc = await this.bankingRepo.createExceptionItem(excInput);
+              generatedExceptions.push(exc);
+            }
+          }
         }
       } catch (aiErr) {
         // AI Failure / Timeout Recovery
@@ -711,6 +841,13 @@ export class BankProcessingService {
       }
 
       // 10. Update Statement status
+      await options?.onProgress?.({
+        stage: 'RECONCILING',
+        percent: 95,
+        message: 'Finalizing ledger reconciliation and balance verification...',
+        step: 4,
+      });
+
       const refreshedTransactions = await this.bankingRepo.listTransactionsByStatementId(
         tenantId,
         statement.id,
@@ -1163,5 +1300,54 @@ export class BankProcessingService {
     options?: { bankAccountId?: string; status?: BankTransactionStatus },
   ): Promise<BankTransactionEntity[]> {
     return this.bankingRepo.listTransactions(tenantId, options);
+  }
+
+  async getStatementUploadResult(
+    tenantId: string,
+    statementId: string,
+  ): Promise<{
+    statement: BankStatementEntity;
+    transactions: BankTransactionEntity[];
+    proposals: ProposalEntity[];
+    exceptions: ExceptionItemEntity[];
+  } | null> {
+    const statement = await this.bankingRepo.findBankStatementById(tenantId, statementId);
+    if (!statement) {
+      return null;
+    }
+    const transactions = await this.bankingRepo.listTransactionsByStatementId(
+      tenantId,
+      statementId,
+    );
+    const txIds = new Set(transactions.map((t) => t.id));
+    const allProposals = await this.bankingRepo.listProposals(tenantId);
+    const proposals = allProposals.filter((p) => txIds.has(p.bankTransactionId));
+    const allExceptions = await this.bankingRepo.listExceptionItems(tenantId);
+    const exceptions = allExceptions.filter(
+      (e) => e.entityId === statementId || txIds.has(e.entityId),
+    );
+    return {
+      statement,
+      transactions,
+      proposals,
+      exceptions,
+    };
+  }
+
+  async findRecentStatement(
+    tenantId: string,
+    fileName?: string,
+  ): Promise<BankStatementEntity | null> {
+    const statements = await this.bankingRepo.listBankStatements(tenantId);
+    if (!statements || statements.length === 0) {
+      return null;
+    }
+    if (fileName) {
+      const match = statements.find((s) => s.fileName === fileName);
+      if (match) {
+        return match;
+      }
+    }
+    return statements[0] || null;
   }
 }

@@ -159,6 +159,11 @@ export interface IBankingRepository {
     bankAccountId: string,
     transactionHash: string,
   ): Promise<BankTransactionEntity | null>;
+  findBankTransactionsByHashes?(
+    tenantId: string,
+    bankAccountId: string,
+    transactionHashes: string[],
+  ): Promise<Map<string, BankTransactionEntity>>;
   listTransactionsByStatementId(
     tenantId: string,
     statementId: string,
@@ -172,9 +177,15 @@ export interface IBankingRepository {
     id: string,
     status: BankTransactionStatus,
   ): Promise<BankTransactionEntity>;
+  updateTransactionStatuses?(
+    tenantId: string,
+    ids: string[],
+    status: BankTransactionStatus,
+  ): Promise<void>;
 
   // Proposals
   createProposal(input: CreateProposalInput): Promise<ProposalEntity>;
+  createProposals?(inputs: CreateProposalInput[]): Promise<ProposalEntity[]>;
   findProposalById(tenantId: string, id: string): Promise<ProposalEntity | null>;
   findProposalByTransactionId(
     tenantId: string,
@@ -194,6 +205,7 @@ export interface IBankingRepository {
 
   // Exception Items
   createExceptionItem(input: CreateExceptionInput): Promise<ExceptionItemEntity>;
+  createExceptionItems?(inputs: CreateExceptionInput[]): Promise<ExceptionItemEntity[]>;
   findExceptionItemById(tenantId: string, id: string): Promise<ExceptionItemEntity | null>;
   listExceptionItems(
     tenantId: string,

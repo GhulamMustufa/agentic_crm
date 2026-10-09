@@ -1,10 +1,12 @@
 import { Global, Module } from '@nestjs/common';
 
+import { StorageController } from './storage.controller';
 import { OBJECT_STORAGE_TOKEN, MemoryStorageService, S3StorageService } from './storage.service';
 import { AppConfigService } from '../config/config.service';
 
 @Global()
 @Module({
+  controllers: [StorageController],
   providers: [
     MemoryStorageService,
     S3StorageService,
