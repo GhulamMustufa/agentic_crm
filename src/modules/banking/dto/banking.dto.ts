@@ -75,3 +75,12 @@ export const resolveExceptionSchema = z.object({
 
 export type ResolveExceptionInput = z.input<typeof resolveExceptionSchema>;
 export type ResolveExceptionDto = z.infer<typeof resolveExceptionSchema>;
+
+export const batchResolveExceptionsSchema = z.object({
+  exceptionIds: z.array(z.string().min(1)).min(1).max(200),
+  status: z.enum(['RESOLVED', 'DISMISSED']),
+  resolutionNotes: z.string().min(1).max(500).optional().default('Batch resolved by supervisor'),
+});
+
+export type BatchResolveExceptionsInput = z.input<typeof batchResolveExceptionsSchema>;
+export type BatchResolveExceptionsDto = z.infer<typeof batchResolveExceptionsSchema>;

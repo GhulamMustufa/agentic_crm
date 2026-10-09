@@ -35,6 +35,7 @@ import type {
   CorrectProposalInput,
   RejectProposalInput,
   ResolveExceptionInput,
+  BatchResolveExceptionsInput,
 } from '../dto/banking.dto';
 
 function serializeBigInt(obj: unknown): unknown {
@@ -387,6 +388,21 @@ export class BankingController {
       severity,
     });
     return { data: serializeBigInt(exceptions) };
+  }
+
+  @Post('exceptions/batch-resolve')
+  @HttpCode(HttpStatus.OK)
+  async batchResolveExceptions(
+    @CurrentUser() user: TenantSessionContext,
+    @Body() dto: BatchResolveExceptionsInput,
+  ) {
+    const tenantId = this.requireTenant(user);
+    const result = await this.bankProcessingService.batchResolveExceptions(
+      tenantId,
+      user.userId,
+      dto,
+    );
+    return { data: serializeBigInt(result) };
   }
 
   @Post('exceptions/:id/resolve')

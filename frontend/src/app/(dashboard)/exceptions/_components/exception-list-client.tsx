@@ -48,6 +48,7 @@ import {
   ExceptionType,
   getPendingExceptions,
   resolveException,
+  batchResolveExceptions,
 } from '@/lib/api/exceptions';
 
 const STANDARD_CATEGORIES = [
@@ -276,6 +277,124 @@ export function ExceptionListClient({
     },
   });
 
+  // Batch Selection State
+  const [selectedExceptionIds, setSelectedExceptionIds] = React.useState<Set<string>>(new Set());
+
+  // Batch Mutation
+  const batchResolveMutation = useMutation({
+    mutationFn: ({ ids, action }: { ids: string[]; action: 'APPROVE' | 'REJECT' }) =>
+      batchResolveExceptions(
+        ids,
+        action,
+        action === 'APPROVE'
+          ? `Batch approved by supervisor`
+          : 'Batch ignored and excluded from General Ledger',
+      ),
+    onMutate: async ({ ids }) => {
+      await queryClient.cancelQueries({ queryKey: exceptionKeys.lists() });
+      const previousData = queryClient.getQueryData<ExceptionItem[]>(exceptionKeys.lists());
+      const idSet = new Set(ids);
+
+      queryClient.setQueryData<ExceptionItem[]>(exceptionKeys.lists(), (old) => {
+        if (!old) return [];
+        return old.filter((item) => !idSet.has(item.id));
+      });
+
+      setSelectedExceptionIds(new Set());
+      return { previousData };
+    },
+    onSuccess: (_, variables) => {
+      const count = variables.ids.length;
+      if (variables.action === 'APPROVE') {
+        toast.success(
+          `Batch approved ${count} ${count === 1 ? 'exception' : 'exceptions'} & recorded to General Ledger.`,
+        );
+      } else {
+        toast.success(`Excluded ${count} ${count === 1 ? 'exception' : 'exceptions'} from books.`);
+      }
+    },
+    onError: (err, _, context) => {
+      if (context?.previousData) {
+        queryClient.setQueryData(exceptionKeys.lists(), context.previousData);
+      }
+      toast.error('Failed to complete batch resolution.');
+      console.error('Batch resolution error:', err);
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: exceptionKeys.all });
+    },
+  });
+
+  const isAllOnPageSelected =
+    paginatedExceptions.length > 0 &&
+    paginatedExceptions.every((e) => selectedExceptionIds.has(e.id));
+
+  const toggleSelectAllOnPage = () => {
+    setSelectedExceptionIds((prev) => {
+      const next = new Set(prev);
+      if (isAllOnPageSelected) {
+        paginatedExceptions.forEach((e) => next.delete(e.id));
+      } else {
+        paginatedExceptions.forEach((e) => next.add(e.id));
+      }
+      return next;
+    });
+  };
+
+  const toggleSelectException = (id: string, e?: React.SyntheticEvent) => {
+    if (e) e.stopPropagation();
+    setSelectedExceptionIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const highConfidenceExceptions = React.useMemo(() => {
+    return filteredExceptions.filter((e) => e.confidenceScore >= 90);
+  }, [filteredExceptions]);
+
+  const selectAllHighConfidence = () => {
+    setSelectedExceptionIds((prev) => {
+      const next = new Set(prev);
+      highConfidenceExceptions.forEach((e) => next.add(e.id));
+      return next;
+    });
+    toast.info(`Selected ${highConfidenceExceptions.length} high-confidence exceptions (≥90%).`);
+  };
+
+  const selectedTotalAmount = React.useMemo(() => {
+    return Array.from(selectedExceptionIds).reduce((sum, id) => {
+      const exc = exceptions.find((e) => e.id === id);
+      return sum + (exc ? exc.amount : 0);
+    }, 0);
+  }, [selectedExceptionIds, exceptions]);
+
+  const handleBatchApproveSelected = () => {
+    if (selectedExceptionIds.size === 0 || batchResolveMutation.isPending) return;
+    batchResolveMutation.mutate({
+      ids: Array.from(selectedExceptionIds),
+      action: 'APPROVE',
+    });
+  };
+
+  const handleBatchDismissSelected = () => {
+    if (selectedExceptionIds.size === 0 || batchResolveMutation.isPending) return;
+    batchResolveMutation.mutate({
+      ids: Array.from(selectedExceptionIds),
+      action: 'REJECT',
+    });
+  };
+
+  const handleBatchApproveHighConfidence = () => {
+    if (highConfidenceExceptions.length === 0 || batchResolveMutation.isPending) return;
+    batchResolveMutation.mutate({
+      ids: highConfidenceExceptions.map((e) => e.id),
+      action: 'APPROVE',
+    });
+  };
+
   const handleApprove = () => {
     if (selectedId && !resolveMutation.isPending) {
       resolveMutation.mutate({ id: selectedId, category: selectedCategoryCode });
@@ -489,6 +608,42 @@ export function ExceptionListClient({
         </div>
       </div>
 
+      {/* ⚡ High-Confidence AI Sweep Banner (Approach 2) */}
+      {highConfidenceExceptions.length > 0 && (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-3.5 py-2.5 bg-primary/10 border border-primary/20 rounded-xl text-xs animate-in fade-in duration-200">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-primary shrink-0" />
+            <span className="text-foreground">
+              <strong>{highConfidenceExceptions.length} exceptions</strong> have high AI confidence
+              (≥ 90%) with unambiguous vendor categorization.
+            </span>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs px-2.5 border-primary/30 text-primary hover:bg-primary/20"
+              onClick={selectAllHighConfidence}
+            >
+              Select High Confidence ({highConfidenceExceptions.length})
+            </Button>
+            <Button
+              size="sm"
+              className="h-7 text-xs px-3 bg-primary text-primary-foreground font-medium shadow-xs"
+              onClick={handleBatchApproveHighConfidence}
+              disabled={batchResolveMutation.isPending}
+            >
+              {batchResolveMutation.isPending ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
+              ) : (
+                <Check className="w-3.5 h-3.5 mr-1" />
+              )}
+              Approve All {highConfidenceExceptions.length}
+            </Button>
+          </div>
+        </div>
+      )}
+
       {sortedExceptions.length === 0 ? (
         <Card className="flex-1 flex flex-col items-center justify-center p-8 text-center space-y-3">
           <HelpCircle className="w-10 h-10 text-muted-foreground/60" />
@@ -514,6 +669,18 @@ export function ExceptionListClient({
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-[44px] px-3">
+                    <input
+                      type="checkbox"
+                      checked={
+                        paginatedExceptions.length > 0 &&
+                        paginatedExceptions.every((e) => selectedExceptionIds.has(e.id))
+                      }
+                      onChange={toggleSelectAllOnPage}
+                      className="w-4 h-4 rounded border-border text-primary focus:ring-primary cursor-pointer accent-primary"
+                      aria-label="Select all on this page"
+                    />
+                  </TableHead>
                   <TableHead
                     className="cursor-pointer hover:text-foreground select-none group w-[120px]"
                     onClick={() => toggleColumnSort('date')}
@@ -558,8 +725,23 @@ export function ExceptionListClient({
               <TableBody>
                 {paginatedExceptions.map((exc) => {
                   const isOutflow = exc.direction === 'OUTFLOW';
+                  const isChecked = selectedExceptionIds.has(exc.id);
                   return (
-                    <TableRow key={exc.id} className="hover:bg-muted/40">
+                    <TableRow
+                      key={exc.id}
+                      className={`hover:bg-muted/40 transition-colors ${
+                        isChecked ? 'bg-primary/5' : ''
+                      }`}
+                    >
+                      <TableCell className="w-[44px] px-3" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => toggleSelectException(exc.id)}
+                          className="w-4 h-4 rounded border-border text-primary focus:ring-primary cursor-pointer accent-primary"
+                          aria-label={`Select exception ${exc.cleanPayee}`}
+                        />
+                      </TableCell>
                       <TableCell className="font-mono text-xs text-muted-foreground whitespace-nowrap">
                         {formatIsoDate(exc.date)}
                       </TableCell>
@@ -676,9 +858,29 @@ export function ExceptionListClient({
               mobileView === 'detail' ? 'hidden md:flex' : 'flex'
             }`}
           >
+            <div className="flex items-center justify-between px-1 py-0.5 text-xs text-muted-foreground shrink-0">
+              <label className="flex items-center gap-1.5 cursor-pointer hover:text-foreground select-none">
+                <input
+                  type="checkbox"
+                  checked={
+                    paginatedExceptions.length > 0 &&
+                    paginatedExceptions.every((e) => selectedExceptionIds.has(e.id))
+                  }
+                  onChange={toggleSelectAllOnPage}
+                  className="w-3.5 h-3.5 rounded border-border text-primary focus:ring-primary cursor-pointer accent-primary"
+                />
+                <span>Select all on page ({paginatedExceptions.length})</span>
+              </label>
+              {selectedExceptionIds.size > 0 && (
+                <span className="font-medium text-primary text-[11px]">
+                  {selectedExceptionIds.size} selected
+                </span>
+              )}
+            </div>
             {paginatedExceptions.map((exc) => {
               const isSelected = selectedId === exc.id;
               const isOutflow = exc.direction === 'OUTFLOW';
+              const isChecked = selectedExceptionIds.has(exc.id);
 
               return (
                 <div
@@ -692,7 +894,9 @@ export function ExceptionListClient({
                   className={`w-full shrink-0 text-left p-3.5 rounded-xl border transition-all cursor-pointer relative ${
                     isSelected
                       ? 'border-primary bg-primary/5 shadow-sm ring-1 ring-primary/40'
-                      : 'border-border/80 bg-card hover:bg-muted/40 hover:border-border'
+                      : isChecked
+                        ? 'border-primary/50 bg-primary/5'
+                        : 'border-border/80 bg-card hover:bg-muted/40 hover:border-border'
                   }`}
                 >
                   {/* Active Indicator Strip */}
@@ -701,6 +905,15 @@ export function ExceptionListClient({
                   )}
 
                   <div className="flex items-start gap-2.5">
+                    <div className="pt-0.5" onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={(e) => toggleSelectException(exc.id, e)}
+                        className="w-4 h-4 rounded border-border text-primary focus:ring-primary cursor-pointer accent-primary shrink-0"
+                        aria-label={`Select ${exc.cleanPayee}`}
+                      />
+                    </div>
                     <div className="p-1.5 rounded-lg bg-muted/60 shrink-0 mt-0.5">
                       {getTypeIcon(exc.type)}
                     </div>
@@ -982,6 +1195,51 @@ export function ExceptionListClient({
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Floating Batch Action Bar (Approach 1) */}
+      {selectedExceptionIds.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2.5 sm:gap-3 bg-card/95 backdrop-blur-md border border-border/80 px-4 py-2.5 rounded-2xl shadow-2xl animate-in slide-in-from-bottom-5 duration-200 max-w-[95vw] sm:max-w-none">
+          <div className="flex items-center gap-2 pr-2.5 sm:pr-3 border-r border-border/60 shrink-0">
+            <Badge variant="default" className="text-xs px-2 py-0.5 font-medium">
+              {selectedExceptionIds.size} Selected
+            </Badge>
+            <span className="text-xs font-mono font-bold text-foreground tabular-nums hidden sm:inline">
+              {formatCurrency(selectedTotalAmount, tenantCurrency)}
+            </span>
+          </div>
+          <Button
+            size="sm"
+            className="h-8 text-xs px-3 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold gap-1.5 shadow-sm cursor-pointer"
+            disabled={batchResolveMutation.isPending}
+            onClick={handleBatchApproveSelected}
+          >
+            {batchResolveMutation.isPending ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <Check className="w-3.5 h-3.5" />
+            )}
+            Approve Selected ({selectedExceptionIds.size})
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 text-xs px-2.5 text-destructive border-destructive/30 hover:bg-destructive/10 gap-1.5 cursor-pointer"
+            disabled={batchResolveMutation.isPending}
+            onClick={handleBatchDismissSelected}
+          >
+            <XCircle className="w-3.5 h-3.5" />
+            Dismiss
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-8 text-xs px-2 text-muted-foreground hover:text-foreground cursor-pointer"
+            onClick={() => setSelectedExceptionIds(new Set())}
+          >
+            Clear
+          </Button>
         </div>
       )}
     </div>

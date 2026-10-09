@@ -34,6 +34,7 @@ import {
   correctProposalSchema,
   rejectProposalSchema,
   resolveExceptionSchema,
+  batchResolveExceptionsSchema,
 } from '../dto/banking.dto';
 import { CsvStatementParser } from '../parsers/csv-statement.parser';
 import { PdfStatementParser, MalformedPdfError } from '../parsers/pdf-statement.parser';
@@ -53,6 +54,7 @@ import type {
   CorrectProposalInput,
   RejectProposalInput,
   ResolveExceptionInput,
+  BatchResolveExceptionsInput,
 } from '../dto/banking.dto';
 
 export function computeSha256(data: string | Buffer): string {
@@ -1281,6 +1283,50 @@ export class BankProcessingService {
     });
 
     return updated;
+  }
+
+  async batchResolveExceptions(
+    tenantId: string,
+    userId: string,
+    rawDto: BatchResolveExceptionsInput,
+  ): Promise<{
+    resolvedCount: number;
+    failedCount: number;
+    results: Array<{ id: string; success: boolean; error?: string }>;
+  }> {
+    const parseResult = batchResolveExceptionsSchema.safeParse(rawDto);
+    if (!parseResult.success) {
+      throw new ValidationError(
+        'Batch exception resolution validation failed',
+        parseResult.error.errors.map((e) => ({ field: e.path.join('.'), message: e.message })),
+      );
+    }
+    const dto = parseResult.data;
+    const results: Array<{ id: string; success: boolean; error?: string }> = [];
+    let resolvedCount = 0;
+    let failedCount = 0;
+
+    for (const exceptionId of dto.exceptionIds) {
+      try {
+        await this.resolveException(tenantId, userId, exceptionId, {
+          status: dto.status,
+          resolutionNotes: dto.resolutionNotes,
+        });
+        results.push({ id: exceptionId, success: true });
+        resolvedCount++;
+      } catch (err: unknown) {
+        const errorMsg = err instanceof Error ? err.message : 'Resolution failed';
+        this.logger.warn(`Failed to resolve exception ${exceptionId} in batch: ${errorMsg}`);
+        results.push({ id: exceptionId, success: false, error: errorMsg });
+        failedCount++;
+      }
+    }
+
+    return {
+      resolvedCount,
+      failedCount,
+      results,
+    };
   }
 
   // --- Queries ---

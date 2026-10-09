@@ -780,4 +780,67 @@ describe('BankProcessingService - AI Accountant Workflow', () => {
     const catUpdate = progressUpdates.find((u) => u.stage === 'CATEGORIZING');
     expect(catUpdate).toBeDefined();
   });
+
+  it('should batch resolve multiple exception items and report per-item outcome', async () => {
+    const exc1 = await bankingRepo.createExceptionItem({
+      tenantId,
+      entityType: 'BANK_TRANSACTION',
+      entityId: 'tx-1',
+      exceptionType: 'UNRECOGNIZED_VENDOR',
+      severity: 'LOW',
+      reason: 'Coffee receipt missing for office supplies',
+    });
+    const exc2 = await bankingRepo.createExceptionItem({
+      tenantId,
+      entityType: 'BANK_TRANSACTION',
+      entityId: 'tx-2',
+      exceptionType: 'AMBIGUOUS_TRANSACTION',
+      severity: 'MEDIUM',
+      reason: 'Software vendor lookup unclear',
+    });
+
+    const batchResult = await bankProcessingService.batchResolveExceptions(tenantId, userId, {
+      exceptionIds: [exc1.id, exc2.id],
+      status: 'RESOLVED',
+      resolutionNotes: 'Approved in bulk by financial controller',
+    });
+
+    expect(batchResult.resolvedCount).toBe(2);
+    expect(batchResult.failedCount).toBe(0);
+    expect(batchResult.results).toEqual([
+      { id: exc1.id, success: true },
+      { id: exc2.id, success: true },
+    ]);
+
+    const updated1 = await bankingRepo.findExceptionItemById(tenantId, exc1.id);
+    const updated2 = await bankingRepo.findExceptionItemById(tenantId, exc2.id);
+    expect(updated1?.status).toBe('RESOLVED');
+    expect(updated2?.status).toBe('RESOLVED');
+  });
+
+  it('should handle partial failures in batchResolveExceptions gracefully', async () => {
+    const excValid = await bankingRepo.createExceptionItem({
+      tenantId,
+      entityType: 'BANK_TRANSACTION',
+      entityId: 'tx-3',
+      exceptionType: 'AMBIGUOUS_TRANSACTION',
+      severity: 'LOW',
+      reason: 'Batch item test',
+    });
+
+    const batchResult = await bankProcessingService.batchResolveExceptions(tenantId, userId, {
+      exceptionIds: [excValid.id, 'non-existent-id-999'],
+      status: 'DISMISSED',
+      resolutionNotes: 'Bulk dismissed',
+    });
+
+    expect(batchResult.resolvedCount).toBe(1);
+    expect(batchResult.failedCount).toBe(1);
+    expect(batchResult.results[0]).toEqual({ id: excValid.id, success: true });
+    expect(batchResult.results[1]?.success).toBe(false);
+    expect(batchResult.results[1]?.error).toBeDefined();
+
+    const updated = await bankingRepo.findExceptionItemById(tenantId, excValid.id);
+    expect(updated?.status).toBe('DISMISSED');
+  });
 });
