@@ -35,34 +35,7 @@ import {
 } from '@/components/ui/table';
 import { formatCurrency, formatIsoDate } from '@/lib/formatters';
 import { useTenantCurrency } from '@/hooks/use-tenant-currency';
-import { apiClient } from '@/lib/api-client';
-import { cleanBankPayee } from '@/lib/api/exceptions';
-
-interface TransactionItem {
-  id: string;
-  date: string;
-  cleanPayee: string;
-  rawMemo: string;
-  accountName: string;
-  accountCode: string;
-  counterparty: string;
-  inflow: number; // Deposit (Money In)
-  outflow: number; // Withdrawal (Money Out)
-  status: 'RECONCILED' | 'AI_MATCHED' | 'PENDING_REVIEW';
-  isAuditLocked: boolean;
-  currency: string;
-}
-
-interface RawBankTransaction {
-  id: string;
-  transactionDate: string;
-  amountCents: string | number;
-  rawDescription: string;
-  normalizedPayee?: string;
-  currency?: string;
-  status: string;
-  createdAt: string;
-}
+import { useBankTransactionsQuery, type TransactionItem } from '@/hooks/use-dashboard-queries';
 
 export default function TransactionsPage() {
   const tenantCurrency = useTenantCurrency();
@@ -71,10 +44,15 @@ export default function TransactionsPage() {
     'ALL' | 'RECONCILED' | 'AI_MATCHED' | 'PENDING_REVIEW'
   >('ALL');
   const [sortOrder, setSortOrder] = React.useState<'STATEMENT_ASC' | 'DESC'>('STATEMENT_ASC');
-  const [transactions, setTransactions] = React.useState<TransactionItem[]>([]);
-  const [isLoading, setIsLoading] = React.useState(true);
   const [currentPage, setCurrentPage] = React.useState(1);
   const pageSize = 50;
+
+  const {
+    data: transactions = [],
+    isLoading,
+    refetch,
+    isRefetching,
+  } = useBankTransactionsQuery(tenantCurrency);
 
   type SortColumn = 'date' | 'payee' | 'account' | 'inflow' | 'outflow' | 'status';
   const [columnSort, setColumnSort] = React.useState<{
@@ -106,57 +84,6 @@ export default function TransactionsPage() {
       <ArrowDown className="w-3 h-3 ml-1 text-primary shrink-0 inline" />
     );
   };
-
-  const loadData = React.useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const res = await apiClient.get<{ data: RawBankTransaction[] }>('/banking/transactions');
-      const rawList = res.data || [];
-
-      if (rawList.length > 0) {
-        const mapped: TransactionItem[] = rawList.map((tx) => {
-          const rawAmount = Number(tx.amountCents || 0) / 100;
-          const isDeposit = rawAmount > 0;
-          const absAmount = Math.abs(rawAmount);
-
-          let status: TransactionItem['status'] = 'PENDING_REVIEW';
-          if (tx.status === 'RECONCILED') status = 'RECONCILED';
-          else if (tx.status === 'MATCHED' || tx.status === 'PROPOSED') status = 'AI_MATCHED';
-
-          const rawMemo = tx.rawDescription || '';
-          const cleanName = tx.normalizedPayee || cleanBankPayee(rawMemo);
-
-          return {
-            id: tx.id,
-            date: tx.transactionDate || tx.createdAt,
-            cleanPayee: cleanName,
-            rawMemo: rawMemo,
-            accountName: isDeposit ? 'Operating Cash (Deposit)' : 'Operating Cash (Disbursement)',
-            accountCode: '1010',
-            counterparty: cleanName,
-            inflow: isDeposit ? absAmount : 0,
-            outflow: isDeposit ? 0 : absAmount,
-            status,
-            isAuditLocked: tx.status === 'RECONCILED',
-            currency: tx.currency || tenantCurrency || 'MYR',
-          };
-        });
-
-        setTransactions(mapped);
-      } else {
-        setTransactions([]);
-      }
-    } catch (err) {
-      console.warn('Could not fetch live transactions:', err);
-      setTransactions([]);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [tenantCurrency]);
-
-  React.useEffect(() => {
-    loadData();
-  }, [loadData]);
 
   // Reset to first page whenever search, status filter, or sorting changes
   React.useEffect(() => {
@@ -314,8 +241,10 @@ export default function TransactionsPage() {
               {sortOrder === 'STATEMENT_ASC' ? 'Statement Order (Chronological)' : 'Newest First'}
             </span>
           </Button>
-          <Button variant="outline" onClick={loadData} disabled={isLoading}>
-            <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+          <Button variant="outline" onClick={() => refetch()} disabled={isLoading || isRefetching}>
+            <RefreshCw
+              className={`w-4 h-4 mr-2 ${isLoading || isRefetching ? 'animate-spin' : ''}`}
+            />
             Refresh
           </Button>
           <Button variant="outline" onClick={exportCsv} disabled={transactions.length === 0}>

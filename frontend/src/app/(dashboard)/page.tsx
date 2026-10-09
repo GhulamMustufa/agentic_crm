@@ -28,93 +28,23 @@ import { apiClient } from '@/lib/api-client';
 import { formatCurrency } from '@/lib/formatters';
 import { useTenantCurrency } from '@/hooks/use-tenant-currency';
 
-interface BankAccount {
-  id: string;
-  currency?: string;
-  currentBalanceCents: string | number;
-  accountName?: string;
-  institutionName?: string;
-}
-
-interface BankTransaction {
-  id: string;
-  currency?: string;
-  amountCents: string | number;
-  status: string;
-  transactionDate?: string;
-  rawDescription?: string;
-}
-
-interface ExceptionItem {
-  id: string;
-  severity: string;
-  status: string;
-}
+import {
+  useDashboardOverviewQuery,
+  type BankAccount,
+  type RawBankTransaction,
+} from '@/hooks/use-dashboard-queries';
 
 export default function DashboardPage() {
-  const [loading, setLoading] = React.useState(true);
-  const [transactionCount, setTransactionCount] = React.useState(0);
-  const [totalReconciledCents, setTotalReconciledCents] = React.useState(0);
-  const [exceptionsCount, setExceptionsCount] = React.useState(0);
-  const [totalBalanceCents, setTotalBalanceCents] = React.useState(0);
-  const [accounts, setAccounts] = React.useState<BankAccount[]>([]);
-  const [recentTransactions, setRecentTransactions] = React.useState<BankTransaction[]>([]);
   const tenantCurrency = useTenantCurrency();
-  const [dashboardCurrency, setDashboardCurrency] = React.useState('MYR');
+  const { data: overview, isLoading: loading } = useDashboardOverviewQuery();
 
-  React.useEffect(() => {
-    if (tenantCurrency) {
-      setDashboardCurrency(tenantCurrency);
-    }
-  }, [tenantCurrency]);
-
-  React.useEffect(() => {
-    async function fetchDashboardMetrics() {
-      try {
-        setLoading(true);
-        const [accountsRes, txRes, excRes] = await Promise.allSettled([
-          apiClient.get<{ data: BankAccount[] }>('/banking/accounts'),
-          apiClient.get<{ data: BankTransaction[] }>('/banking/transactions'),
-          apiClient.get<{ data: ExceptionItem[] }>('/banking/exceptions'),
-        ]);
-
-        if (accountsRes.status === 'fulfilled') {
-          const accs = accountsRes.value.data || [];
-          setAccounts(accs);
-          const bal = accs.reduce((sum, a) => sum + Number(a.currentBalanceCents || 0), 0);
-          setTotalBalanceCents(bal);
-          if (accs[0]?.currency) {
-            setDashboardCurrency(accs[0].currency);
-          }
-        }
-
-        if (txRes.status === 'fulfilled') {
-          const txs = txRes.value.data || [];
-          setTransactionCount(txs.length);
-          setRecentTransactions(txs.slice(0, 5));
-          const reconciledSum = txs
-            .filter((t) => t.status === 'RECONCILED' || t.status === 'MATCHED')
-            .reduce((sum, t) => sum + Math.abs(Number(t.amountCents || 0)), 0);
-          setTotalReconciledCents(reconciledSum);
-          if (txs[0]?.currency) {
-            setDashboardCurrency(txs[0].currency);
-          }
-        }
-
-        if (excRes.status === 'fulfilled') {
-          const excs = excRes.value.data || [];
-          const openExcs = excs.filter((e) => e.status !== 'RESOLVED' && e.status !== 'DISMISSED');
-          setExceptionsCount(openExcs.length);
-        }
-      } catch (err) {
-        console.warn('Error fetching dashboard overview:', err);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    fetchDashboardMetrics();
-  }, []);
+  const accounts = overview?.accounts || [];
+  const transactionCount = overview?.transactionCount || 0;
+  const totalReconciledCents = overview?.totalReconciledCents || 0;
+  const exceptionsCount = overview?.exceptionsCount || 0;
+  const totalBalanceCents = overview?.totalBalanceCents || 0;
+  const recentTransactions = overview?.recentTransactions || [];
+  const dashboardCurrency = overview?.primaryCurrency || tenantCurrency || 'MYR';
 
   const formattedBalance = formatCurrency(totalBalanceCents / 100, dashboardCurrency);
   const formattedReconciled = formatCurrency(totalReconciledCents / 100, dashboardCurrency);

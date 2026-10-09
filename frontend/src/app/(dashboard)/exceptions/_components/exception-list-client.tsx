@@ -239,6 +239,8 @@ export function ExceptionListClient({
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: exceptionKeys.all });
+      queryClient.invalidateQueries({ queryKey: ['bank-transactions'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-overview'] });
     },
   });
 
@@ -276,6 +278,8 @@ export function ExceptionListClient({
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: exceptionKeys.all });
+      queryClient.invalidateQueries({ queryKey: ['bank-transactions'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-overview'] });
     },
   });
 
@@ -324,6 +328,8 @@ export function ExceptionListClient({
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: exceptionKeys.all });
+      queryClient.invalidateQueries({ queryKey: ['bank-transactions'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-overview'] });
     },
   });
 

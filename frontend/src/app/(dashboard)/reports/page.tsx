@@ -36,110 +36,57 @@ import { formatCurrency } from '@/lib/formatters';
 import { useTenantCurrency } from '@/hooks/use-tenant-currency';
 import { apiClient } from '@/lib/api-client';
 
-interface StatementLineItem {
-  accountId: string;
-  accountCode: string;
-  accountName: string;
-  amountCents: string | number;
-}
-
-interface ProfitAndLossData {
-  baseCurrency?: string;
-  revenues: StatementLineItem[];
-  expenses: StatementLineItem[];
-  totalRevenueCents: string | number;
-  totalExpenseCents: string | number;
-  netIncomeCents: string | number;
-}
-
-interface BalanceSheetData {
-  baseCurrency?: string;
-  assets: StatementLineItem[];
-  liabilities: StatementLineItem[];
-  equity: StatementLineItem[];
-  totalAssetsCents: string | number;
-  totalLiabilitiesCents: string | number;
-  totalEquityCents: string | number;
-  isBalanced: boolean;
-}
-
-interface TrialBalanceRow {
-  accountCode: string;
-  accountName: string;
-  classification: string;
-  debitCents: string | number;
-  creditCents: string | number;
-}
-
-interface TrialBalanceData {
-  rows?: TrialBalanceRow[];
-  items?: TrialBalanceRow[];
-  totalDebitCents: string | number;
-  totalCreditCents: string | number;
-  isBalanced: boolean;
-}
+import { useQuery } from '@tanstack/react-query';
+import {
+  usePeriodsQuery,
+  type StatementLineItem,
+  type ProfitAndLossData,
+  type BalanceSheetData,
+  type TrialBalanceData,
+  type TrialBalanceRow,
+} from '@/hooks/use-dashboard-queries';
 
 export default function ReportsPage() {
   const tenantCurrency = useTenantCurrency();
   const [reportType, setReportType] = React.useState<'PNL' | 'BALANCE_SHEET' | 'TRIAL_BALANCE'>(
     'PNL',
   );
-  const [loading, setLoading] = React.useState(true);
-  const [pnl, setPnl] = React.useState<ProfitAndLossData | null>(null);
-  const [balanceSheet, setBalanceSheet] = React.useState<BalanceSheetData | null>(null);
-  const [trialBalance, setTrialBalance] = React.useState<TrialBalanceData | null>(null);
-  const [periods, setPeriods] = React.useState<Array<{ id: string; periodName: string }>>([]);
+  const { data: periods = [] } = usePeriodsQuery();
   const [selectedPeriodId, setSelectedPeriodId] = React.useState<string>('');
 
-  React.useEffect(() => {
-    async function fetchPeriods() {
-      try {
-        const res = await apiClient.get<{ data: Array<{ id: string; periodName: string }> }>(
-          '/ledger/periods',
-        );
-        if (res.data && res.data.length > 0) {
-          setPeriods(res.data);
-        }
-      } catch (err) {
-        console.warn('Could not fetch periods:', err);
+  const { data: reportData, isLoading: loading } = useQuery<{
+    pnl: ProfitAndLossData | null;
+    balanceSheet: BalanceSheetData | null;
+    trialBalance: TrialBalanceData | null;
+  }>({
+    queryKey: ['financial-reports', selectedPeriodId || 'all'],
+    queryFn: async () => {
+      const params = selectedPeriodId ? `?periodId=${encodeURIComponent(selectedPeriodId)}` : '';
+      const [pnlRes, bsRes, tbRes] = await Promise.allSettled([
+        apiClient.get<{ data: ProfitAndLossData }>(`/ledger/reports/profit-and-loss${params}`),
+        apiClient.get<{ data: BalanceSheetData }>(`/ledger/reports/balance-sheet${params}`),
+        apiClient.get<{ data: TrialBalanceData }>(`/ledger/reports/trial-balance${params}`),
+      ]);
+
+      const pnl = pnlRes.status === 'fulfilled' ? pnlRes.value.data : null;
+      const balanceSheet = bsRes.status === 'fulfilled' ? bsRes.value.data : null;
+      let trialBalance: TrialBalanceData | null = null;
+      if (tbRes.status === 'fulfilled' && tbRes.value.data) {
+        const rawTb = tbRes.value.data as any;
+        trialBalance = {
+          ...rawTb,
+          rows: rawTb.rows || rawTb.items || [],
+        };
       }
-    }
-    fetchPeriods();
-  }, []);
 
-  React.useEffect(() => {
-    async function loadReports() {
-      try {
-        setLoading(true);
-        const params = selectedPeriodId ? `?periodId=${encodeURIComponent(selectedPeriodId)}` : '';
-        const [pnlRes, bsRes, tbRes] = await Promise.allSettled([
-          apiClient.get<{ data: ProfitAndLossData }>(`/ledger/reports/profit-and-loss${params}`),
-          apiClient.get<{ data: BalanceSheetData }>(`/ledger/reports/balance-sheet${params}`),
-          apiClient.get<{ data: TrialBalanceData }>(`/ledger/reports/trial-balance${params}`),
-        ]);
+      return { pnl, balanceSheet, trialBalance };
+    },
+    staleTime: 5 * 60 * 1000,
+  });
 
-        if (pnlRes.status === 'fulfilled' && pnlRes.value.data) {
-          setPnl(pnlRes.value.data);
-        }
-        if (bsRes.status === 'fulfilled' && bsRes.value.data) {
-          setBalanceSheet(bsRes.value.data);
-        }
-        if (tbRes.status === 'fulfilled' && tbRes.value.data) {
-          const rawTb = tbRes.value.data as any;
-          setTrialBalance({
-            ...rawTb,
-            rows: rawTb.rows || rawTb.items || [],
-          });
-        }
-      } catch (err) {
-        console.warn('Could not fetch ledger reports:', err);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    loadReports();
-  }, [selectedPeriodId]);
+  const pnl = reportData?.pnl || null;
+  const balanceSheet = reportData?.balanceSheet || null;
+  const trialBalance = reportData?.trialBalance || null;
 
   const totalRev = Number(pnl?.totalRevenueCents || 0) / 100;
   const totalExp = Number(pnl?.totalExpenseCents || 0) / 100;

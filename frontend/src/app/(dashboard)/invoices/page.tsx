@@ -50,45 +50,15 @@ import { useTenantCurrency } from '@/hooks/use-tenant-currency';
 import { apiClient } from '@/lib/api-client';
 import { authStorage } from '@/lib/auth-storage';
 
-interface RawInvoice {
-  id: string;
-  invoiceNumber: string;
-  invoiceType: 'INVOICE' | 'BILL';
-  counterpartyId?: string;
-  counterparty?: { legalName: string };
-  issueDate: string;
-  dueDate: string;
-  totalCents: string | number;
-  amountDueCents: string | number;
-  currency?: string;
-  status: 'DRAFT' | 'APPROVED' | 'POSTED' | 'PARTIALLY_PAID' | 'PAID' | 'VOID';
-}
-
-interface InvoiceRecord {
-  id: string;
-  invoiceNumber: string;
-  type: 'ACCOUNTS_RECEIVABLE' | 'ACCOUNTS_PAYABLE';
-  counterpartyName: string;
-  issueDate: string;
-  dueDate: string;
-  totalAmount: number;
-  currency: string;
-  status: 'DRAFT' | 'POSTED' | 'PAID' | 'OVERDUE' | 'VOID';
-}
-
-interface Counterparty {
-  id: string;
-  legalName: string;
-  type: 'VENDOR' | 'CUSTOMER' | 'BOTH';
-}
-
-interface LedgerAccount {
-  id: string;
-  accountCode: string;
-  name: string;
-  classification: string;
-  subClassification?: string;
-}
+import {
+  useInvoicesQuery,
+  useCounterpartiesQuery,
+  useLedgerAccountsQuery,
+  useSmartInvalidate,
+  type InvoiceRecord,
+  type Counterparty,
+  type LedgerAccount,
+} from '@/hooks/use-dashboard-queries';
 
 interface FormLineItem {
   id: string;
@@ -111,8 +81,23 @@ export default function InvoicesPage() {
   const [activeTab, setActiveTab] = React.useState<'ALL' | 'RECEIVABLE' | 'PAYABLE' | 'OVERDUE'>(
     'ALL',
   );
-  const [invoices, setInvoices] = React.useState<InvoiceRecord[]>([]);
-  const [loading, setLoading] = React.useState(true);
+
+  // Cached Server Queries
+  const {
+    data: invoices = [],
+    isLoading: loading,
+    refetch: fetchInvoices,
+    isRefetching,
+  } = useInvoicesQuery();
+  const {
+    data: counterparties = [],
+    isLoading: isLoadingCounterparties,
+    refetch: refetchCounterparties,
+  } = useCounterpartiesQuery();
+  const { data: ledgerAccounts = [], isLoading: isLoadingAccounts } = useLedgerAccountsQuery();
+  const { invalidateInvoices } = useSmartInvalidate();
+
+  const isLoadingDeps = isLoadingCounterparties || isLoadingAccounts;
 
   // Creation / Editing Modal State
   const [isCreatingInvoice, setIsCreatingInvoice] = React.useState(false);
@@ -134,11 +119,7 @@ export default function InvoicesPage() {
     reason: 'Billed in error / cancelled by client',
   });
 
-  // Dependencies
-  const [counterparties, setCounterparties] = React.useState<Counterparty[]>([]);
   const [bankStatementSuggestions, setBankStatementSuggestions] = React.useState<string[]>([]);
-  const [ledgerAccounts, setLedgerAccounts] = React.useState<LedgerAccount[]>([]);
-  const [isLoadingDeps, setIsLoadingDeps] = React.useState(false);
 
   // Form Fields
   const [formType, setFormType] = React.useState<'INVOICE' | 'BILL'>('INVOICE');
@@ -157,6 +138,15 @@ export default function InvoicesPage() {
       setFormCurrency(tenantCurrency);
     }
   }, [tenantCurrency]);
+
+  React.useEffect(() => {
+    if (counterparties.length > 0 && !selectedCounterpartyId) {
+      setSelectedCounterpartyId(counterparties[0].id);
+    } else if (counterparties.length === 0) {
+      setCounterpartyMode('new');
+    }
+  }, [counterparties, selectedCounterpartyId]);
+
   const [taxAmount, setTaxAmount] = React.useState<number>(0);
   const [postImmediately, setPostImmediately] = React.useState(true);
   const [formLines, setFormLines] = React.useState<FormLineItem[]>([
@@ -168,6 +158,20 @@ export default function InvoicesPage() {
       unitPrice: 30000,
     },
   ]);
+
+  // Set default account when ledgerAccounts load
+  React.useEffect(() => {
+    if (ledgerAccounts.length > 0) {
+      const defaultRevenue =
+        ledgerAccounts.find((a) => a.accountCode === '4010' || a.classification === 'REVENUE') ||
+        ledgerAccounts[0];
+      if (defaultRevenue) {
+        setFormLines((prev) =>
+          prev.map((l) => (l.accountId ? l : { ...l, accountId: defaultRevenue.id })),
+        );
+      }
+    }
+  }, [ledgerAccounts]);
 
   const getSuggestedAccountForType = React.useCallback(
     (type: 'INVOICE' | 'BILL', accounts: LedgerAccount[]) => {
@@ -231,157 +235,41 @@ export default function InvoicesPage() {
     }
   };
 
-  // Load Dependencies (Clients / Suppliers & Ledger Accounts)
-  const loadDependencies = React.useCallback(async () => {
+  // Load bank statement suggestions for pills
+  const loadSuggestions = React.useCallback(async () => {
     try {
-      setIsLoadingDeps(true);
-
-      // 1. Fetch counterparties
-      const cpRes = await apiClient.get<{ data: Counterparty[] }>('/counterparties');
-      const cps = cpRes.data || [];
-      setCounterparties(cps);
-
-      if (cps.length === 0) {
-        setCounterpartyMode('new');
-      } else {
-        setSelectedCounterpartyId(cps[0].id);
-      }
-
-      // 2. Fetch ledger accounts
-      let accRes = await apiClient.get<{ data: LedgerAccount[] }>('/ledger/accounts');
-      let accounts = accRes.data || [];
-
-      if (accounts.length === 0) {
-        const seedRes = await apiClient.post<{ data: LedgerAccount[] }>(
-          '/ledger/accounts/seed-standard',
-          {},
-        );
-        accounts = seedRes.data || [];
-      }
-      setLedgerAccounts(accounts);
-
-      const defaultRevenue = accounts.find(
-        (a) => a.accountCode === '4010' || a.classification === 'REVENUE',
-      );
-      if (defaultRevenue) {
-        setFormLines((prev) =>
-          prev.map((l) => (l.accountId ? l : { ...l, accountId: defaultRevenue.id })),
-        );
-      }
-
-      // 3. Fetch bank statement transactions for suggestion pills
-      try {
-        const txRes = await apiClient.get<{
-          data: Array<{
-            normalizedPayee?: string;
-            rawDescription?: string;
-            rawPrimaryText?: string;
-            direction?: string;
-          }>;
-        }>('/banking/transactions');
-        const txList = txRes.data || [];
-        const suggestions = new Set<string>();
-        txList.forEach((t) => {
-          const name = (t.normalizedPayee || t.rawPrimaryText || t.rawDescription || '').trim();
-          if (
-            name &&
-            name.length > 2 &&
-            !name.toLowerCase().includes('wire fee') &&
-            !name.toLowerCase().includes('transfer') &&
-            !name.toLowerCase().includes('charge')
-          ) {
-            const clean = name.replace(/^[\s\*\-\/]+|[\s\*\-\/]+$/g, '');
-            if (clean.length > 2 && clean.length < 50) {
-              suggestions.add(clean);
-            }
+      const txRes = await apiClient.get<{
+        data: Array<{
+          normalizedPayee?: string;
+          rawDescription?: string;
+          rawPrimaryText?: string;
+          direction?: string;
+        }>;
+      }>('/banking/transactions');
+      const txList = txRes.data || [];
+      const suggestions = new Set<string>();
+      txList.forEach((t) => {
+        const name = (t.normalizedPayee || t.rawPrimaryText || t.rawDescription || '').trim();
+        if (
+          name &&
+          name.length > 2 &&
+          !name.toLowerCase().includes('wire fee') &&
+          !name.toLowerCase().includes('transfer') &&
+          !name.toLowerCase().includes('charge')
+        ) {
+          const clean = name.replace(/^[\s\*\-\/]+|[\s\*\-\/]+$/g, '');
+          if (clean.length > 2 && clean.length < 50) {
+            suggestions.add(clean);
           }
-        });
-        setBankStatementSuggestions(Array.from(suggestions).slice(0, 8));
-      } catch {}
-    } catch (err: unknown) {
-      const errorObj = err as {
-        status?: number;
-        statusCode?: number;
-        message?: string;
-      };
-      if (
-        errorObj?.status === 401 ||
-        errorObj?.statusCode === 401 ||
-        errorObj?.message?.includes('expired') ||
-        errorObj?.message?.includes('UNAUTHORIZED')
-      ) {
-        toast.error('Session expired. Redirecting to login...');
-        authStorage.clearAuthSession();
-        setTimeout(() => {
-          window.location.href = '/login?expired=true';
-        }, 1200);
-      }
-    } finally {
-      setIsLoadingDeps(false);
-    }
-  }, []);
-
-  const fetchInvoices = React.useCallback(async () => {
-    try {
-      setLoading(true);
-      const res = await apiClient.get<{ data: RawInvoice[] }>('/invoices');
-      const list = res.data || [];
-
-      const mapped: InvoiceRecord[] = list.map((inv) => {
-        let mappedStatus: InvoiceRecord['status'] = 'DRAFT';
-        if (inv.status === 'PAID') mappedStatus = 'PAID';
-        else if (inv.status === 'VOID') mappedStatus = 'VOID';
-        else if (inv.status === 'POSTED' || inv.status === 'APPROVED') mappedStatus = 'POSTED';
-        else mappedStatus = 'DRAFT';
-
-        // Check if overdue
-        if (mappedStatus === 'POSTED' && new Date(inv.dueDate) < new Date()) {
-          mappedStatus = 'OVERDUE';
         }
-
-        return {
-          id: inv.id,
-          invoiceNumber: inv.invoiceNumber,
-          type:
-            inv.invoiceType === 'INVOICE'
-              ? ('ACCOUNTS_RECEIVABLE' as const)
-              : ('ACCOUNTS_PAYABLE' as const),
-          counterpartyName: inv.counterparty?.legalName || 'Unspecified Customer / Vendor',
-          issueDate: inv.issueDate,
-          dueDate: inv.dueDate,
-          totalAmount: Number(inv.totalCents || 0) / 100,
-          currency: inv.currency || 'USD',
-          status: mappedStatus,
-        };
       });
-
-      setInvoices(mapped);
-    } catch (err: unknown) {
-      const errorObj = err as {
-        status?: number;
-        statusCode?: number;
-        message?: string;
-      };
-      if (
-        errorObj?.status === 401 ||
-        errorObj?.statusCode === 401 ||
-        errorObj?.message?.includes('expired') ||
-        errorObj?.message?.includes('UNAUTHORIZED')
-      ) {
-        toast.error('Session expired. Redirecting to login...');
-        authStorage.clearAuthSession();
-        setTimeout(() => {
-          window.location.href = '/login?expired=true';
-        }, 1200);
-      }
-    } finally {
-      setLoading(false);
-    }
+      setBankStatementSuggestions(Array.from(suggestions).slice(0, 8));
+    } catch {}
   }, []);
 
-  React.useEffect(() => {
-    fetchInvoices();
-  }, [fetchInvoices]);
+  const loadDependencies = React.useCallback(async () => {
+    await loadSuggestions();
+  }, [loadSuggestions]);
 
   // Derived calculations
   const linesSubtotal = React.useMemo(() => {
@@ -598,18 +486,17 @@ export default function InvoicesPage() {
             });
             if (cpRes.data?.id) {
               targetCounterpartyId = cpRes.data.id;
-              setCounterparties((prev) => [...prev, cpRes.data]);
+              await refetchCounterparties();
               setSelectedCounterpartyId(targetCounterpartyId);
             }
           } catch {
             try {
-              const refreshed = await apiClient.get<{ data: Counterparty[] }>('/counterparties');
+              const refreshed = await refetchCounterparties();
               const found = (refreshed.data || []).find(
                 (c) => c.legalName.toLowerCase() === trimmedName.toLowerCase(),
               );
               if (found) {
                 targetCounterpartyId = found.id;
-                setCounterparties(refreshed.data);
                 setSelectedCounterpartyId(found.id);
               }
             } catch {}
@@ -683,7 +570,7 @@ export default function InvoicesPage() {
 
       setIsCreatingInvoice(false);
       setNewCounterpartyName('');
-      await fetchInvoices();
+      invalidateInvoices();
     } catch (err: unknown) {
       const errorObj = err as {
         status?: number;
@@ -730,7 +617,7 @@ export default function InvoicesPage() {
         `Invoice ${voidModal.invoiceNumber} voided. Ledger reversing entry (REV-...) recorded.`,
       );
       setVoidModal({ isOpen: false, invoiceId: '', invoiceNumber: '', reason: '' });
-      await fetchInvoices();
+      invalidateInvoices();
     } catch (err: unknown) {
       const errorObj = err as { data?: { message?: string }; message?: string };
       toast.error(errorObj?.data?.message || errorObj?.message || 'Failed to void invoice');
@@ -750,7 +637,7 @@ export default function InvoicesPage() {
 
       await apiClient.post(`/invoices/${invoiceId}/post`, {});
       toast.success('Invoice recorded to General Ledger successfully');
-      await fetchInvoices();
+      invalidateInvoices();
     } catch (err: unknown) {
       const errorObj = err as {
         status?: number;
@@ -844,8 +731,12 @@ export default function InvoicesPage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2 w-full md:w-auto">
-          <Button variant="outline" onClick={fetchInvoices} disabled={loading}>
-            <Download className="w-4 h-4 mr-2" />
+          <Button
+            variant="outline"
+            onClick={() => fetchInvoices()}
+            disabled={loading || isRefetching}
+          >
+            <RotateCw className={`w-4 h-4 mr-2 ${loading || isRefetching ? 'animate-spin' : ''}`} />
             Refresh
           </Button>
           <Button

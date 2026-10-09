@@ -54,20 +54,13 @@ import { apiClient } from '@/lib/api-client';
 import { formatCurrency, formatIsoDate } from '@/lib/formatters';
 import { useTenantCurrency } from '@/hooks/use-tenant-currency';
 
-interface BankAccount {
-  id: string;
-  tenantId: string;
-  ledgerAccountId: string;
-  accountName: string;
-  institutionName: string;
-  accountType: 'CHECKING' | 'SAVINGS' | 'CREDIT_CARD';
-  currency: string;
-  accountNumberLast4: string;
-  currentBalanceCents: string | number;
-  reconciledBalanceCents: string | number;
-  isActive: boolean;
-  createdAt: string;
-}
+import {
+  useBankAccountsQuery,
+  useBankStatementsQuery,
+  useSmartInvalidate,
+  type BankAccount,
+  type BankStatementRecord,
+} from '@/hooks/use-dashboard-queries';
 
 interface LedgerAccount {
   id: string;
@@ -106,23 +99,6 @@ interface UploadResult {
   }>;
 }
 
-interface BankStatementRecord {
-  id: string;
-  fileName: string;
-  bankAccountId?: string | null;
-  statementStartDate?: string;
-  statementEndDate?: string;
-  openingBalanceCents?: string | number;
-  closingBalanceCents?: string | number;
-  totalDebitsCents?: string | number;
-  totalCreditsCents?: string | number;
-  bankDetected?: string;
-  status:
-    'UPLOADED' | 'PROCESSING' | 'PARSED' | 'RECONCILED' | 'FAILED' | 'EXCEPTION' | 'NEEDS_REVIEW';
-  errorMessage?: string;
-  createdAt: string;
-}
-
 interface BatchQueueItem {
   id: string;
   file?: File;
@@ -153,13 +129,20 @@ interface BatchQueueItem {
 const BATCH_QUEUE_STORAGE_KEY = 'agentic_os_active_batch_queue';
 
 export default function BankingPage() {
-  const [accounts, setAccounts] = React.useState<BankAccount[]>([]);
-  const [isLoadingAccounts, setIsLoadingAccounts] = React.useState(true);
+  const {
+    data: accounts = [],
+    isLoading: isLoadingAccounts,
+    refetch: refetchAccounts,
+  } = useBankAccountsQuery();
   const [selectedAccountId, setSelectedAccountId] = React.useState<string>('');
 
-  // Statements History State
-  const [statements, setStatements] = React.useState<BankStatementRecord[]>([]);
-  const [isLoadingStatements, setIsLoadingStatements] = React.useState(true);
+  // Statements History Cached Query
+  const {
+    data: statements = [],
+    isLoading: isLoadingStatements,
+    refetch: refetchStatements,
+  } = useBankStatementsQuery();
+  const { invalidateBanking } = useSmartInvalidate();
   const [retryingId, setRetryingId] = React.useState<string | null>(null);
 
   // Account Creation Form State
@@ -194,29 +177,12 @@ export default function BankingPage() {
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const loadAccounts = React.useCallback(async () => {
-    setIsLoadingAccounts(true);
-    try {
-      const response = await apiClient.get<{ data: BankAccount[] }>('/banking/accounts');
-      const list = response.data || [];
-      setAccounts(list);
-    } catch (err) {
-      console.error('Failed to load bank accounts:', err);
-    } finally {
-      setIsLoadingAccounts(false);
-    }
-  }, []);
+    await refetchAccounts();
+  }, [refetchAccounts]);
 
   const loadStatements = React.useCallback(async () => {
-    setIsLoadingStatements(true);
-    try {
-      const response = await apiClient.get<{ data: BankStatementRecord[] }>('/banking/statements');
-      setStatements(response.data || []);
-    } catch (err) {
-      console.error('Failed to load bank statements:', err);
-    } finally {
-      setIsLoadingStatements(false);
-    }
-  }, []);
+    await refetchStatements();
+  }, [refetchStatements]);
 
   type StatementSortColumn =
     'filename' | 'account' | 'period' | 'moneyOut' | 'moneyIn' | 'status' | 'uploaded';
@@ -447,8 +413,7 @@ export default function BankingPage() {
                 result,
                 completedAt: Date.now(),
               });
-              loadAccounts();
-              loadStatements();
+              invalidateBanking();
               toast.success(`Statement "${item.fileName}" reconciled successfully!`);
               completed = true;
               break;
@@ -459,7 +424,7 @@ export default function BankingPage() {
                 progress: 100,
                 errorMessage: failedReason || 'Processing failed',
               });
-              loadStatements();
+              invalidateBanking();
               toast.error(`"${item.fileName}": ${failedReason || 'Statement parsing failed'}`);
               completed = true;
               break;
@@ -494,8 +459,7 @@ export default function BankingPage() {
                   errorMessage: 'Statement processing timed out or failed',
                 });
               }
-              loadStatements();
-              loadAccounts();
+              invalidateBanking();
               completed = true;
               break;
             }
@@ -513,20 +477,13 @@ export default function BankingPage() {
           progress: 100,
           errorMessage: errorMsg,
         });
-        loadStatements();
+        invalidateBanking();
         toast.error(`"${item.fileName}": ${errorMsg}`);
       } finally {
         inFlightIdsRef.current.delete(item.id);
       }
     },
-    [
-      selectedAccountId,
-      manualBankName,
-      manualAccountType,
-      manualLast4,
-      loadAccounts,
-      loadStatements,
-    ],
+    [selectedAccountId, manualBankName, manualAccountType, manualLast4, invalidateBanking],
   );
 
   // Queue Dispatcher Effect (Sequential Batch Queue Dispatcher, Concurrency = 1)
@@ -548,29 +505,6 @@ export default function BankingPage() {
       }
     }
   }, [batchQueue, processQueueItem]);
-
-  // Tab visibility and window focus listener for instant resyncing
-  React.useEffect(() => {
-    const handleVisibilitySync = () => {
-      if (document.visibilityState === 'visible') {
-        loadAccounts();
-        loadStatements();
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilitySync);
-    window.addEventListener('focus', handleVisibilitySync);
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilitySync);
-      window.removeEventListener('focus', handleVisibilitySync);
-    };
-  }, [loadAccounts, loadStatements]);
-
-  // Initial load on mount
-  React.useEffect(() => {
-    loadAccounts();
-    loadStatements();
-  }, [loadAccounts, loadStatements]);
 
   const handleCreateAccount = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -607,8 +541,10 @@ export default function BankingPage() {
       });
 
       const created = res.data;
-      setAccounts((prev) => [created, ...prev]);
-      setSelectedAccountId(created.id);
+      invalidateBanking();
+      if (created?.id) {
+        setSelectedAccountId(created.id);
+      }
       setIsAddingAccount(false);
       toast.success('Bank account connected successfully');
     } catch (err) {
@@ -689,8 +625,7 @@ export default function BankingPage() {
     try {
       await apiClient.post(`/banking/statements/${statementId}/retry`, {});
       toast.success('Statement re-queued for processing');
-      loadStatements();
-      loadAccounts();
+      invalidateBanking();
     } catch (err: any) {
       toast.error(err?.message || 'Failed to retry statement');
     } finally {
