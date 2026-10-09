@@ -8,7 +8,7 @@ export default defineConfig({
   workers: 1,
   reporter: 'list',
   use: {
-    baseURL: 'http://localhost:3001',
+    baseURL: 'http://localhost:3099',
     trace: 'on-first-retry',
   },
   projects: [
@@ -18,8 +18,8 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'npm run start -- -p 3001',
-    url: 'http://localhost:3001',
+    command: 'npm run start -- -p 3099',
+    url: 'http://localhost:3099',
     reuseExistingServer: !process.env.CI,
     timeout: 120000,
   },
