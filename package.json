@@ -11,7 +11,7 @@
     "format": "prettier --write \"**/*.{ts,js,json,md,css}\"",
     "test": "vitest run",
     "test:watch": "vitest",
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.build.json && node -e \"try { require('fs').copyFileSync('dist/src/main.js', 'dist/main.js'); } catch {}\"",
     "dev": "concurrently -n backend,frontend -c blue,magenta \"npm run start:dev\" \"npm run frontend:dev\"",
     "start:all": "concurrently -n backend,frontend -c blue,magenta \"npm run start\" \"npm run frontend:dev\"",
     "start": "cross-env PORT=4000 ts-node src/main.ts",
