@@ -37,12 +37,15 @@ async function bootstrap() {
       requestOrigin: string | undefined,
       callback: (err: Error | null, allow?: boolean) => void,
     ) => {
-      if (!requestOrigin) {return callback(null, true);}
+      if (!requestOrigin) {
+        return callback(null, true);
+      }
       try {
         const url = new URL(requestOrigin);
         if (
           allowedOrigins.includes(requestOrigin) ||
           url.hostname.endsWith('.vercel.app') ||
+          url.hostname.endsWith('ghulam-mustafa.com') ||
           url.hostname === 'localhost'
         ) {
           return callback(null, true);
