@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 
+import { AppController } from './app.controller';
 import { AiModule } from './core/ai/ai.module';
 import { ConfigModule } from './core/config/config.module';
 import { AppConfigService } from './core/config/config.service';
@@ -63,6 +64,7 @@ import { PayrollModule } from './modules/payroll/payroll.module';
     AgentsModule,
     ExceptionsModule,
   ],
+  controllers: [AppController],
   providers: [
     {
       provide: APP_GUARD,
