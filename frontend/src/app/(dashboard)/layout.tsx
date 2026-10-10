@@ -12,7 +12,6 @@ import {
   BarChart3,
   Menu,
   X,
-  Bot,
   LogOut,
   Settings,
 } from 'lucide-react';
@@ -21,6 +20,7 @@ import { Button } from '@/components/ui/button';
 import { ThemeToggle } from '@/components/shared/theme-toggle';
 import { authStorage, AuthUser } from '@/lib/auth-storage';
 import { apiClient } from '@/lib/api-client';
+import { BrandLogo } from '@/components/brand/brand-logo';
 
 const navigation = [
   { name: 'Overview', href: '/', icon: LayoutDashboard },
@@ -70,7 +70,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     return (
       <div className="flex h-screen w-screen items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-2">
-          <Bot className="h-8 w-8 animate-pulse text-primary" />
+          <BrandLogo size={40} className="animate-pulse" />
           <p className="text-sm text-muted-foreground font-medium">Verifying session...</p>
         </div>
       </div>
@@ -88,7 +88,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         className={`md:hidden fixed inset-y-0 left-0 z-50 w-64 bg-background border-r flex flex-col transition-transform transform ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}
       >
         <div className="flex items-center h-16 px-4 border-b shrink-0">
-          <Bot className="w-6 h-6 mr-2 text-primary" />
+          <BrandLogo size={28} className="mr-2.5" />
           <span className="font-semibold tracking-tight">Agentic OS</span>
           <Button
             variant="ghost"
@@ -162,7 +162,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       {/* Desktop sidebar */}
       <div className="hidden md:flex flex-col w-64 border-r bg-background shrink-0">
         <div className="flex items-center h-16 px-6 border-b shrink-0">
-          <Bot className="w-6 h-6 mr-2 text-primary" />
+          <BrandLogo size={28} className="mr-2.5" />
           <span className="font-semibold tracking-tight">Agentic OS</span>
         </div>
         <nav className="flex-1 overflow-y-auto p-4 space-y-1">
