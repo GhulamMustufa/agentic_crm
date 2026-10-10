@@ -26,8 +26,32 @@ async function bootstrap() {
   app.use(helmet());
 
   // CORS configuration
+  const allowedOrigins = [
+    'https://app.agenticos.com',
+    'http://localhost:3000',
+    ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : []),
+  ];
+
   app.enableCors({
-    origin: ['https://app.agenticos.com', 'http://localhost:3000'],
+    origin: (
+      requestOrigin: string | undefined,
+      callback: (err: Error | null, allow?: boolean) => void,
+    ) => {
+      if (!requestOrigin) {return callback(null, true);}
+      try {
+        const url = new URL(requestOrigin);
+        if (
+          allowedOrigins.includes(requestOrigin) ||
+          url.hostname.endsWith('.vercel.app') ||
+          url.hostname === 'localhost'
+        ) {
+          return callback(null, true);
+        }
+      } catch {
+        // Ignore URL parsing errors for non-standard origins
+      }
+      callback(null, false);
+    },
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     credentials: true,
   });
