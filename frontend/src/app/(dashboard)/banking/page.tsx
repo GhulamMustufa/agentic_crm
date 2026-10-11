@@ -308,8 +308,25 @@ export default function BankingPage() {
 
         updateItem({ progress: 30 });
 
+        // If backend returned a localhost upload URL but the client is on a production domain,
+        // rewrite the URL to point to the production backend so fetch does not fail on localhost.
+        let uploadUrl = url;
+        if (
+          typeof window !== 'undefined' &&
+          !window.location.hostname.includes('localhost') &&
+          uploadUrl.startsWith('http://localhost')
+        ) {
+          const apiBase = process.env.NEXT_PUBLIC_API_URL || '';
+          if (apiBase) {
+            uploadUrl = uploadUrl.replace(
+              /^http:\/\/localhost(:\d+)?\/api\/v1/,
+              apiBase.replace(/\/+$/, ''),
+            );
+          }
+        }
+
         // 2. Stream binary directly to Object Storage (0 server memory overhead)
-        const uploadRes = await fetch(url, {
+        const uploadRes = await fetch(uploadUrl, {
           method: 'PUT',
           body: item.file,
           headers: { 'Content-Type': mimeType },

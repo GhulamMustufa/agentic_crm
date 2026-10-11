@@ -25,6 +25,8 @@ export const envSchema = z.object({
   AWS_ACCESS_KEY_ID: z.string().optional(),
   AWS_SECRET_ACCESS_KEY: z.string().optional(),
   AWS_REGION: z.string().optional(),
+  BACKEND_URL: z.string().optional(),
+  RENDER_EXTERNAL_URL: z.string().optional(),
   AI_PROVIDER_DEFAULT: z.enum(['gemini', 'claude', 'openai', 'deepseek', 'mock']).default('mock'),
   AI_PROVIDER: z.string().optional(),
   GEMINI_API_KEY: z.string().optional(),

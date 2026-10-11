@@ -71,6 +71,14 @@ export class MemoryStorageService implements IObjectStorage {
   }
 
   private getBaseUrl(): string {
+    const publicUrl =
+      this.config?.get('BACKEND_URL') ||
+      this.config?.get('RENDER_EXTERNAL_URL') ||
+      process.env.BACKEND_URL ||
+      process.env.RENDER_EXTERNAL_URL;
+    if (publicUrl) {
+      return `${publicUrl.replace(/\/+$/, '')}/api/v1`;
+    }
     const port = this.config?.get('PORT') || 4000;
     return `http://localhost:${port}/api/v1`;
   }
