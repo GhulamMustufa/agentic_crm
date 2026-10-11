@@ -83,19 +83,20 @@ export class StatementProcessor extends WorkerHost {
         error instanceof Error ? error.stack : undefined,
       );
 
-      // Prevent retrying non-retryable domain exceptions (e.g. duplicate files, validation errors, invalid schemas)
+      // Prevent retrying non-retryable domain exceptions (e.g. duplicate files, missing storage objects, validation errors, invalid schemas)
       const errorMsg = String(err?.message || '');
-      const isDomainConflict =
+      const isUnrecoverable =
         errorMsg.includes('Duplicate statement') ||
         errorMsg.includes('Date collision') ||
         errorMsg.includes('Period collision') ||
         errorMsg.includes('checksum') ||
+        errorMsg.includes('Object not found') ||
         err?.status === 400 ||
         err?.status === 409 ||
         err?.name === 'ConflictError' ||
         err?.name === 'BadRequestError';
 
-      if (isDomainConflict) {
+      if (isUnrecoverable) {
         throw new UnrecoverableError(errorMsg);
       }
 

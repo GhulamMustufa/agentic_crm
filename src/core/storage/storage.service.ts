@@ -1,3 +1,7 @@
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+
 import {
   S3Client,
   PutObjectCommand,
@@ -36,38 +40,92 @@ export class MemoryStorageService implements IObjectStorage {
     string,
     { data: Buffer; contentType?: string; metadata?: Record<string, string> }
   >();
+  private readonly diskBaseDir: string;
 
   constructor(
     @Inject(AppConfigService)
     private readonly config?: AppConfigService,
-  ) {}
+  ) {
+    this.diskBaseDir = path.join(os.tmpdir(), 'agentic_storage');
+    try {
+      if (!fs.existsSync(this.diskBaseDir)) {
+        fs.mkdirSync(this.diskBaseDir, { recursive: true });
+      }
+    } catch {
+      // Fallback if permissions restrict
+    }
+  }
+
+  private getDiskPath(key: string): string {
+    const safeKey = key.replace(/[^a-zA-Z0-9_./-]/g, '_');
+    return path.join(this.diskBaseDir, safeKey);
+  }
 
   async putObject(
     key: string,
     data: Buffer | Uint8Array,
     options?: PutObjectOptions,
   ): Promise<void> {
+    const buf = Buffer.isBuffer(data) ? data : Buffer.from(data);
     this.store.set(key, {
-      data: Buffer.isBuffer(data) ? data : Buffer.from(data),
+      data: buf,
       contentType: options?.contentType,
       metadata: options?.metadata,
     });
+
+    try {
+      const diskPath = this.getDiskPath(key);
+      const dir = path.dirname(diskPath);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      fs.writeFileSync(diskPath, buf);
+    } catch {
+      // Non-fatal if ephemeral disk is unwritable
+    }
   }
 
   async getObject(key: string): Promise<Buffer> {
     const item = this.store.get(key);
-    if (!item) {
-      throw new Error(`Object not found in memory storage: ${key}`);
+    if (item) {
+      return item.data;
     }
-    return item.data;
+
+    try {
+      const diskPath = this.getDiskPath(key);
+      if (fs.existsSync(diskPath)) {
+        const fileBuf = fs.readFileSync(diskPath);
+        this.store.set(key, { data: fileBuf });
+        return fileBuf;
+      }
+    } catch {
+      // Disk lookup failed, fall through
+    }
+
+    throw new Error(`Object not found in memory or disk storage: ${key}`);
   }
 
   async hasObject(key: string): Promise<boolean> {
-    return this.store.has(key);
+    if (this.store.has(key)) {
+      return true;
+    }
+    try {
+      return fs.existsSync(this.getDiskPath(key));
+    } catch {
+      return false;
+    }
   }
 
   async deleteObject(key: string): Promise<void> {
     this.store.delete(key);
+    try {
+      const diskPath = this.getDiskPath(key);
+      if (fs.existsSync(diskPath)) {
+        fs.unlinkSync(diskPath);
+      }
+    } catch {
+      // Ignored if file does not exist
+    }
   }
 
   private getBaseUrl(): string {
