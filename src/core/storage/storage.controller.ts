@@ -16,7 +16,7 @@ import { OBJECT_STORAGE_TOKEN } from './storage.service';
 import type { IObjectStorage } from './storage.service';
 import type { Request, Response } from 'express';
 
-@Controller('storage')
+@Controller(['storage', 'api/v1/storage'])
 export class StorageController {
   constructor(@Inject(OBJECT_STORAGE_TOKEN) private readonly storageService: IObjectStorage) {}
 

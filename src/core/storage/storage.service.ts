@@ -77,10 +77,10 @@ export class MemoryStorageService implements IObjectStorage {
       process.env.BACKEND_URL ||
       process.env.RENDER_EXTERNAL_URL;
     if (publicUrl) {
-      return `${publicUrl.replace(/\/+$/, '')}/api/v1`;
+      return publicUrl.replace(/\/+$/, '');
     }
     const port = this.config?.get('PORT') || 4000;
-    return `http://localhost:${port}/api/v1`;
+    return `http://localhost:${port}`;
   }
 
   async getPresignedUrl(key: string, _expiresInSeconds = 900): Promise<string> {

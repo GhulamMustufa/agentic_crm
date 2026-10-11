@@ -319,7 +319,7 @@ export default function BankingPage() {
           const apiBase = process.env.NEXT_PUBLIC_API_URL || '';
           if (apiBase) {
             uploadUrl = uploadUrl.replace(
-              /^http:\/\/localhost(:\d+)?\/api\/v1/,
+              /^http:\/\/localhost(:\d+)?(\/api\/v1)?/,
               apiBase.replace(/\/+$/, ''),
             );
           }
