@@ -211,28 +211,47 @@ export function ExceptionListClient({
       ),
     onMutate: async ({ id }) => {
       await queryClient.cancelQueries({ queryKey: exceptionKeys.lists() });
-      const previousData = queryClient.getQueryData<ExceptionItem[]>(exceptionKeys.lists());
+      const previousQueries = queryClient.getQueriesData<ExceptionItem[]>({
+        queryKey: exceptionKeys.lists(),
+      });
 
-      queryClient.setQueryData<ExceptionItem[]>(exceptionKeys.lists(), (old) => {
+      queryClient.setQueriesData<ExceptionItem[]>({ queryKey: exceptionKeys.lists() }, (old) => {
         if (!old) return [];
         return old.filter((item) => item.id !== id);
       });
+      queryClient.setQueryData<ExceptionItem[]>(
+        [...exceptionKeys.lists(), tenantCurrency],
+        (old) => {
+          if (!old) return [];
+          return old.filter((item) => item.id !== id);
+        },
+      );
 
-      const currentList = queryClient.getQueryData<ExceptionItem[]>(exceptionKeys.lists()) || [];
+      setSelectedExceptionIds((prev) => {
+        if (!prev.has(id)) return prev;
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+
+      const currentList =
+        queryClient.getQueryData<ExceptionItem[]>([...exceptionKeys.lists(), tenantCurrency]) || [];
       if (currentList.length > 0) {
         setSelectedId(currentList[0].id);
       } else {
         setSelectedId(null);
       }
 
-      return { previousData };
+      return { previousQueries };
     },
     onSuccess: () => {
       toast.success('Approved & recorded to General Ledger');
     },
     onError: (err, variables, context) => {
-      if (context?.previousData) {
-        queryClient.setQueryData(exceptionKeys.lists(), context.previousData);
+      if (context?.previousQueries) {
+        context.previousQueries.forEach(([key, val]) => {
+          queryClient.setQueryData(key, val);
+        });
       }
       toast.error('Failed to approve transaction.');
       console.error('Failed to resolve exception item:', err);
@@ -250,28 +269,47 @@ export function ExceptionListClient({
       resolveException(id, 'REJECT', 'Ignored and excluded from General Ledger.'),
     onMutate: async (id: string) => {
       await queryClient.cancelQueries({ queryKey: exceptionKeys.lists() });
-      const previousData = queryClient.getQueryData<ExceptionItem[]>(exceptionKeys.lists());
+      const previousQueries = queryClient.getQueriesData<ExceptionItem[]>({
+        queryKey: exceptionKeys.lists(),
+      });
 
-      queryClient.setQueryData<ExceptionItem[]>(exceptionKeys.lists(), (old) => {
+      queryClient.setQueriesData<ExceptionItem[]>({ queryKey: exceptionKeys.lists() }, (old) => {
         if (!old) return [];
         return old.filter((item) => item.id !== id);
       });
+      queryClient.setQueryData<ExceptionItem[]>(
+        [...exceptionKeys.lists(), tenantCurrency],
+        (old) => {
+          if (!old) return [];
+          return old.filter((item) => item.id !== id);
+        },
+      );
 
-      const currentList = queryClient.getQueryData<ExceptionItem[]>(exceptionKeys.lists()) || [];
+      setSelectedExceptionIds((prev) => {
+        if (!prev.has(id)) return prev;
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+
+      const currentList =
+        queryClient.getQueryData<ExceptionItem[]>([...exceptionKeys.lists(), tenantCurrency]) || [];
       if (currentList.length > 0) {
         setSelectedId(currentList[0].id);
       } else {
         setSelectedId(null);
       }
 
-      return { previousData };
+      return { previousQueries };
     },
     onSuccess: () => {
       toast.success('Transaction excluded and left unmatched.');
     },
     onError: (err, id, context) => {
-      if (context?.previousData) {
-        queryClient.setQueryData(exceptionKeys.lists(), context.previousData);
+      if (context?.previousQueries) {
+        context.previousQueries.forEach(([key, val]) => {
+          queryClient.setQueryData(key, val);
+        });
       }
       toast.error('Failed to update transaction.');
       console.error('Failed to dismiss exception item:', err);
@@ -286,6 +324,21 @@ export function ExceptionListClient({
   // Batch Selection State
   const [selectedExceptionIds, setSelectedExceptionIds] = React.useState<Set<string>>(new Set());
 
+  // Automatically prune any selected IDs that are no longer pending
+  React.useEffect(() => {
+    if (selectedExceptionIds.size === 0) return;
+    const pendingIdSet = new Set(exceptions.map((e) => e.id));
+    const pruned = new Set<string>();
+    selectedExceptionIds.forEach((id) => {
+      if (pendingIdSet.has(id)) {
+        pruned.add(id);
+      }
+    });
+    if (pruned.size !== selectedExceptionIds.size) {
+      setSelectedExceptionIds(pruned);
+    }
+  }, [exceptions, selectedExceptionIds]);
+
   // Batch Mutation
   const batchResolveMutation = useMutation({
     mutationFn: ({ ids, action }: { ids: string[]; action: 'APPROVE' | 'REJECT' }) =>
@@ -298,16 +351,38 @@ export function ExceptionListClient({
       ),
     onMutate: async ({ ids }) => {
       await queryClient.cancelQueries({ queryKey: exceptionKeys.lists() });
-      const previousData = queryClient.getQueryData<ExceptionItem[]>(exceptionKeys.lists());
+      const previousQueries = queryClient.getQueriesData<ExceptionItem[]>({
+        queryKey: exceptionKeys.lists(),
+      });
       const idSet = new Set(ids);
 
-      queryClient.setQueryData<ExceptionItem[]>(exceptionKeys.lists(), (old) => {
+      queryClient.setQueriesData<ExceptionItem[]>({ queryKey: exceptionKeys.lists() }, (old) => {
         if (!old) return [];
         return old.filter((item) => !idSet.has(item.id));
       });
+      queryClient.setQueryData<ExceptionItem[]>(
+        [...exceptionKeys.lists(), tenantCurrency],
+        (old) => {
+          if (!old) return [];
+          return old.filter((item) => !idSet.has(item.id));
+        },
+      );
 
-      setSelectedExceptionIds(new Set());
-      return { previousData };
+      setSelectedExceptionIds((prev) => {
+        const next = new Set(prev);
+        idSet.forEach((item) => next.delete(item));
+        return next;
+      });
+
+      const currentList =
+        queryClient.getQueryData<ExceptionItem[]>([...exceptionKeys.lists(), tenantCurrency]) || [];
+      if (currentList.length > 0) {
+        setSelectedId(currentList[0].id);
+      } else {
+        setSelectedId(null);
+      }
+
+      return { previousQueries };
     },
     onSuccess: (_, variables) => {
       const count = variables.ids.length;
@@ -320,8 +395,10 @@ export function ExceptionListClient({
       }
     },
     onError: (err, _, context) => {
-      if (context?.previousData) {
-        queryClient.setQueryData(exceptionKeys.lists(), context.previousData);
+      if (context?.previousQueries) {
+        context.previousQueries.forEach(([key, val]) => {
+          queryClient.setQueryData(key, val);
+        });
       }
       toast.error('Failed to complete batch resolution.');
       console.error('Batch resolution error:', err);
@@ -441,6 +518,7 @@ export function ExceptionListClient({
   };
 
   const handleExecuteBatch = () => {
+    setConfirmBatchModalOpen(false);
     if (batchActionType === 'APPROVE') {
       if (batchItems.approvable.length === 0) {
         toast.error(
@@ -448,14 +526,15 @@ export function ExceptionListClient({
         );
         return;
       }
+      const idsToApprove = batchItems.approvable.map((e) => e.id);
+      setSelectedExceptionIds(new Set());
       batchResolveMutation.mutate(
         {
-          ids: batchItems.approvable.map((e) => e.id),
+          ids: idsToApprove,
           action: 'APPROVE',
         },
         {
           onSuccess: () => {
-            setConfirmBatchModalOpen(false);
             if (batchItems.anomalies.length > 0) {
               toast.info(
                 `${batchItems.anomalies.length} items with critical anomalies remain in the queue for manual review.`,
@@ -465,17 +544,12 @@ export function ExceptionListClient({
         },
       );
     } else {
-      batchResolveMutation.mutate(
-        {
-          ids: Array.from(selectedExceptionIds),
-          action: 'REJECT',
-        },
-        {
-          onSuccess: () => {
-            setConfirmBatchModalOpen(false);
-          },
-        },
-      );
+      const idsToDismiss = Array.from(selectedExceptionIds);
+      setSelectedExceptionIds(new Set());
+      batchResolveMutation.mutate({
+        ids: idsToDismiss,
+        action: 'REJECT',
+      });
     }
   };
 
