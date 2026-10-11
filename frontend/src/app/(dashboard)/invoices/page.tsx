@@ -119,8 +119,6 @@ export default function InvoicesPage() {
     reason: 'Billed in error / cancelled by client',
   });
 
-  const [bankStatementSuggestions, setBankStatementSuggestions] = React.useState<string[]>([]);
-
   // Form Fields
   const [formType, setFormType] = React.useState<'INVOICE' | 'BILL'>('INVOICE');
   const [lineMode, setLineMode] = React.useState<'simple' | 'itemized'>('simple');
@@ -235,41 +233,25 @@ export default function InvoicesPage() {
     }
   };
 
-  // Load bank statement suggestions for pills
-  const loadSuggestions = React.useCallback(async () => {
-    try {
-      const txRes = await apiClient.get<{
-        data: Array<{
-          normalizedPayee?: string;
-          rawDescription?: string;
-          rawPrimaryText?: string;
-          direction?: string;
-        }>;
-      }>('/banking/transactions');
-      const txList = txRes.data || [];
-      const suggestions = new Set<string>();
-      txList.forEach((t) => {
-        const name = (t.normalizedPayee || t.rawPrimaryText || t.rawDescription || '').trim();
-        if (
-          name &&
-          name.length > 2 &&
-          !name.toLowerCase().includes('wire fee') &&
-          !name.toLowerCase().includes('transfer') &&
-          !name.toLowerCase().includes('charge')
-        ) {
-          const clean = name.replace(/^[\s\*\-\/]+|[\s\*\-\/]+$/g, '');
-          if (clean.length > 2 && clean.length < 50) {
-            suggestions.add(clean);
+  // If accounts load after modal opens, populate default category reactively
+  React.useEffect(() => {
+    if (isCreatingInvoice && ledgerAccounts.length > 0) {
+      setFormLines((prev) => {
+        let changed = false;
+        const next = prev.map((l) => {
+          if (!l.accountId) {
+            const suggested = getSuggestedAccountForType(formType, ledgerAccounts);
+            if (suggested) {
+              changed = true;
+              return { ...l, accountId: suggested.id };
+            }
           }
-        }
+          return l;
+        });
+        return changed ? next : prev;
       });
-      setBankStatementSuggestions(Array.from(suggestions).slice(0, 8));
-    } catch {}
-  }, []);
-
-  const loadDependencies = React.useCallback(async () => {
-    await loadSuggestions();
-  }, [loadSuggestions]);
+    }
+  }, [isCreatingInvoice, ledgerAccounts, formType, getSuggestedAccountForType]);
 
   // Derived calculations
   const linesSubtotal = React.useMemo(() => {
@@ -417,11 +399,15 @@ export default function InvoicesPage() {
 
   const primaryCurrency = invoices[0]?.currency || tenantCurrency || 'MYR';
 
-  // Open Create Modal
-  const handleOpenCreateInvoice = async () => {
+  // Open Create Modal - Instantly opens popup (0ms) without blocking network roundtrips
+  const handleOpenCreateInvoice = React.useCallback(() => {
+    setIsCreatingInvoice(true);
     setEditingInvoiceId(null);
     setFormType('INVOICE');
     setLineMode('simple');
+    setCounterpartyMode(counterparties.length > 0 ? 'select' : 'new');
+    setSelectedCounterpartyId(counterparties[0]?.id || '');
+    setNewCounterpartyName('');
     setInvoiceNumber(getNextInvoiceNumber('INVOICE', invoices));
     setIssueDate(getTodayDate());
     setDueDate(addDaysToDate(getTodayDate(), 30));
@@ -429,11 +415,7 @@ export default function InvoicesPage() {
     setTaxAmount(0);
     setPostImmediately(true);
 
-    await loadDependencies();
-
-    const defaultRevenue = ledgerAccounts.find(
-      (a) => a.accountCode === '4010' || a.classification === 'REVENUE',
-    );
+    const defaultRevenue = getSuggestedAccountForType('INVOICE', ledgerAccounts);
     setFormLines([
       {
         id: 'line-1',
@@ -443,9 +425,15 @@ export default function InvoicesPage() {
         unitPrice: 30000,
       },
     ]);
-
-    setIsCreatingInvoice(true);
-  };
+  }, [
+    counterparties,
+    invoices,
+    tenantCurrency,
+    primaryCurrency,
+    ledgerAccounts,
+    getNextInvoiceNumber,
+    getSuggestedAccountForType,
+  ]);
 
   // Submit Handler: Create or Update Invoice
   const handleCreateInvoice = async (e?: React.FormEvent, shouldPostOverride?: boolean) => {
