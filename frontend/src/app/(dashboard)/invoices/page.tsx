@@ -688,6 +688,7 @@ export default function InvoicesPage() {
           description:
             l.description.trim() ||
             (formType === 'INVOICE' ? 'Consulting Services' : 'Operating Expense'),
+          accountId: l.accountId || defaultAccount?.id || ledgerAccounts[0]?.id,
           ledgerAccountId: l.accountId || defaultAccount?.id || ledgerAccounts[0]?.id,
           quantity: Number(l.quantity) || 1,
           unitCostCents: Math.round((Number(l.unitPrice) || 0) * 100),

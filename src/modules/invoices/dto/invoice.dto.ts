@@ -1,13 +1,25 @@
 import { z } from 'zod';
 
-const invoiceLineInputSchema = z.object({
-  accountId: z.string().uuid(),
-  description: z.string().min(2).max(255),
-  quantity: z.number().positive().default(1),
-  unitCostCents: z
-    .union([z.bigint(), z.number().int().nonnegative(), z.string().regex(/^\d+$/)])
-    .transform((v) => BigInt(v)),
-});
+const invoiceLineInputSchema = z
+  .object({
+    accountId: z.string().uuid().optional(),
+    ledgerAccountId: z.string().uuid().optional(),
+    description: z.string().min(2).max(255),
+    quantity: z.number().positive().default(1),
+    unitCostCents: z
+      .union([z.bigint(), z.number().int().nonnegative(), z.string().regex(/^\d+$/)])
+      .transform((v) => BigInt(v)),
+  })
+  .refine((data) => Boolean(data.accountId || data.ledgerAccountId), {
+    message: 'General Ledger account ID is required',
+    path: ['accountId'],
+  })
+  .transform((data) => ({
+    accountId: (data.accountId || data.ledgerAccountId)!,
+    description: data.description,
+    quantity: data.quantity,
+    unitCostCents: data.unitCostCents,
+  }));
 
 export const createInvoiceSchema = z.object({
   counterpartyId: z.string().uuid(),

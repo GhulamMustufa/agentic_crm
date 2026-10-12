@@ -28,6 +28,35 @@ function extractReadableError(errorData: unknown, status: number, statusText: st
   if (typeof errorData === 'object' && errorData !== null) {
     const data = errorData as Record<string, unknown>;
 
+    // Format structured field validation details into friendly messages
+    if (Array.isArray(data.details) && data.details.length > 0) {
+      const detailsList = data.details
+        .map((d: unknown) => {
+          if (typeof d === 'string') return d;
+          if (typeof d === 'object' && d !== null) {
+            const item = d as { field?: string; message?: string };
+            if (item.field && item.message) {
+              const friendlyField = item.field
+                .replace(/^lines\.\d+\./, 'Line item ')
+                .replace('accountId', 'account category')
+                .replace('ledgerAccountId', 'account category')
+                .replace('counterpartyId', 'customer / vendor')
+                .replace('invoiceNumber', 'invoice number')
+                .replace('issueDate', 'issue date')
+                .replace('dueDate', 'due date');
+              return `${friendlyField}: ${item.message}`;
+            }
+            return item.message || JSON.stringify(item);
+          }
+          return String(d);
+        })
+        .filter(Boolean);
+
+      if (detailsList.length > 0) {
+        return `${data.message || 'Validation failed'} (${detailsList.join(', ')})`;
+      }
+    }
+
     if (Array.isArray(data.message)) {
       return data.message.map((msg: string) => `• ${msg}`).join('\n');
     }
