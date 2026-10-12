@@ -18,8 +18,8 @@ describe('AuthService', () => {
     config = new AppConfigService({
       JWT_SECRET: 'test_jwt_secret_with_sufficient_length_123',
       JWT_REFRESH_SECRET: 'test_refresh_secret_with_sufficient_length_123',
-      JWT_EXPIRES_IN: '1h',
-      JWT_REFRESH_EXPIRES_IN: '7d',
+      JWT_EXPIRES_IN: '7d',
+      JWT_REFRESH_EXPIRES_IN: '30d',
     });
     userRepo = new InMemoryUserRepository();
     passwordHasher = new PasswordHasher();

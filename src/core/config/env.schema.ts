@@ -9,12 +9,12 @@ export const envSchema = z.object({
     .default('postgresql://postgres:postgres@localhost:5432/agentic_os?schema=public'),
   REDIS_URL: z.string().default('redis://localhost:6379'),
   JWT_SECRET: z.string().min(16).default('development_jwt_secret_must_be_overridden_in_prod'),
-  JWT_EXPIRES_IN: z.string().default('1h'),
+  JWT_EXPIRES_IN: z.string().default('7d'),
   JWT_REFRESH_SECRET: z
     .string()
     .min(16)
     .default('development_refresh_secret_must_be_overridden_in_prod'),
-  JWT_REFRESH_EXPIRES_IN: z.string().default('7d'),
+  JWT_REFRESH_EXPIRES_IN: z.string().default('30d'),
   STORAGE_DRIVER: z.enum(['memory', 's3']).default('memory'),
   S3_BUCKET: z.string().default('uploads'),
   S3_REGION: z.string().default('ap-southeast-1'),
