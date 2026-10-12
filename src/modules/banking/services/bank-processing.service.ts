@@ -548,16 +548,23 @@ export class BankProcessingService {
       const generatedExceptions: ExceptionItemEntity[] = [];
       const seenHashesInBatch = new Set<string>();
 
-      const computedHashes = parsedData.transactions.map((line) => {
-        return computeTransactionHash(
-          tenantId,
-          activeBankAccount.id,
-          line.date,
-          line.amountCents,
-          line.description,
-          line.sourceSequence,
+      const computedHashes: string[] = [];
+      for (let idx = 0; idx < parsedData.transactions.length; idx++) {
+        if (idx % 500 === 0 && idx > 0) {
+          await new Promise((resolve) => setImmediate(resolve));
+        }
+        const line = parsedData.transactions[idx]!;
+        computedHashes.push(
+          computeTransactionHash(
+            tenantId,
+            activeBankAccount.id,
+            line.date,
+            line.amountCents,
+            line.description,
+            line.sourceSequence,
+          ),
         );
-      });
+      }
 
       const existingTxMap = this.bankingRepo.findBankTransactionsByHashes
         ? await this.bankingRepo.findBankTransactionsByHashes(
@@ -570,6 +577,9 @@ export class BankProcessingService {
       const duplicateExceptionInputs: CreateExceptionInput[] = [];
 
       for (let idx = 0; idx < parsedData.transactions.length; idx++) {
+        if (idx % 500 === 0 && idx > 0) {
+          await new Promise((resolve) => setImmediate(resolve));
+        }
         const line = parsedData.transactions[idx]!;
         const sourceSequence = line.sourceSequence !== undefined ? line.sourceSequence : idx + 1;
         const pageNumber = line.pageNumber !== undefined ? line.pageNumber : 1;

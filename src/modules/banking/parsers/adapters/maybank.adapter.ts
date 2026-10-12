@@ -73,11 +73,17 @@ export class MaybankAdapter implements IBankStatementAdapter {
     let totalDebitsCents = 0n;
     let totalCreditsCents = 0n;
     let sequenceCounter = 1;
+    let lineCounter = 0;
     let activeTx: ActiveTransactionState | null = null;
     let lastRunningBalance: bigint | undefined = undefined;
 
     for (const page of layout.pages) {
       for (const rawLine of page.tableLines) {
+        lineCounter++;
+        if (lineCounter % 250 === 0) {
+          await new Promise((resolve) => setImmediate(resolve));
+        }
+
         const line = rawLine.trim();
         if (!line) {
           continue;

@@ -17,7 +17,9 @@ interface StatementJobData {
 
 @Processor('statement-processing', {
   concurrency: 1,
-  lockDuration: 60000,
+  lockDuration: 300000,
+  stalledInterval: 60000,
+  maxStalledCount: 1,
 })
 export class StatementProcessor extends WorkerHost {
   private readonly logger = new Logger(StatementProcessor.name);
