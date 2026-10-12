@@ -13,6 +13,7 @@ import {
   Sse,
   MessageEvent,
 } from '@nestjs/common';
+import { SkipThrottle } from '@nestjs/throttler';
 import { Queue } from 'bullmq';
 import { Observable } from 'rxjs';
 
@@ -153,6 +154,7 @@ export class BankingController {
     };
   }
 
+  @SkipThrottle()
   @Get('statements/jobs/:id')
   @HttpCode(HttpStatus.OK)
   async getJobStatus(
@@ -240,6 +242,7 @@ export class BankingController {
     return { data: { id, state: 'not_found' } };
   }
 
+  @SkipThrottle()
   @Sse('statements/stream/:id')
   streamJobStatus(
     @CurrentUser() user: TenantSessionContext,

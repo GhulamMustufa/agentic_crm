@@ -127,8 +127,17 @@ interface BatchQueueItem {
 }
 
 const BATCH_QUEUE_STORAGE_KEY = 'agentic_os_active_batch_queue';
+const activePollingJobIds = new Set<string>();
 
 export default function BankingPage() {
+  const isMountedRef = React.useRef(true);
+  React.useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
   const {
     data: accounts = [],
     isLoading: isLoadingAccounts,
@@ -305,12 +314,16 @@ export default function BankingPage() {
 
   const pollStatementJob = React.useCallback(
     async (jobId: string, item: BatchQueueItem) => {
+      if (activePollingJobIds.has(item.id)) return;
+      activePollingJobIds.add(item.id);
+
       const updateItem = (updater: Partial<BatchQueueItem>) => {
+        if (!isMountedRef.current) return;
         setBatchQueue((prev) => prev.map((q) => (q.id === item.id ? { ...q, ...updater } : q)));
       };
       let attempts = 0;
       let completed = false;
-      while (attempts < 120 && !completed) {
+      while (attempts < 120 && !completed && isMountedRef.current) {
         attempts++;
         try {
           const statusRes = await apiClient.get<{
@@ -417,10 +430,22 @@ export default function BankingPage() {
             break;
           }
         } catch (pollErr: any) {
+          if (!isMountedRef.current) break;
+          const is429 =
+            pollErr?.status === 429 ||
+            pollErr?.statusCode === 429 ||
+            `${pollErr?.message || ''}`.includes('Too Many');
+          if (is429) {
+            console.warn('Rate limited on statement job polling; backing off 6s...');
+            await new Promise((resolve) => setTimeout(resolve, 6000));
+            continue;
+          }
           console.warn('Queue item poll retry:', pollErr);
         }
-        await new Promise((resolve) => setTimeout(resolve, 1500));
+        if (!isMountedRef.current) break;
+        await new Promise((resolve) => setTimeout(resolve, 2500));
       }
+      activePollingJobIds.delete(item.id);
       inFlightIdsRef.current.delete(item.id);
     },
     [invalidateBanking, refetchStatements],
@@ -560,7 +585,11 @@ export default function BankingPage() {
         item.status === 'RECONCILING';
 
       if (isInFlight) {
-        if (item.jobId && !inFlightIdsRef.current.has(item.id)) {
+        if (
+          item.jobId &&
+          !inFlightIdsRef.current.has(item.id) &&
+          !activePollingJobIds.has(item.id)
+        ) {
           inFlightIdsRef.current.add(item.id);
           pollStatementJob(item.jobId, item);
         } else if (!item.jobId && !item.file) {

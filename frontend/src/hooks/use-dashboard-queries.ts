@@ -8,7 +8,14 @@ import { cleanBankPayee } from '@/lib/api/exceptions';
 // --- Query Key Factories ---
 export const queryKeys = {
   all: ['dashboard'] as const,
-  transactions: (tenantId?: string | null) => ['bank-transactions', tenantId || 'active'] as const,
+  transactions: (tenantId?: string | null, page?: number, pageSize?: number, status?: string) =>
+    [
+      'bank-transactions',
+      tenantId || 'active',
+      page ?? 1,
+      pageSize ?? 50,
+      status || 'ALL',
+    ] as const,
   accounts: (tenantId?: string | null) => ['bank-accounts', tenantId || 'active'] as const,
   statements: (tenantId?: string | null, bankAccountId?: string) =>
     ['bank-statements', tenantId || 'active', bankAccountId || 'all'] as const,
@@ -202,34 +209,61 @@ export interface BankTransactionsQueryResult {
   totalPages: number;
 }
 
+export interface BankTransactionsQueryOptions {
+  page?: number;
+  pageSize?: number;
+  status?: string;
+  fallbackCurrency?: string;
+}
+
 /**
  * 1. Bank Transactions Query
  * Caches bank transactions with mapped formatting for 0ms page transitions.
  * Exposes server total count and pagination metadata.
  */
-export function useBankTransactionsQuery(fallbackCurrency?: string) {
+export function useBankTransactionsQuery(
+  optionsOrCurrency?: BankTransactionsQueryOptions | string,
+) {
+  const options =
+    typeof optionsOrCurrency === 'string'
+      ? { fallbackCurrency: optionsOrCurrency }
+      : optionsOrCurrency || {};
+
   const tenantId = getActiveTenantId();
-  const defaultCurrency = fallbackCurrency || getActiveTenantCurrency();
+  const defaultCurrency = options.fallbackCurrency || getActiveTenantCurrency();
+  const page = options.page ?? 1;
+  const pageSize = options.pageSize ?? 50;
+  const status = options.status && options.status !== 'ALL' ? options.status : undefined;
 
   return useQuery<BankTransactionsQueryResult>({
-    queryKey: queryKeys.transactions(tenantId),
+    queryKey: queryKeys.transactions(tenantId, page, pageSize, status),
     queryFn: async () => {
-      const res = await apiClient.get<RawBankTransactionEnvelope>('/banking/transactions');
+      const params: Record<string, string | number> = {
+        page,
+        pageSize,
+      };
+      if (status) {
+        params.status = status;
+      }
+
+      const res = await apiClient.get<RawBankTransactionEnvelope>('/banking/transactions', {
+        params,
+      });
       const rawList = res.data || [];
       const totalCount = res.meta?.pagination?.totalCount ?? rawList.length;
-      const page = res.meta?.pagination?.page ?? 1;
-      const pageSize = res.meta?.pagination?.pageSize ?? (rawList.length || 50);
+      const serverPage = res.meta?.pagination?.page ?? page;
+      const serverPageSize = res.meta?.pagination?.pageSize ?? pageSize;
       const totalPages =
-        res.meta?.pagination?.totalPages ?? Math.max(1, Math.ceil(totalCount / pageSize));
+        res.meta?.pagination?.totalPages ?? Math.max(1, Math.ceil(totalCount / serverPageSize));
 
       const items: TransactionItem[] = rawList.map((tx) => {
         const rawAmount = Number(tx.amountCents || 0) / 100;
         const isDeposit = rawAmount > 0;
         const absAmount = Math.abs(rawAmount);
 
-        let status: TransactionItem['status'] = 'PENDING_REVIEW';
-        if (tx.status === 'RECONCILED') status = 'RECONCILED';
-        else if (tx.status === 'MATCHED' || tx.status === 'PROPOSED') status = 'AI_MATCHED';
+        let txStatus: TransactionItem['status'] = 'PENDING_REVIEW';
+        if (tx.status === 'RECONCILED') txStatus = 'RECONCILED';
+        else if (tx.status === 'MATCHED' || tx.status === 'PROPOSED') txStatus = 'AI_MATCHED';
 
         const rawMemo = tx.rawDescription || '';
         const cleanName = tx.normalizedPayee || cleanBankPayee(rawMemo);
@@ -244,7 +278,7 @@ export function useBankTransactionsQuery(fallbackCurrency?: string) {
           counterparty: cleanName,
           inflow: isDeposit ? absAmount : 0,
           outflow: isDeposit ? 0 : absAmount,
-          status,
+          status: txStatus,
           isAuditLocked: tx.status === 'RECONCILED',
           currency: tx.currency || defaultCurrency,
         };
@@ -253,8 +287,8 @@ export function useBankTransactionsQuery(fallbackCurrency?: string) {
       return {
         items,
         totalCount,
-        page,
-        pageSize,
+        page: serverPage,
+        pageSize: serverPageSize,
         totalPages,
       };
     },

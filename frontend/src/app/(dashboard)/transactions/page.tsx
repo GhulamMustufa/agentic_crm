@@ -52,7 +52,12 @@ export default function TransactionsPage() {
     isLoading,
     refetch,
     isRefetching,
-  } = useBankTransactionsQuery(tenantCurrency);
+  } = useBankTransactionsQuery({
+    page: currentPage,
+    pageSize,
+    status: statusFilter,
+    fallbackCurrency: tenantCurrency,
+  });
 
   const transactions = React.useMemo(() => transactionData?.items || [], [transactionData?.items]);
   const serverTotalCount = transactionData?.totalCount ?? transactions.length;
@@ -141,11 +146,8 @@ export default function TransactionsPage() {
     return tx.status === statusFilter;
   });
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
-  const paginatedList = React.useMemo(() => {
-    const start = (currentPage - 1) * pageSize;
-    return filtered.slice(start, start + pageSize);
-  }, [filtered, currentPage, pageSize]);
+  const totalPages = Math.max(1, serverTotalPages);
+  const paginatedList = filtered;
 
   // Calculate totals
   const totalInflows = transactions.reduce((acc, t) => acc + t.inflow, 0);
@@ -659,7 +661,7 @@ export default function TransactionsPage() {
             </div>
 
             {/* Pagination Footer */}
-            {(serverTotalCount > pageSize || filtered.length > pageSize) && (
+            {serverTotalCount > pageSize && (
               <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 border-t bg-muted/20">
                 <div className="text-xs text-muted-foreground">
                   Showing{' '}
@@ -668,15 +670,11 @@ export default function TransactionsPage() {
                   </span>{' '}
                   to{' '}
                   <span className="font-medium text-foreground">
-                    {Math.min(currentPage * pageSize, filtered.length)}
+                    {Math.min(currentPage * pageSize, serverTotalCount)}
                   </span>{' '}
                   of{' '}
                   <span className="font-medium text-foreground">
-                    {searchTerm || statusFilter !== 'ALL'
-                      ? `${filtered.length} filtered (${serverTotalCount.toLocaleString()} total)`
-                      : serverTotalCount > filtered.length
-                        ? `${serverTotalCount.toLocaleString()}`
-                        : filtered.length}
+                    {serverTotalCount.toLocaleString()}
                   </span>{' '}
                   transactions
                 </div>
@@ -692,21 +690,13 @@ export default function TransactionsPage() {
                     Previous
                   </Button>
                   <span className="text-xs font-mono px-2 text-muted-foreground">
-                    Page {currentPage} of{' '}
-                    {serverTotalCount > filtered.length && !searchTerm && statusFilter === 'ALL'
-                      ? serverTotalPages
-                      : totalPages}
+                    Page {currentPage} of {totalPages}
                   </span>
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                    disabled={
-                      currentPage >=
-                      (serverTotalCount > filtered.length && !searchTerm && statusFilter === 'ALL'
-                        ? serverTotalPages
-                        : totalPages)
-                    }
+                    disabled={currentPage >= totalPages}
                     className="h-8 px-2.5 text-xs"
                   >
                     Next

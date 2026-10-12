@@ -109,10 +109,34 @@ export interface PaginatedExceptionsResult {
   pageSize: number;
 }
 
+export interface PendingExceptionsOptions {
+  page?: number;
+  pageSize?: number;
+  status?: string;
+  fallbackCurrency?: string;
+}
+
 export async function getPendingExceptions(
-  fallbackCurrency?: string,
+  optionsOrCurrency?: PendingExceptionsOptions | string,
 ): Promise<PaginatedExceptionsResult> {
+  const options =
+    typeof optionsOrCurrency === 'string'
+      ? { fallbackCurrency: optionsOrCurrency }
+      : optionsOrCurrency || {};
+
+  const page = options.page ?? 1;
+  const pageSize = options.pageSize ?? 50;
+  const status = options.status || 'OPEN';
+
   try {
+    const params: Record<string, string | number> = {
+      page,
+      pageSize,
+    };
+    if (status !== 'ALL') {
+      params.status = status;
+    }
+
     const res = await apiClient.get<{
       data: RawExceptionDto[];
       meta?: {
@@ -124,17 +148,19 @@ export async function getPendingExceptions(
         };
       };
     }>('/banking/exceptions', {
-      params: { status: 'OPEN' },
+      params,
     });
-    const list = (res.data || []).filter((item) => !item.status || item.status === 'OPEN');
+    const list = (res.data || []).filter(
+      (item) => !item.status || item.status === 'OPEN' || status === 'ALL',
+    );
     const totalCount = res.meta?.pagination?.totalCount ?? list.length;
-    const page = res.meta?.pagination?.page ?? 1;
-    const pageSize = res.meta?.pagination?.pageSize ?? (list.length || 50);
+    const serverPage = res.meta?.pagination?.page ?? page;
+    const serverPageSize = res.meta?.pagination?.pageSize ?? pageSize;
     const totalPages =
-      res.meta?.pagination?.totalPages ?? Math.max(1, Math.ceil(totalCount / pageSize));
+      res.meta?.pagination?.totalPages ?? Math.max(1, Math.ceil(totalCount / serverPageSize));
 
     const defaultCurrency =
-      fallbackCurrency ||
+      options.fallbackCurrency ||
       (typeof window !== 'undefined' ? authStorage.getTenantCurrency() : 'MYR') ||
       'MYR';
 
@@ -326,8 +352,8 @@ export async function getPendingExceptions(
     return {
       items,
       totalCount,
-      page,
-      pageSize,
+      page: serverPage,
+      pageSize: serverPageSize,
       totalPages,
     };
   } catch (err) {
