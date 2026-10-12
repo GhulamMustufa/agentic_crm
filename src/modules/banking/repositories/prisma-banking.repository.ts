@@ -556,16 +556,42 @@ export class PrismaBankingRepository implements IBankingRepository {
     return items.map((t) => this.toBankTransactionEntity(t));
   }
 
-  async listTransactions(
+  async countTransactions(
     tenantId: string,
     options?: { bankAccountId?: string; status?: BankTransactionStatus },
+  ): Promise<number> {
+    return this.prisma.bankTransaction.count({
+      where: {
+        tenantId,
+        ...(options?.bankAccountId ? { bankAccountId: options.bankAccountId } : {}),
+        ...(options?.status ? { status: options.status } : {}),
+      },
+    });
+  }
+
+  async listTransactions(
+    tenantId: string,
+    options?: {
+      bankAccountId?: string;
+      status?: BankTransactionStatus;
+      limit?: number;
+      offset?: number;
+      page?: number;
+      pageSize?: number;
+    },
   ): Promise<BankTransactionEntity[]> {
+    const limit = options?.limit ?? (options?.pageSize ? Number(options.pageSize) : undefined);
+    const page = options?.page ? Number(options.page) : 1;
+    const offset = options?.offset ?? (options?.page && limit ? (page - 1) * limit : undefined);
+
     const items = await this.prisma.bankTransaction.findMany({
       where: {
         tenantId,
         ...(options?.bankAccountId ? { bankAccountId: options.bankAccountId } : {}),
         ...(options?.status ? { status: options.status } : {}),
       },
+      ...(limit !== undefined ? { take: limit } : {}),
+      ...(offset !== undefined ? { skip: offset } : {}),
       select: {
         id: true,
         tenantId: true,
@@ -897,16 +923,42 @@ export class PrismaBankingRepository implements IBankingRepository {
     return entity;
   }
 
-  async listExceptionItems(
+  async countExceptionItems(
     tenantId: string,
     options?: { status?: ExceptionStatus; severity?: ExceptionSeverity },
+  ): Promise<number> {
+    return this.prisma.bankingExceptionItem.count({
+      where: {
+        tenantId,
+        ...(options?.status ? { status: options.status } : {}),
+        ...(options?.severity ? { severity: options.severity } : {}),
+      },
+    });
+  }
+
+  async listExceptionItems(
+    tenantId: string,
+    options?: {
+      status?: ExceptionStatus;
+      severity?: ExceptionSeverity;
+      limit?: number;
+      offset?: number;
+      page?: number;
+      pageSize?: number;
+    },
   ): Promise<ExceptionItemEntity[]> {
+    const limit = options?.limit ?? (options?.pageSize ? Number(options.pageSize) : undefined);
+    const page = options?.page ? Number(options.page) : 1;
+    const offset = options?.offset ?? (options?.page && limit ? (page - 1) * limit : undefined);
+
     const items = await this.prisma.bankingExceptionItem.findMany({
       where: {
         tenantId,
         ...(options?.status ? { status: options.status } : {}),
         ...(options?.severity ? { severity: options.severity } : {}),
       },
+      ...(limit !== undefined ? { take: limit } : {}),
+      ...(offset !== undefined ? { skip: offset } : {}),
       orderBy: { createdAt: 'desc' },
     });
 

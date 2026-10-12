@@ -311,13 +311,45 @@ export class BankingController {
     @CurrentUser() user: TenantSessionContext,
     @Query('bankAccountId') bankAccountId?: string,
     @Query('status') status?: BankTransactionStatus,
+    @Query('page') pageStr?: string,
+    @Query('pageSize') pageSizeStr?: string,
+    @Query('limit') limitStr?: string,
+    @Query('offset') offsetStr?: string,
   ) {
     const tenantId = this.requireTenant(user);
-    const transactions = await this.bankProcessingService.listTransactions(tenantId, {
-      bankAccountId,
-      status,
-    });
-    return { data: serializeBigInt(transactions) };
+    const page = pageStr ? Math.max(1, parseInt(pageStr, 10)) : 1;
+    const requestedSize = pageSizeStr
+      ? Math.max(1, parseInt(pageSizeStr, 10))
+      : limitStr
+        ? Math.max(1, parseInt(limitStr, 10))
+        : 100;
+    const limit = Math.min(requestedSize, 500); // Safeguard memory by capping at 500
+    const offset = offsetStr ? Math.max(0, parseInt(offsetStr, 10)) : (page - 1) * limit;
+
+    const [items, totalCount] = await Promise.all([
+      this.bankProcessingService.listTransactions(tenantId, {
+        bankAccountId,
+        status,
+        limit,
+        offset,
+      }),
+      this.bankProcessingService.countTransactions(tenantId, {
+        bankAccountId,
+        status,
+      }),
+    ]);
+
+    return {
+      data: serializeBigInt(items),
+      meta: {
+        pagination: {
+          totalCount,
+          page,
+          pageSize: limit,
+          totalPages: Math.ceil(totalCount / limit) || 1,
+        },
+      },
+    };
   }
 
   // --- Proposals ---
@@ -381,13 +413,45 @@ export class BankingController {
     @CurrentUser() user: TenantSessionContext,
     @Query('status') status?: ExceptionStatus,
     @Query('severity') severity?: ExceptionSeverity,
+    @Query('page') pageStr?: string,
+    @Query('pageSize') pageSizeStr?: string,
+    @Query('limit') limitStr?: string,
+    @Query('offset') offsetStr?: string,
   ) {
     const tenantId = this.requireTenant(user);
-    const exceptions = await this.bankProcessingService.listExceptions(tenantId, {
-      status,
-      severity,
-    });
-    return { data: serializeBigInt(exceptions) };
+    const page = pageStr ? Math.max(1, parseInt(pageStr, 10)) : 1;
+    const requestedSize = pageSizeStr
+      ? Math.max(1, parseInt(pageSizeStr, 10))
+      : limitStr
+        ? Math.max(1, parseInt(limitStr, 10))
+        : 50;
+    const limit = Math.min(requestedSize, 200); // Safeguard memory by capping at 200
+    const offset = offsetStr ? Math.max(0, parseInt(offsetStr, 10)) : (page - 1) * limit;
+
+    const [items, totalCount] = await Promise.all([
+      this.bankProcessingService.listExceptions(tenantId, {
+        status,
+        severity,
+        limit,
+        offset,
+      }),
+      this.bankProcessingService.countExceptions(tenantId, {
+        status,
+        severity,
+      }),
+    ]);
+
+    return {
+      data: serializeBigInt(items),
+      meta: {
+        pagination: {
+          totalCount,
+          page,
+          pageSize: limit,
+          totalPages: Math.ceil(totalCount / limit) || 1,
+        },
+      },
+    };
   }
 
   @Post('exceptions/batch-resolve')

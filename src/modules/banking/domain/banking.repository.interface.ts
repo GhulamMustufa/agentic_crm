@@ -170,8 +170,19 @@ export interface IBankingRepository {
   ): Promise<BankTransactionEntity[]>;
   listTransactions(
     tenantId: string,
-    options?: { bankAccountId?: string; status?: BankTransactionStatus },
+    options?: {
+      bankAccountId?: string;
+      status?: BankTransactionStatus;
+      limit?: number;
+      offset?: number;
+      page?: number;
+      pageSize?: number;
+    },
   ): Promise<BankTransactionEntity[]>;
+  countTransactions?(
+    tenantId: string,
+    options?: { bankAccountId?: string; status?: BankTransactionStatus },
+  ): Promise<number>;
   updateTransactionStatus(
     tenantId: string,
     id: string,
@@ -209,8 +220,19 @@ export interface IBankingRepository {
   findExceptionItemById(tenantId: string, id: string): Promise<ExceptionItemEntity | null>;
   listExceptionItems(
     tenantId: string,
-    options?: { status?: ExceptionStatus; severity?: ExceptionSeverity },
+    options?: {
+      status?: ExceptionStatus;
+      severity?: ExceptionSeverity;
+      limit?: number;
+      offset?: number;
+      page?: number;
+      pageSize?: number;
+    },
   ): Promise<ExceptionItemEntity[]>;
+  countExceptionItems?(
+    tenantId: string,
+    options?: { status?: ExceptionStatus; severity?: ExceptionSeverity },
+  ): Promise<number>;
   updateExceptionStatus(
     tenantId: string,
     id: string,

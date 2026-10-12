@@ -323,11 +323,40 @@ export class InMemoryBankingRepository implements IBankingRepository {
       .map((t) => ({ ...t }));
   }
 
-  async listTransactions(
+  async countTransactions(
     tenantId: string,
     options?: { bankAccountId?: string; status?: BankTransactionStatus },
+  ): Promise<number> {
+    return Array.from(this.transactions.values()).filter((t) => {
+      if (t.tenantId !== tenantId) {
+        return false;
+      }
+      if (options?.bankAccountId && t.bankAccountId !== options.bankAccountId) {
+        return false;
+      }
+      if (options?.status && t.status !== options.status) {
+        return false;
+      }
+      return true;
+    }).length;
+  }
+
+  async listTransactions(
+    tenantId: string,
+    options?: {
+      bankAccountId?: string;
+      status?: BankTransactionStatus;
+      limit?: number;
+      offset?: number;
+      page?: number;
+      pageSize?: number;
+    },
   ): Promise<BankTransactionEntity[]> {
-    return Array.from(this.transactions.values())
+    const limit = options?.limit ?? (options?.pageSize ? Number(options.pageSize) : undefined);
+    const page = options?.page ? Number(options.page) : 1;
+    const offset = options?.offset ?? (options?.page && limit ? (page - 1) * limit : undefined);
+
+    const filtered = Array.from(this.transactions.values())
       .filter((t) => {
         if (t.tenantId !== tenantId) {
           return false;
@@ -341,6 +370,13 @@ export class InMemoryBankingRepository implements IBankingRepository {
         return true;
       })
       .map((t) => ({ ...t }));
+
+    if (offset !== undefined || limit !== undefined) {
+      const start = offset || 0;
+      const end = limit !== undefined ? start + limit : undefined;
+      return filtered.slice(start, end);
+    }
+    return filtered;
   }
 
   async updateTransactionStatus(
@@ -528,11 +564,40 @@ export class InMemoryBankingRepository implements IBankingRepository {
     return { ...e };
   }
 
-  async listExceptionItems(
+  async countExceptionItems(
     tenantId: string,
     options?: { status?: ExceptionStatus; severity?: ExceptionSeverity },
+  ): Promise<number> {
+    return Array.from(this.exceptions.values()).filter((e) => {
+      if (e.tenantId !== tenantId) {
+        return false;
+      }
+      if (options?.status && e.status !== options.status) {
+        return false;
+      }
+      if (options?.severity && e.severity !== options.severity) {
+        return false;
+      }
+      return true;
+    }).length;
+  }
+
+  async listExceptionItems(
+    tenantId: string,
+    options?: {
+      status?: ExceptionStatus;
+      severity?: ExceptionSeverity;
+      limit?: number;
+      offset?: number;
+      page?: number;
+      pageSize?: number;
+    },
   ): Promise<ExceptionItemEntity[]> {
-    return Array.from(this.exceptions.values())
+    const limit = options?.limit ?? (options?.pageSize ? Number(options.pageSize) : undefined);
+    const page = options?.page ? Number(options.page) : 1;
+    const offset = options?.offset ?? (options?.page && limit ? (page - 1) * limit : undefined);
+
+    const filtered = Array.from(this.exceptions.values())
       .filter((e) => {
         if (e.tenantId !== tenantId) {
           return false;
@@ -546,6 +611,13 @@ export class InMemoryBankingRepository implements IBankingRepository {
         return true;
       })
       .map((e) => ({ ...e }));
+
+    if (offset !== undefined || limit !== undefined) {
+      const start = offset || 0;
+      const end = limit !== undefined ? start + limit : undefined;
+      return filtered.slice(start, end);
+    }
+    return filtered;
   }
 
   async updateExceptionStatus(

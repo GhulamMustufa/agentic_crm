@@ -1281,9 +1281,27 @@ export class BankProcessingService {
     options?: {
       status?: 'OPEN' | 'RESOLVED' | 'DISMISSED';
       severity?: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+      limit?: number;
+      offset?: number;
+      page?: number;
+      pageSize?: number;
     },
   ): Promise<ExceptionItemEntity[]> {
     return this.bankingRepo.listExceptionItems(tenantId, options);
+  }
+
+  async countExceptions(
+    tenantId: string,
+    options?: {
+      status?: 'OPEN' | 'RESOLVED' | 'DISMISSED';
+      severity?: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+    },
+  ): Promise<number> {
+    if (this.bankingRepo.countExceptionItems) {
+      return this.bankingRepo.countExceptionItems(tenantId, options);
+    }
+    const all = await this.bankingRepo.listExceptionItems(tenantId, options);
+    return all.length;
   }
 
   async resolveException(
@@ -1411,9 +1429,27 @@ export class BankProcessingService {
     return this.bankingRepo.listProposals(tenantId, status);
   }
 
-  async listTransactions(
+  async countTransactions(
     tenantId: string,
     options?: { bankAccountId?: string; status?: BankTransactionStatus },
+  ): Promise<number> {
+    if (this.bankingRepo.countTransactions) {
+      return this.bankingRepo.countTransactions(tenantId, options);
+    }
+    const all = await this.bankingRepo.listTransactions(tenantId, options);
+    return all.length;
+  }
+
+  async listTransactions(
+    tenantId: string,
+    options?: {
+      bankAccountId?: string;
+      status?: BankTransactionStatus;
+      limit?: number;
+      offset?: number;
+      page?: number;
+      pageSize?: number;
+    },
   ): Promise<BankTransactionEntity[]> {
     return this.bankingRepo.listTransactions(tenantId, options);
   }
@@ -1426,27 +1462,27 @@ export class BankProcessingService {
     transactions: BankTransactionEntity[];
     proposals: ProposalEntity[];
     exceptions: ExceptionItemEntity[];
+    lineCount: number;
+    proposalsCount: number;
+    exceptionsCount: number;
   } | null> {
     const statement = await this.bankingRepo.findBankStatementById(tenantId, statementId);
     if (!statement) {
       return null;
     }
-    const transactions = await this.bankingRepo.listTransactionsByStatementId(
-      tenantId,
-      statementId,
-    );
-    const txIds = new Set(transactions.map((t) => t.id));
-    const allProposals = await this.bankingRepo.listProposals(tenantId);
-    const proposals = allProposals.filter((p) => txIds.has(p.bankTransactionId));
-    const allExceptions = await this.bankingRepo.listExceptionItems(tenantId);
-    const exceptions = allExceptions.filter(
-      (e) => e.entityId === statementId || txIds.has(e.entityId),
-    );
+    const metadata = (statement.metadata || {}) as Record<string, unknown>;
+    const lineCount = (metadata.transactionCount as number) || 0;
+    const proposalsCount = (metadata.proposalsCount as number) || lineCount;
+    const exceptionsCount = (metadata.exceptionsCount as number) || 0;
+
     return {
       statement,
-      transactions,
-      proposals,
-      exceptions,
+      transactions: [],
+      proposals: [],
+      exceptions: [],
+      lineCount,
+      proposalsCount,
+      exceptionsCount,
     };
   }
 
