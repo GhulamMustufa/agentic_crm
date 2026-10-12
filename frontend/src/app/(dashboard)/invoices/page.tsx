@@ -29,6 +29,9 @@ import {
   ArrowDown,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
+  Check,
+  Landmark,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -54,6 +57,7 @@ import {
   useInvoicesQuery,
   useCounterpartiesQuery,
   useLedgerAccountsQuery,
+  useBankTransactionsQuery,
   useSmartInvalidate,
   type InvoiceRecord,
   type Counterparty,
@@ -94,8 +98,14 @@ export default function InvoicesPage() {
     isLoading: isLoadingCounterparties,
     refetch: refetchCounterparties,
   } = useCounterpartiesQuery();
+  const tenantCurrency = useTenantCurrency();
   const { data: ledgerAccounts = [], isLoading: isLoadingAccounts } = useLedgerAccountsQuery();
   const { invalidateInvoices } = useSmartInvalidate();
+  const { data: bankTransactionsData } = useBankTransactionsQuery(tenantCurrency);
+  const bankTransactions = React.useMemo(
+    () => bankTransactionsData?.items || [],
+    [bankTransactionsData?.items],
+  );
 
   const isLoadingDeps = isLoadingCounterparties || isLoadingAccounts;
 
@@ -126,10 +136,25 @@ export default function InvoicesPage() {
   const [selectedCounterpartyId, setSelectedCounterpartyId] = React.useState('');
   const [newCounterpartyName, setNewCounterpartyName] = React.useState('');
   const [invoiceNumber, setInvoiceNumber] = React.useState('');
-  const tenantCurrency = useTenantCurrency();
   const [issueDate, setIssueDate] = React.useState(getTodayDate());
   const [dueDate, setDueDate] = React.useState(addDaysToDate(getTodayDate(), 30));
   const [formCurrency, setFormCurrency] = React.useState('MYR');
+
+  // Combobox dropdown open state & outside click handler
+  const [isCounterpartyDropdownOpen, setIsCounterpartyDropdownOpen] = React.useState(false);
+  const comboboxRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (comboboxRef.current && !comboboxRef.current.contains(event.target as Node)) {
+        setIsCounterpartyDropdownOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
 
   React.useEffect(() => {
     if (tenantCurrency) {
@@ -137,13 +162,157 @@ export default function InvoicesPage() {
     }
   }, [tenantCurrency]);
 
-  React.useEffect(() => {
-    if (counterparties.length > 0 && !selectedCounterpartyId) {
-      setSelectedCounterpartyId(counterparties[0].id);
-    } else if (counterparties.length === 0) {
+  interface BankPayeeSuggestion {
+    name: string;
+    count: number;
+    totalVolume: number;
+    currency: string;
+  }
+
+  // Extract distinct bank statement payees based on money direction (Inflow for Invoices / Outflow for Bills)
+  const bankSuggestions = React.useMemo(() => {
+    const map = new Map<
+      string,
+      { name: string; count: number; totalVolume: number; currency: string }
+    >();
+
+    for (const tx of bankTransactions) {
+      const isTarget = formType === 'INVOICE' ? tx.inflow > 0 : tx.outflow > 0;
+      if (!isTarget) continue;
+
+      const rawName = (tx.cleanPayee || tx.counterparty || '').trim();
+      if (!rawName || rawName.length < 2) continue;
+
+      const lower = rawName.toLowerCase();
+      // Skip generic noise keywords
+      if (
+        [
+          'unknown',
+          'deposit',
+          'deposits',
+          'withdrawal',
+          'withdrawals',
+          'interest',
+          'transfer',
+          'transfers',
+          'cash',
+          'bank charge',
+          'charges',
+          'fee',
+          'fees',
+        ].includes(lower)
+      ) {
+        continue;
+      }
+
+      const amount = formType === 'INVOICE' ? tx.inflow : tx.outflow;
+      const existing = map.get(lower);
+      if (existing) {
+        existing.count += 1;
+        existing.totalVolume += amount;
+      } else {
+        map.set(lower, {
+          name: rawName,
+          count: 1,
+          totalVolume: amount,
+          currency: tx.currency || tenantCurrency || 'MYR',
+        });
+      }
+    }
+
+    return Array.from(map.values()).sort(
+      (a, b) => b.count - a.count || b.totalVolume - a.totalVolume,
+    );
+  }, [bankTransactions, formType, tenantCurrency]);
+
+  // Saved counterparties matching the form type (Customer vs Vendor)
+  const relevantSavedCounterparties = React.useMemo(() => {
+    return counterparties.filter((cp) => {
+      if (!cp.type || cp.type === 'BOTH') return true;
+      return formType === 'INVOICE' ? cp.type === 'CUSTOMER' : cp.type === 'VENDOR';
+    });
+  }, [counterparties, formType]);
+
+  // Lookup map for bank activity stats to display on saved counterparties
+  const bankSuggestionStatsMap = React.useMemo(() => {
+    const map = new Map<string, BankPayeeSuggestion>();
+    for (const bs of bankSuggestions) {
+      map.set(bs.name.toLowerCase(), bs);
+    }
+    return map;
+  }, [bankSuggestions]);
+
+  // Bank suggestions that are not yet registered as formal Counterparties
+  const unlinkedBankSuggestions = React.useMemo(() => {
+    const savedNames = new Set(counterparties.map((cp) => cp.legalName.trim().toLowerCase()));
+    return bankSuggestions.filter((bs) => !savedNames.has(bs.name.toLowerCase()));
+  }, [bankSuggestions, counterparties]);
+
+  const searchQuery = newCounterpartyName.trim().toLowerCase();
+
+  const filteredSavedCounterparties = React.useMemo(() => {
+    if (!searchQuery) return relevantSavedCounterparties;
+    return relevantSavedCounterparties.filter((cp) =>
+      cp.legalName.toLowerCase().includes(searchQuery),
+    );
+  }, [relevantSavedCounterparties, searchQuery]);
+
+  const filteredBankSuggestions = React.useMemo(() => {
+    if (!searchQuery) return unlinkedBankSuggestions;
+    return unlinkedBankSuggestions.filter((bs) => bs.name.toLowerCase().includes(searchQuery));
+  }, [unlinkedBankSuggestions, searchQuery]);
+
+  const exactMatchExists = React.useMemo(() => {
+    if (!searchQuery) return false;
+    const inSaved = relevantSavedCounterparties.some(
+      (cp) => cp.legalName.toLowerCase() === searchQuery,
+    );
+    if (inSaved) return true;
+    return unlinkedBankSuggestions.some((bs) => bs.name.toLowerCase() === searchQuery);
+  }, [searchQuery, relevantSavedCounterparties, unlinkedBankSuggestions]);
+
+  const handleNameChange = (val: string) => {
+    setNewCounterpartyName(val);
+    setIsCounterpartyDropdownOpen(true);
+    const match = relevantSavedCounterparties.find(
+      (c) => c.legalName.toLowerCase() === val.trim().toLowerCase(),
+    );
+    if (match) {
+      setSelectedCounterpartyId(match.id);
+      setCounterpartyMode('select');
+    } else {
+      setSelectedCounterpartyId('');
       setCounterpartyMode('new');
     }
-  }, [counterparties, selectedCounterpartyId]);
+  };
+
+  const handleSelectSavedCounterparty = (cp: Counterparty) => {
+    setNewCounterpartyName(cp.legalName);
+    setSelectedCounterpartyId(cp.id);
+    setCounterpartyMode('select');
+    setIsCounterpartyDropdownOpen(false);
+  };
+
+  const handleSelectBankSuggestion = (suggestion: BankPayeeSuggestion) => {
+    setNewCounterpartyName(suggestion.name);
+    setSelectedCounterpartyId('');
+    setCounterpartyMode('new');
+    setIsCounterpartyDropdownOpen(false);
+  };
+
+  const handleSelectCustomNew = (name: string) => {
+    setNewCounterpartyName(name);
+    setSelectedCounterpartyId('');
+    setCounterpartyMode('new');
+    setIsCounterpartyDropdownOpen(false);
+  };
+
+  const handleClearCounterparty = () => {
+    setNewCounterpartyName('');
+    setSelectedCounterpartyId('');
+    setCounterpartyMode('new');
+    setIsCounterpartyDropdownOpen(true);
+  };
 
   const [taxAmount, setTaxAmount] = React.useState<number>(0);
   const [postImmediately, setPostImmediately] = React.useState(true);
@@ -212,6 +381,10 @@ export default function InvoicesPage() {
 
   const handleSwitchFormType = (newType: 'INVOICE' | 'BILL') => {
     setFormType(newType);
+    setSelectedCounterpartyId('');
+    setNewCounterpartyName('');
+    setCounterpartyMode('new');
+    setIsCounterpartyDropdownOpen(false);
     if (!editingInvoiceId) {
       setInvoiceNumber(getNextInvoiceNumber(newType, invoices));
       const suggested = getSuggestedAccountForType(newType, ledgerAccounts);
@@ -405,9 +578,10 @@ export default function InvoicesPage() {
     setEditingInvoiceId(null);
     setFormType('INVOICE');
     setLineMode('simple');
-    setCounterpartyMode(counterparties.length > 0 ? 'select' : 'new');
-    setSelectedCounterpartyId(counterparties[0]?.id || '');
+    setCounterpartyMode('new');
+    setSelectedCounterpartyId('');
     setNewCounterpartyName('');
+    setIsCounterpartyDropdownOpen(false);
     setInvoiceNumber(getNextInvoiceNumber('INVOICE', invoices));
     setIssueDate(getTodayDate());
     setDueDate(addDaysToDate(getTodayDate(), 30));
@@ -426,7 +600,6 @@ export default function InvoicesPage() {
       },
     ]);
   }, [
-    counterparties,
     invoices,
     tenantCurrency,
     primaryCurrency,
@@ -449,13 +622,13 @@ export default function InvoicesPage() {
 
       let targetCounterpartyId = selectedCounterpartyId;
 
-      if (counterpartyMode === 'new') {
+      if (!targetCounterpartyId || counterpartyMode === 'new') {
         const trimmedName = newCounterpartyName.trim();
         if (!trimmedName) {
           toast.error(
             formType === 'INVOICE'
-              ? 'Please enter customer / client name'
-              : 'Please enter vendor / supplier name',
+              ? 'Please enter or select a customer / client name'
+              : 'Please enter or select a vendor / supplier name',
           );
           return;
         }
@@ -1330,53 +1503,256 @@ export default function InvoicesPage() {
               >
                 {/* Row 1: Client / Supplier & Invoice Number */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="space-y-1.5 md:col-span-2">
+                  <div ref={comboboxRef} className="space-y-1.5 md:col-span-2 relative">
                     <div className="flex justify-between items-center">
                       <Label
-                        htmlFor="counterpartySelect"
-                        className="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
+                        htmlFor="counterpartyInput"
+                        className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5"
                       >
                         {formType === 'INVOICE'
                           ? 'Customer / Client Name'
                           : 'Vendor / Supplier Name'}
+                        {selectedCounterpartyId ? (
+                          <Badge
+                            variant="outline"
+                            className="text-[10px] py-0 px-1.5 border-emerald-500/30 text-emerald-600 dark:text-emerald-400 bg-emerald-500/10"
+                          >
+                            Saved
+                          </Badge>
+                        ) : newCounterpartyName &&
+                          bankSuggestionStatsMap.has(newCounterpartyName.toLowerCase()) ? (
+                          <Badge
+                            variant="outline"
+                            className="text-[10px] py-0 px-1.5 border-blue-500/30 text-blue-600 dark:text-blue-400 bg-blue-500/10"
+                          >
+                            Bank Payee
+                          </Badge>
+                        ) : null}
                       </Label>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setCounterpartyMode((prev) => (prev === 'select' ? 'new' : 'select'))
-                        }
-                        className="text-xs text-primary hover:underline font-medium cursor-pointer"
-                      >
-                        {counterpartyMode === 'select' ? '+ Add New Client' : '← Select Existing'}
-                      </button>
+                      <div className="text-[11px] text-muted-foreground">
+                        {relevantSavedCounterparties.length > 0 && (
+                          <span>{relevantSavedCounterparties.length} saved</span>
+                        )}
+                        {relevantSavedCounterparties.length > 0 &&
+                          unlinkedBankSuggestions.length > 0 && <span> • </span>}
+                        {unlinkedBankSuggestions.length > 0 && (
+                          <span>{unlinkedBankSuggestions.length} bank payees</span>
+                        )}
+                      </div>
                     </div>
 
-                    {counterpartyMode === 'select' && counterparties.length > 0 ? (
-                      <select
-                        id="counterpartySelect"
-                        value={selectedCounterpartyId}
-                        onChange={(e) => setSelectedCounterpartyId(e.target.value)}
-                        className="w-full h-10 px-3 text-sm bg-background border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-                      >
-                        {counterparties.map((cp) => (
-                          <option key={cp.id} value={cp.id}>
-                            {cp.legalName}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-muted-foreground">
+                        {selectedCounterpartyId ? (
+                          <Building className="w-4 h-4 text-emerald-500" />
+                        ) : (
+                          <Search className="w-4 h-4" />
+                        )}
+                      </div>
                       <Input
-                        id="newCounterpartyName"
+                        id="counterpartyInput"
                         placeholder={
                           formType === 'INVOICE'
-                            ? 'e.g. Starlight Corp / Acme Global'
-                            : 'e.g. AWS Cloud / Office Depot'
+                            ? 'Search saved clients or bank statement deposits...'
+                            : 'Search saved vendors or bank statement payments...'
                         }
                         value={newCounterpartyName}
-                        onChange={(e) => setNewCounterpartyName(e.target.value)}
-                        className="bg-background"
+                        onChange={(e) => handleNameChange(e.target.value)}
+                        onFocus={() => setIsCounterpartyDropdownOpen(true)}
+                        className="pl-9 pr-16 bg-background text-sm"
+                        autoComplete="off"
                         required
                       />
+                      <div className="absolute inset-y-0 right-0 pr-2 flex items-center gap-1">
+                        {newCounterpartyName && (
+                          <button
+                            type="button"
+                            onClick={handleClearCounterparty}
+                            className="p-1 text-muted-foreground hover:text-foreground rounded transition-colors cursor-pointer"
+                            title="Clear"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setIsCounterpartyDropdownOpen((prev) => !prev)}
+                          className="p-1 text-muted-foreground hover:text-foreground rounded transition-colors cursor-pointer"
+                          tabIndex={-1}
+                          title="Toggle Suggestions"
+                        >
+                          <ChevronDown
+                            className={`w-4 h-4 transition-transform duration-200 ${
+                              isCounterpartyDropdownOpen ? 'rotate-180' : ''
+                            }`}
+                          />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Smart Combobox Dropdown */}
+                    {isCounterpartyDropdownOpen && (
+                      <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-popover text-popover-foreground border border-border rounded-md shadow-xl overflow-hidden">
+                        <div className="max-h-60 overflow-y-auto divide-y divide-border/40 text-xs">
+                          {/* Section 1: Saved Counterparties */}
+                          {filteredSavedCounterparties.length > 0 && (
+                            <div>
+                              <div className="px-3 py-1.5 bg-muted/50 text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center justify-between">
+                                <span className="flex items-center gap-1.5">
+                                  <Building className="w-3 h-3 text-emerald-500" />
+                                  Saved {formType === 'INVOICE' ? 'Clients' : 'Vendors'} (
+                                  {filteredSavedCounterparties.length})
+                                </span>
+                              </div>
+                              <div className="py-1">
+                                {filteredSavedCounterparties.map((cp) => {
+                                  const stats = bankSuggestionStatsMap.get(
+                                    cp.legalName.toLowerCase(),
+                                  );
+                                  const isSelected =
+                                    selectedCounterpartyId === cp.id ||
+                                    newCounterpartyName.toLowerCase() ===
+                                      cp.legalName.toLowerCase();
+                                  return (
+                                    <button
+                                      key={cp.id}
+                                      type="button"
+                                      onClick={() => handleSelectSavedCounterparty(cp)}
+                                      className={`w-full text-left px-3 py-2 flex items-center justify-between hover:bg-accent/60 transition-colors cursor-pointer ${
+                                        isSelected ? 'bg-accent/80 font-medium' : ''
+                                      }`}
+                                    >
+                                      <div className="flex items-center gap-2 min-w-0 pr-2">
+                                        <Building className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                                        <span className="truncate text-xs text-foreground font-medium">
+                                          {cp.legalName}
+                                        </span>
+                                      </div>
+                                      <div className="flex items-center gap-1.5 shrink-0">
+                                        {stats ? (
+                                          <Badge
+                                            variant="outline"
+                                            className="text-[10px] py-0 px-1.5 border-emerald-500/30 text-emerald-600 dark:text-emerald-400 bg-emerald-500/10"
+                                          >
+                                            Saved • {stats.count}{' '}
+                                            {formType === 'INVOICE'
+                                              ? stats.count === 1
+                                                ? 'deposit'
+                                                : 'deposits'
+                                              : stats.count === 1
+                                                ? 'payment'
+                                                : 'payments'}
+                                          </Badge>
+                                        ) : (
+                                          <Badge
+                                            variant="outline"
+                                            className="text-[10px] py-0 px-1.5 border-emerald-500/30 text-emerald-600 dark:text-emerald-400 bg-emerald-500/10"
+                                          >
+                                            Saved
+                                          </Badge>
+                                        )}
+                                        {isSelected && (
+                                          <Check className="w-3.5 h-3.5 text-primary ml-1 shrink-0" />
+                                        )}
+                                      </div>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Section 2: Bank Statement Payee Suggestions */}
+                          {filteredBankSuggestions.length > 0 && (
+                            <div>
+                              <div className="px-3 py-1.5 bg-muted/50 text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center justify-between">
+                                <span className="flex items-center gap-1.5">
+                                  <Landmark className="w-3 h-3 text-blue-500" />
+                                  From Bank Statement ({filteredBankSuggestions.length})
+                                </span>
+                                <span className="text-[9px] text-muted-foreground lowercase">
+                                  {formType === 'INVOICE'
+                                    ? 'money in / deposits'
+                                    : 'money out / disbursements'}
+                                </span>
+                              </div>
+                              <div className="py-1">
+                                {filteredBankSuggestions.slice(0, 15).map((bs) => {
+                                  const isSelected =
+                                    !selectedCounterpartyId &&
+                                    newCounterpartyName.toLowerCase() === bs.name.toLowerCase();
+                                  return (
+                                    <button
+                                      key={bs.name}
+                                      type="button"
+                                      onClick={() => handleSelectBankSuggestion(bs)}
+                                      className={`w-full text-left px-3 py-2 flex items-center justify-between hover:bg-accent/60 transition-colors cursor-pointer ${
+                                        isSelected ? 'bg-accent/80 font-medium' : ''
+                                      }`}
+                                    >
+                                      <div className="flex items-center gap-2 min-w-0 pr-2">
+                                        <Receipt className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                                        <span className="truncate text-xs text-foreground">
+                                          {bs.name}
+                                        </span>
+                                      </div>
+                                      <div className="flex items-center gap-1.5 shrink-0">
+                                        <Badge
+                                          variant="outline"
+                                          className="text-[10px] py-0 px-1.5 border-blue-500/30 text-blue-600 dark:text-blue-400 bg-blue-500/10"
+                                        >
+                                          {bs.count}{' '}
+                                          {formType === 'INVOICE'
+                                            ? bs.count === 1
+                                              ? 'deposit'
+                                              : 'deposits'
+                                            : bs.count === 1
+                                              ? 'payment'
+                                              : 'payments'}{' '}
+                                          • {formatCurrency(bs.totalVolume, bs.currency)}
+                                        </Badge>
+                                        {isSelected && (
+                                          <Check className="w-3.5 h-3.5 text-primary ml-1 shrink-0" />
+                                        )}
+                                      </div>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Section 3: Custom "Add New" Action */}
+                          {newCounterpartyName.trim() && !exactMatchExists && (
+                            <div className="p-1 bg-muted/20">
+                              <button
+                                type="button"
+                                onClick={() => handleSelectCustomNew(newCounterpartyName.trim())}
+                                className="w-full text-left px-3 py-2 flex items-center gap-2 hover:bg-primary/10 text-primary transition-colors rounded cursor-pointer font-medium"
+                              >
+                                <Plus className="w-3.5 h-3.5 shrink-0" />
+                                <span className="truncate text-xs">
+                                  Create &quot;{newCounterpartyName.trim()}&quot; as new{' '}
+                                  {formType === 'INVOICE' ? 'client' : 'vendor'}
+                                </span>
+                              </button>
+                            </div>
+                          )}
+
+                          {/* Section 4: Empty Fallback */}
+                          {filteredSavedCounterparties.length === 0 &&
+                            filteredBankSuggestions.length === 0 &&
+                            !newCounterpartyName.trim() && (
+                              <div className="p-4 text-center text-muted-foreground text-xs">
+                                <p>No saved counterparties or bank activity detected.</p>
+                                <p className="text-[11px] mt-1">
+                                  Type any {formType === 'INVOICE' ? 'customer' : 'vendor'} name
+                                  above to create.
+                                </p>
+                              </div>
+                            )}
+                        </div>
+                      </div>
                     )}
                   </div>
 
