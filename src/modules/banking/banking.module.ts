@@ -37,6 +37,15 @@ import { StatementValidationService } from './services/statement-validation.serv
     AuditModule,
     BullModule.registerQueue({
       name: 'statement-processing',
+      defaultJobOptions: {
+        attempts: 2,
+        backoff: {
+          type: 'exponential',
+          delay: 5000,
+        },
+        removeOnComplete: 100,
+        removeOnFail: 200,
+      },
     }),
   ],
   controllers: [BankingController],

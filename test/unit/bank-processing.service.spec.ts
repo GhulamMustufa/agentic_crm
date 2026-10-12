@@ -843,4 +843,36 @@ describe('BankProcessingService - AI Accountant Workflow', () => {
     const updated = await bankingRepo.findExceptionItemById(tenantId, excValid.id);
     expect(updated?.status).toBe('DISMISSED');
   });
+
+  it('supports lightweightResult mode without retaining large entity arrays in return payload', async () => {
+    const csvContent = [
+      'Date,Description,Amount,Balance',
+      '2026-06-01,INCOMING PAYMENT A,100.00,1100.00',
+      '2026-06-02,OFFICE SUPPLIES,-50.00,1050.00',
+      '2026-06-03,CONSULTING REVENUE,500.00,1550.00',
+    ].join('\n');
+
+    const uploadResult = await bankProcessingService.processStatementUpload(
+      tenantId,
+      userId,
+      {
+        fileName: 'batch_test.csv',
+        mimeType: 'text/csv',
+        content: csvContent,
+        manualBankName: 'Maybank',
+        manualAccountNumberLast4: '5671',
+      },
+      {
+        lightweightResult: true,
+        jobId: 'job-bench-1',
+      },
+    );
+
+    expect(uploadResult.statement.id).toBeDefined();
+    expect(uploadResult.statement.status).toBe('PARSED');
+    expect(uploadResult.lineCount).toBe(3);
+    expect(uploadResult.proposalsCount).toBe(3);
+    expect(uploadResult.transactions).toEqual([]);
+    expect(uploadResult.proposals).toEqual([]);
+  });
 });

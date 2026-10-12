@@ -91,6 +91,21 @@ Tarikh Urusniaga Wang Keluar Wang Masuk Baki
     expect(result.detectedFormat).toBe('PUBLIC_BANK_STATEMENT');
   });
 
+  it('preserves rawPages in inspection result to avoid redundant parser invocations', async () => {
+    const mockContent = `%PDF-1.4
+Maybank Islamic Berhad
+STATEMENT DATE : 30/06/26
+ENTRY DATE VALUE DATE TRANSACTION DESCRIPTION TRANSACTION AMOUNT STATEMENT BALANCE
+BEGINNING BALANCE 10,000.00
+%%EOF`;
+
+    const result = await service.inspect(Buffer.from(mockContent));
+    expect(result.isValidPdf).toBe(true);
+    expect(result.rawPages).toBeDefined();
+    expect(Array.isArray(result.rawPages)).toBe(true);
+    expect(result.rawPages?.length).toBeGreaterThanOrEqual(1);
+  });
+
   it('inspects actual user uploaded Maybank Islamic statement file if present', async () => {
     const samplePath = path.join(
       __dirname,

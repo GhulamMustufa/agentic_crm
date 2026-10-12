@@ -38,6 +38,7 @@ import {
 } from '../dto/banking.dto';
 import { CsvStatementParser } from '../parsers/csv-statement.parser';
 import { PdfStatementParser, MalformedPdfError } from '../parsers/pdf-statement.parser';
+import { logMemoryDiagnostics } from '../utils/memory-diagnostics';
 
 import type { AiClassificationResult } from './ai-accountant.service';
 import type { BankAccountEntity } from '../domain/bank-account.entity';
@@ -172,6 +173,8 @@ export class BankProcessingService {
     options?: {
       simulateAiTimeout?: boolean;
       simulateAiFailure?: boolean;
+      lightweightResult?: boolean;
+      jobId?: string | number;
       onProgress?: (progress: {
         stage: string;
         percent: number;
@@ -184,6 +187,9 @@ export class BankProcessingService {
     transactions: BankTransactionEntity[];
     proposals: ProposalEntity[];
     exceptions: ExceptionItemEntity[];
+    lineCount?: number;
+    proposalsCount?: number;
+    exceptionsCount?: number;
   }> {
     const parseResult = uploadStatementSchema.safeParse(rawDto);
     if (!parseResult.success) {
@@ -491,8 +497,9 @@ export class BankProcessingService {
       if (this.storage) {
         const ext = dto.mimeType === 'text/csv' ? 'csv' : 'pdf';
         const storageKey = `${tenantId}/statements/${fileSha256}.${ext}`;
-        const fileBuffer =
-          dto.mimeType === 'text/csv'
+        const fileBuffer = Buffer.isBuffer(dto.content)
+          ? dto.content
+          : dto.mimeType === 'text/csv'
             ? Buffer.from(dto.content, 'utf-8')
             : Buffer.from(dto.content, 'base64');
 
@@ -640,179 +647,217 @@ export class BankProcessingService {
       const openInvoices = await this.invoiceRepo.listInvoices(tenantId);
       const accounts = await this.ledgerService.listAccounts(tenantId);
 
-      const generatedProposals: ProposalEntity[] = [];
+      const isLightweight = options?.lightweightResult === true;
+      const BATCH_SIZE = 250;
+      const totalTxCount = persistedTransactions.length;
+      const totalBatches = Math.max(1, Math.ceil(totalTxCount / BATCH_SIZE));
+      let totalProposalsCount = 0;
+      let totalExceptionsCount = 0;
 
-      // 8. Classification, Entity Matching & Journal Proposals
-      await options?.onProgress?.({
-        stage: 'CATEGORIZING',
-        percent: 75,
-        message: 'Auto-categorizing payees and generating journal proposals...',
-        step: 3,
-      });
+      const generatedProposals: ProposalEntity[] = [];
+      const txCurrency = bankAccount.currency || 'MYR';
 
       try {
-        const evalResults: AiClassificationResult[] = [];
-        const proposalInputs: CreateProposalInput[] = [];
+        for (let batchIdx = 0; batchIdx < totalBatches; batchIdx++) {
+          const startIdx = batchIdx * BATCH_SIZE;
+          const endIdx = Math.min(startIdx + BATCH_SIZE, totalTxCount);
+          const chunkTx = persistedTransactions.slice(startIdx, endIdx);
 
-        for (let idx = 0; idx < persistedTransactions.length; idx++) {
-          const tx = persistedTransactions[idx]!;
+          if (chunkTx.length === 0) {
+            break;
+          }
 
-          if ((idx + 1) % 500 === 0 || idx === persistedTransactions.length - 1) {
-            const percent = Math.min(
-              93,
-              75 + Math.round(((idx + 1) / persistedTransactions.length) * 18),
+          logMemoryDiagnostics(this.logger, {
+            stage: 'AI_BATCH_START',
+            jobId: options?.jobId,
+            batchIndex: batchIdx,
+            totalBatches,
+            pageCount: parsedData.pageCount,
+          });
+
+          const percent = Math.min(93, 75 + Math.round((endIdx / totalTxCount) * 18));
+          await options?.onProgress?.({
+            stage: 'CATEGORIZING',
+            percent,
+            message: `Categorizing payees and generating proposals (${endIdx.toLocaleString()} / ${totalTxCount.toLocaleString()})...`,
+            step: 3,
+          });
+
+          const chunkEvalResults: AiClassificationResult[] = [];
+          const chunkProposalInputs: CreateProposalInput[] = [];
+
+          for (let i = 0; i < chunkTx.length; i++) {
+            const tx = chunkTx[i]!;
+            const evalResult = await this.aiAccountant.evaluateTransaction(
+              tenantId,
+              tx,
+              {
+                bankAccount,
+                otherBankAccounts: allBankAccounts,
+                counterparties,
+                openInvoices: openInvoices.filter(
+                  (inv) => inv.status === 'POSTED' || inv.status === 'PARTIALLY_PAID',
+                ),
+                accounts,
+              },
+              options,
             );
-            await options?.onProgress?.({
-              stage: 'CATEGORIZING',
-              percent,
-              message: `Categorizing payees and generating proposals (${(idx + 1).toLocaleString()} / ${persistedTransactions.length.toLocaleString()})...`,
-              step: 3,
+            chunkEvalResults.push(evalResult);
+
+            const absAmount = tx.amountCents >= 0n ? tx.amountCents : -tx.amountCents;
+            chunkProposalInputs.push({
+              tenantId,
+              bankTransactionId: tx.id,
+              invoiceId: evalResult.suggestedInvoiceId,
+              counterpartyId: evalResult.suggestedCounterpartyId,
+              proposalType: evalResult.proposalType,
+              debitAccountId: evalResult.suggestedDebitAccountId,
+              creditAccountId: evalResult.suggestedCreditAccountId,
+              amountCents: absAmount,
+              confidenceScore: evalResult.confidenceScore,
+              evidence: evalResult.evidence,
+              rationale: evalResult.rationale,
+              autoPostEligible: evalResult.autoPostEligible,
             });
           }
 
-          const evalResult = await this.aiAccountant.evaluateTransaction(
-            tenantId,
-            tx,
-            {
-              bankAccount,
-              otherBankAccounts: allBankAccounts,
-              counterparties,
-              openInvoices: openInvoices.filter(
-                (i) => i.status === 'POSTED' || i.status === 'PARTIALLY_PAID',
-              ),
-              accounts,
-            },
-            options,
-          );
-          evalResults.push(evalResult);
-
-          const absAmount = tx.amountCents >= 0n ? tx.amountCents : -tx.amountCents;
-          proposalInputs.push({
-            tenantId,
-            bankTransactionId: tx.id,
-            invoiceId: evalResult.suggestedInvoiceId,
-            counterpartyId: evalResult.suggestedCounterpartyId,
-            proposalType: evalResult.proposalType,
-            debitAccountId: evalResult.suggestedDebitAccountId,
-            creditAccountId: evalResult.suggestedCreditAccountId,
-            amountCents: absAmount,
-            confidenceScore: evalResult.confidenceScore,
-            evidence: evalResult.evidence,
-            rationale: evalResult.rationale,
-            autoPostEligible: evalResult.autoPostEligible,
+          logMemoryDiagnostics(this.logger, {
+            stage: 'AI_BATCH_COMPLETE',
+            jobId: options?.jobId,
+            batchIndex: batchIdx,
+            totalBatches,
+            pageCount: parsedData.pageCount,
           });
-        }
 
-        if (proposalInputs.length > 0) {
-          await options?.onProgress?.({
-            stage: 'CATEGORIZING',
-            percent: 94,
-            message: `Saving ${proposalInputs.length.toLocaleString()} proposals to staging...`,
-            step: 3,
-          });
-        }
-
-        let createdProposals: ProposalEntity[] = [];
-        if (this.bankingRepo.createProposals) {
-          createdProposals = await this.bankingRepo.createProposals(proposalInputs);
-        } else {
-          for (const input of proposalInputs) {
-            createdProposals.push(await this.bankingRepo.createProposal(input));
-          }
-        }
-
-        // 9. Deterministic 6-Stage Gate for Autonomous Posting & Exception Handling
-        const proposedTxIds: string[] = [];
-        const exceptionInputs: CreateExceptionInput[] = [];
-        const txCurrency = bankAccount.currency || 'MYR';
-
-        for (let i = 0; i < createdProposals.length; i++) {
-          let proposal = createdProposals[i]!;
-          const tx = persistedTransactions[i]!;
-          const evalResult = evalResults[i]!;
-
-          let passedGate = false;
-          if (
-            proposal.autoPostEligible &&
-            proposal.confidenceScore >= 0.95 &&
-            !evalResult.isAmbiguous
-          ) {
-            try {
-              await this.executeDeterministicGateAndPost(tenantId, userId, proposal, tx);
-              passedGate = true;
-              const reloaded = await this.bankingRepo.findProposalById(tenantId, proposal.id);
-              if (reloaded) {
-                proposal = reloaded;
+          // Batch insert proposals for this chunk
+          let chunkCreatedProposals: ProposalEntity[] = [];
+          if (chunkProposalInputs.length > 0) {
+            if (this.bankingRepo.createProposals) {
+              chunkCreatedProposals = await this.bankingRepo.createProposals(chunkProposalInputs);
+            } else {
+              for (const input of chunkProposalInputs) {
+                chunkCreatedProposals.push(await this.bankingRepo.createProposal(input));
               }
-            } catch {
-              passedGate = false;
             }
           }
 
-          if (!passedGate) {
-            proposedTxIds.push(tx.id);
-            const excType = evalResult.isAmbiguous
-              ? 'AMBIGUOUS_TRANSACTION'
-              : evalResult.proposalType === 'INVOICE_MATCH'
-                ? 'UNMATCHED_PAYMENT'
-                : 'EXTRACTION_UNCERTAIN';
+          totalProposalsCount += chunkCreatedProposals.length;
 
-            exceptionInputs.push({
-              tenantId,
-              entityType: 'PROPOSAL',
-              entityId: proposal.id,
-              exceptionType: excType,
-              severity: evalResult.confidenceScore < 0.6 ? 'HIGH' : 'MEDIUM',
-              reason: `${evalResult.rationale} (Confidence: ${Math.round(evalResult.confidenceScore * 100)}%)`,
-              evidence: [
-                ...evalResult.evidence,
-                {
-                  source: 'TRANSACTION_CONTEXT',
-                  reason: `Transaction amount: ${tx.amountCents.toString()}, currency: ${txCurrency}`,
+          // Deterministic gate & exceptions for this chunk
+          const chunkProposedTxIds: string[] = [];
+          const chunkExceptionInputs: CreateExceptionInput[] = [];
+
+          for (let i = 0; i < chunkCreatedProposals.length; i++) {
+            let proposal = chunkCreatedProposals[i]!;
+            const tx = chunkTx[i]!;
+            const evalResult = chunkEvalResults[i]!;
+
+            let passedGate = false;
+            if (
+              proposal.autoPostEligible &&
+              proposal.confidenceScore >= 0.95 &&
+              !evalResult.isAmbiguous
+            ) {
+              try {
+                await this.executeDeterministicGateAndPost(tenantId, userId, proposal, tx);
+                passedGate = true;
+                const reloaded = await this.bankingRepo.findProposalById(tenantId, proposal.id);
+                if (reloaded) {
+                  proposal = reloaded;
+                }
+              } catch {
+                passedGate = false;
+              }
+            }
+
+            if (!passedGate) {
+              chunkProposedTxIds.push(tx.id);
+              const excType = evalResult.isAmbiguous
+                ? 'AMBIGUOUS_TRANSACTION'
+                : evalResult.proposalType === 'INVOICE_MATCH'
+                  ? 'UNMATCHED_PAYMENT'
+                  : 'EXTRACTION_UNCERTAIN';
+
+              chunkExceptionInputs.push({
+                tenantId,
+                entityType: 'PROPOSAL',
+                entityId: proposal.id,
+                exceptionType: excType,
+                severity: evalResult.confidenceScore < 0.6 ? 'HIGH' : 'MEDIUM',
+                reason: `${evalResult.rationale} (Confidence: ${Math.round(evalResult.confidenceScore * 100)}%)`,
+                evidence: [
+                  ...evalResult.evidence,
+                  {
+                    source: 'TRANSACTION_CONTEXT',
+                    reason: `Transaction amount: ${tx.amountCents.toString()}, currency: ${txCurrency}`,
+                    amountCents: tx.amountCents.toString(),
+                    signedAmountCents: tx.signedAmountCents.toString(),
+                    currency: txCurrency,
+                    transactionDate: tx.transactionDate,
+                    bankAccountId: bankAccount.id,
+                  },
+                ],
+                proposedResolution: {
+                  proposalId: proposal.id,
                   amountCents: tx.amountCents.toString(),
                   signedAmountCents: tx.signedAmountCents.toString(),
                   currency: txCurrency,
                   transactionDate: tx.transactionDate,
-                  bankAccountId: bankAccount.id,
+                  suggestedDebitAccountId: evalResult.suggestedDebitAccountId,
+                  suggestedCreditAccountId: evalResult.suggestedCreditAccountId,
                 },
-              ],
-              proposedResolution: {
-                proposalId: proposal.id,
-                amountCents: tx.amountCents.toString(),
-                signedAmountCents: tx.signedAmountCents.toString(),
-                currency: txCurrency,
-                transactionDate: tx.transactionDate,
-                suggestedDebitAccountId: evalResult.suggestedDebitAccountId,
-                suggestedCreditAccountId: evalResult.suggestedCreditAccountId,
-              },
-            });
-          }
+              });
+            }
 
-          generatedProposals.push(proposal);
-        }
-
-        // Batch update transaction status to PROPOSED
-        if (proposedTxIds.length > 0) {
-          if (this.bankingRepo.updateTransactionStatuses) {
-            await this.bankingRepo.updateTransactionStatuses(tenantId, proposedTxIds, 'PROPOSED');
-          } else {
-            for (const txId of proposedTxIds) {
-              await this.bankingRepo.updateTransactionStatus(tenantId, txId, 'PROPOSED');
+            if (!isLightweight) {
+              generatedProposals.push(proposal);
             }
           }
-        }
 
-        // Batch persist exception items
-        if (exceptionInputs.length > 0) {
-          if (this.bankingRepo.createExceptionItems) {
-            const createdExceptions = await this.bankingRepo.createExceptionItems(exceptionInputs);
-            generatedExceptions.push(...createdExceptions);
-          } else {
-            for (const excInput of exceptionInputs) {
-              const exc = await this.bankingRepo.createExceptionItem(excInput);
-              generatedExceptions.push(exc);
+          // Batch update transaction status to PROPOSED
+          if (chunkProposedTxIds.length > 0) {
+            if (this.bankingRepo.updateTransactionStatuses) {
+              await this.bankingRepo.updateTransactionStatuses(
+                tenantId,
+                chunkProposedTxIds,
+                'PROPOSED',
+              );
+            } else {
+              for (const txId of chunkProposedTxIds) {
+                await this.bankingRepo.updateTransactionStatus(tenantId, txId, 'PROPOSED');
+              }
             }
           }
+
+          // Batch persist exception items
+          if (chunkExceptionInputs.length > 0) {
+            totalExceptionsCount += chunkExceptionInputs.length;
+            if (this.bankingRepo.createExceptionItems) {
+              const createdExceptions =
+                await this.bankingRepo.createExceptionItems(chunkExceptionInputs);
+              if (!isLightweight) {
+                generatedExceptions.push(...createdExceptions);
+              }
+            } else {
+              for (const excInput of chunkExceptionInputs) {
+                const exc = await this.bankingRepo.createExceptionItem(excInput);
+                if (!isLightweight) {
+                  generatedExceptions.push(exc);
+                }
+              }
+            }
+          }
+
+          logMemoryDiagnostics(this.logger, {
+            stage: 'BATCH_DB_PERSISTED',
+            jobId: options?.jobId,
+            batchIndex: batchIdx,
+            totalBatches,
+            pageCount: parsedData.pageCount,
+          });
+
+          // Yield event loop between chunks so BullMQ lock renewal timer can run
+          await new Promise((resolve) => setImmediate(resolve));
         }
       } catch (aiErr) {
         // AI Failure / Timeout Recovery
@@ -850,14 +895,20 @@ export class BankProcessingService {
         step: 4,
       });
 
-      const refreshedTransactions = await this.bankingRepo.listTransactionsByStatementId(
-        tenantId,
-        statement.id,
-      );
-      const allReconciled =
-        refreshedTransactions.length > 0 &&
-        refreshedTransactions.every((t) => t.status === 'RECONCILED');
-      const finalStatus: BankStatementStatus = allReconciled ? 'RECONCILED' : 'PARSED';
+      let refreshedTransactions: BankTransactionEntity[] = [];
+      let finalStatus: BankStatementStatus = 'PARSED';
+
+      if (!isLightweight) {
+        refreshedTransactions = await this.bankingRepo.listTransactionsByStatementId(
+          tenantId,
+          statement.id,
+        );
+        const allReconciled =
+          refreshedTransactions.length > 0 &&
+          refreshedTransactions.every((t) => t.status === 'RECONCILED');
+        finalStatus = allReconciled ? 'RECONCILED' : 'PARSED';
+      }
+
       const updatedStatement = await this.bankingRepo.updateBankStatementStatus(
         tenantId,
         statement.id,
@@ -873,9 +924,15 @@ export class BankProcessingService {
         actorId: 'AI_ACCOUNTANT',
         newState: {
           status: finalStatus,
-          proposalsCount: generatedProposals.length,
-          exceptionsCount: generatedExceptions.length,
+          proposalsCount: totalProposalsCount,
+          exceptionsCount: totalExceptionsCount,
         },
+      });
+
+      logMemoryDiagnostics(this.logger, {
+        stage: 'STATEMENT_COMPLETE',
+        jobId: options?.jobId,
+        pageCount: parsedData.pageCount,
       });
 
       return {
@@ -883,6 +940,9 @@ export class BankProcessingService {
         transactions: refreshedTransactions,
         proposals: generatedProposals,
         exceptions: generatedExceptions,
+        lineCount: persistedTransactions.length,
+        proposalsCount: totalProposalsCount,
+        exceptionsCount: totalExceptionsCount,
       };
     } finally {
       this.processingLocks.delete(lockKey);

@@ -16,7 +16,10 @@ export const uploadStatementSchema = z.object({
   bankAccountId: z.string().uuid().optional(),
   fileName: z.string().min(1).max(255),
   mimeType: z.enum(['text/csv', 'application/pdf', 'application/x-pdf']),
-  content: z.string().min(10, 'Statement content is required'), // Raw CSV string or Base64 PDF
+  content: z.union([
+    z.string().min(10, 'Statement content is required'),
+    z.custom<Buffer>((b) => Buffer.isBuffer(b), 'Statement content must be string or Buffer'),
+  ]), // Raw CSV string, Base64 PDF, or raw Buffer
   manualBankName: z.string().min(2).optional(),
   manualAccountType: z.enum(['CHECKING', 'SAVINGS', 'CREDIT_CARD']).optional(),
   manualAccountNumberLast4: z

@@ -33,6 +33,7 @@ export interface DocumentInspectionResult {
   statementDate?: string;
   confidence: number;
   reasons: string[];
+  rawPages?: Array<{ num: number; text: string }>;
 }
 
 export interface ExtractedPage {

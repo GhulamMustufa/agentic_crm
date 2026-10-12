@@ -45,14 +45,26 @@ export class MaybankAdapter implements IBankStatementAdapter {
     layout: StructuredDocumentLayout,
     inspection: DocumentInspectionResult,
   ): Promise<ParsedStatementResult> {
-    const fullText = layout.pages.map((p) => p.rawText).join('\n');
+    const isLargeDoc = layout.pages.length > 6;
+    const headerText = isLargeDoc
+      ? layout.pages
+          .slice(0, 3)
+          .map((p) => p.rawText)
+          .join('\n')
+      : layout.pages.map((p) => p.rawText).join('\n');
+    const footerText = isLargeDoc
+      ? layout.pages
+          .slice(-3)
+          .map((p) => p.rawText)
+          .join('\n')
+      : headerText;
 
     // 1. Resolve statement year and statement period
-    const statementYear = this.extractStatementYear(fullText, inspection.statementDate);
-    const { startDate, endDate } = this.extractStatementPeriod(fullText, statementYear);
+    const statementYear = this.extractStatementYear(headerText, inspection.statementDate);
+    const { startDate, endDate } = this.extractStatementPeriod(headerText, statementYear);
 
     // 2. Extract Opening & Ending Balances
-    const openingBalanceCents = this.extractBeginningBalance(fullText);
+    const openingBalanceCents = this.extractBeginningBalance(headerText);
     let closingBalanceCents = 0n;
     let foundExplicitClosing = false;
 
@@ -161,7 +173,7 @@ export class MaybankAdapter implements IBankStatementAdapter {
       closingBalanceCents = lastRunningBalance;
       foundExplicitClosing = true;
     } else {
-      const explicitClosing = this.extractEndingBalance(fullText);
+      const explicitClosing = this.extractEndingBalance(footerText);
       if (explicitClosing !== undefined) {
         closingBalanceCents = explicitClosing;
         foundExplicitClosing = true;

@@ -66,13 +66,13 @@ export class PdfStatementParser implements IStatementParser {
       ? content
       : Buffer.from(content, content.startsWith('%PDF') ? 'utf-8' : 'base64');
 
-    const rawStr = rawBuffer.toString('binary');
-
-    // 1. PDF Header and EOF verification
-    if (!rawStr.includes('%PDF-')) {
+    // 1. PDF Header and EOF verification using buffer checks without string cloning
+    const hasPdfHeader = rawBuffer.indexOf('%PDF-') !== -1;
+    const hasEof = rawBuffer.indexOf('%%EOF') !== -1 || rawBuffer.indexOf('trailer') !== -1;
+    if (!hasPdfHeader) {
       throw new MalformedPdfError('Missing %PDF- header magic bytes');
     }
-    if (!rawStr.includes('%%EOF') && !rawStr.includes('trailer')) {
+    if (!hasEof) {
       throw new MalformedPdfError('Truncated or corrupted PDF: missing EOF trailer marker');
     }
 
@@ -87,8 +87,8 @@ export class PdfStatementParser implements IStatementParser {
       );
     }
 
-    // 3. Layout Extraction
-    const layout = await this.layoutExtractor.extractLayout(rawBuffer);
+    // 3. Layout Extraction (pass precomputed inspection to avoid duplicate parsing)
+    const layout = await this.layoutExtractor.extractLayout(rawBuffer, inspection);
 
     // 4. Resolve Bank Adapter & Parse
     const adapter = this.adapterRegistry.getAdapter(inspection);

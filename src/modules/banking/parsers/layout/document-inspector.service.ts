@@ -18,12 +18,12 @@ export class DocumentInspectorService {
         ? Buffer.from(content, content.startsWith('%PDF') ? 'utf-8' : 'base64')
         : Buffer.from(content);
 
-    const rawStr = rawBuffer.toString('binary');
     const reasons: string[] = [];
 
-    // 1. Verify standard PDF signature
-    const hasPdfHeader = rawStr.includes('%PDF-');
-    const hasEof = rawStr.includes('%%EOF') || rawStr.includes('trailer');
+    // 1. Verify standard PDF signature using buffer checks to avoid huge string allocations
+    const hasPdfHeader = rawBuffer.indexOf('%PDF-') !== -1;
+    const hasEof = rawBuffer.indexOf('%%EOF') !== -1 || rawBuffer.indexOf('trailer') !== -1;
+    const hasEncryptMarker = rawBuffer.indexOf('/Encrypt') !== -1;
 
     if (!hasPdfHeader) {
       return {
@@ -47,6 +47,7 @@ export class DocumentInspectorService {
     let fullText = '';
     let isSearchableText = false;
     let isEncrypted = false;
+    let rawPages: Array<{ num: number; text: string }> = [];
 
     try {
       const mod = pdfParseModule as unknown as Record<string, unknown>;
@@ -61,12 +62,18 @@ export class DocumentInspectorService {
 
         if (typeof res === 'string') {
           fullText = res;
+          rawPages = [{ num: 1, text: res }];
         } else if (res && typeof res === 'object') {
           fullText = res.text ?? '';
+          if (Array.isArray(res.pages) && res.pages.length > 0) {
+            rawPages = res.pages;
+          } else if (typeof res.text === 'string') {
+            rawPages = [{ num: 1, text: res.text }];
+          }
           if (typeof res.total === 'number' && res.total > 0) {
             pageCount = res.total;
-          } else if (Array.isArray(res.pages) && res.pages.length > 0) {
-            pageCount = res.pages.length;
+          } else if (rawPages.length > 0) {
+            pageCount = rawPages.length;
           }
         }
       } else if (typeof mod === 'function') {
@@ -74,6 +81,7 @@ export class DocumentInspectorService {
           rawBuffer,
         );
         fullText = res.text ?? '';
+        rawPages = [{ num: 1, text: fullText }];
         if (typeof res.numpages === 'number' && res.numpages > 0) {
           pageCount = res.numpages;
         }
@@ -86,7 +94,7 @@ export class DocumentInspectorService {
         lower.includes('encrypt') ||
         lower.includes('bad password') ||
         lower.includes('security handler') ||
-        rawStr.includes('/Encrypt')
+        hasEncryptMarker
       ) {
         isEncrypted = true;
         reasons.push(`Document is password-protected or encrypted: ${errorMsg}`);
@@ -95,12 +103,32 @@ export class DocumentInspectorService {
         this.logger.warn(`PDF parse warning during inspection: ${errorMsg}`);
         reasons.push(`Text extraction encountered parser warning: ${errorMsg}`);
         fullText = rawBuffer.toString('utf-8');
+        rawPages = [{ num: 1, text: fullText }];
       }
+    }
+
+    if (pageCount > 1500) {
+      return {
+        isValidPdf: false,
+        isEncrypted: false,
+        pageCount,
+        totalCharacters: 0,
+        averageCharsPerPage: 0,
+        isSearchableText: false,
+        detectedBank: 'UNKNOWN',
+        bankDisplayName: 'Unknown Bank',
+        detectedFormat: 'EXCESSIVE_PAGES',
+        suggestedMode: 'UNSUPPORTED',
+        confidence: 0,
+        reasons: [
+          `Document page count (${pageCount}) exceeds the maximum supported limit of 1500 pages`,
+        ],
+      };
     }
 
     const totalCharacters = fullText.trim().length;
     // If text extraction returned 0 characters and raw stream has /Encrypt marker, mark as encrypted
-    if (totalCharacters === 0 && rawStr.includes('/Encrypt') && !isEncrypted) {
+    if (totalCharacters === 0 && hasEncryptMarker && !isEncrypted) {
       isEncrypted = true;
       reasons.push(
         'Document contains /Encrypt dictionary and text extraction produced 0 characters',
@@ -189,6 +217,7 @@ export class DocumentInspectorService {
       statementDate,
       confidence,
       reasons,
+      rawPages,
     };
   }
 

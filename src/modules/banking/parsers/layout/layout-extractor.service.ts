@@ -3,7 +3,11 @@ import * as pdfParseModule from 'pdf-parse';
 
 import { DocumentInspectorService } from './document-inspector.service';
 
-import type { ExtractedPage, StructuredDocumentLayout } from './layout.types';
+import type {
+  DocumentInspectionResult,
+  ExtractedPage,
+  StructuredDocumentLayout,
+} from './layout.types';
 
 @Injectable()
 export class LayoutExtractorService {
@@ -50,48 +54,54 @@ export class LayoutExtractorService {
   /**
    * Extracts structured page-by-page layout with isolated table and metadata zones.
    */
-  async extractLayout(content: Buffer | Uint8Array | string): Promise<StructuredDocumentLayout> {
+  async extractLayout(
+    content: Buffer | Uint8Array | string,
+    precomputedInspection?: DocumentInspectionResult,
+  ): Promise<StructuredDocumentLayout> {
     const rawBuffer = Buffer.isBuffer(content)
       ? content
       : typeof content === 'string'
         ? Buffer.from(content, content.startsWith('%PDF') ? 'utf-8' : 'base64')
         : Buffer.from(content);
 
-    const inspection = await this.inspectorService.inspect(rawBuffer);
+    const inspection = precomputedInspection ?? (await this.inspectorService.inspect(rawBuffer));
 
-    let rawPages: Array<{ num: number; text: string }> = [];
+    let rawPages: Array<{ num: number; text: string }> = inspection.rawPages ?? [];
 
-    try {
-      const mod = pdfParseModule as unknown as Record<string, unknown>;
-      if (mod && typeof mod.PDFParse === 'function') {
-        const PDFParseClass = mod.PDFParse as new (data: Uint8Array) => {
-          getText: () => Promise<
-            { text?: string; pages?: Array<{ num: number; text: string }>; total?: number } | string
-          >;
-        };
-        const instance = new PDFParseClass(new Uint8Array(rawBuffer));
-        const res = await instance.getText();
+    if (rawPages.length === 0) {
+      try {
+        const mod = pdfParseModule as unknown as Record<string, unknown>;
+        if (mod && typeof mod.PDFParse === 'function') {
+          const PDFParseClass = mod.PDFParse as new (data: Uint8Array) => {
+            getText: () => Promise<
+              | { text?: string; pages?: Array<{ num: number; text: string }>; total?: number }
+              | string
+            >;
+          };
+          const instance = new PDFParseClass(new Uint8Array(rawBuffer));
+          const res = await instance.getText();
 
-        if (
-          typeof res === 'object' &&
-          res !== null &&
-          Array.isArray(res.pages) &&
-          res.pages.length > 0
-        ) {
-          rawPages = res.pages;
-        } else if (typeof res === 'string') {
-          rawPages = [{ num: 1, text: res }];
-        } else if (res && typeof res === 'object' && typeof res.text === 'string') {
-          rawPages = [{ num: 1, text: res.text }];
+          if (
+            typeof res === 'object' &&
+            res !== null &&
+            Array.isArray(res.pages) &&
+            res.pages.length > 0
+          ) {
+            rawPages = res.pages;
+          } else if (typeof res === 'string') {
+            rawPages = [{ num: 1, text: res }];
+          } else if (res && typeof res === 'object' && typeof res.text === 'string') {
+            rawPages = [{ num: 1, text: res.text }];
+          }
+        } else if (typeof mod === 'function') {
+          const res = await (mod as (buf: Buffer) => Promise<{ text?: string }>)(rawBuffer);
+          rawPages = [{ num: 1, text: res.text ?? '' }];
         }
-      } else if (typeof mod === 'function') {
-        const res = await (mod as (buf: Buffer) => Promise<{ text?: string }>)(rawBuffer);
-        rawPages = [{ num: 1, text: res.text ?? '' }];
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        this.logger.warn(`PDF parser warning during layout extraction: ${msg}`);
+        rawPages = [{ num: 1, text: rawBuffer.toString('utf-8') }];
       }
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      this.logger.warn(`PDF parser warning during layout extraction: ${msg}`);
-      rawPages = [{ num: 1, text: rawBuffer.toString('utf-8') }];
     }
 
     if (rawPages.length === 0) {
