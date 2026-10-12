@@ -48,6 +48,7 @@ import {
   exceptionKeys,
   ExceptionItem,
   ExceptionType,
+  PaginatedExceptionsResult,
   getPendingExceptions,
   resolveException,
   batchResolveExceptions,
@@ -119,11 +120,17 @@ export function ExceptionListClient({
     );
   };
 
-  const { data: exceptions = [], isLoading } = useQuery<ExceptionItem[]>({
+  const { data: exceptionData, isLoading } = useQuery<PaginatedExceptionsResult>({
     queryKey: [...exceptionKeys.lists(), tenantCurrency],
     queryFn: () => getPendingExceptions(tenantCurrency),
-    initialData: initialData && initialData.length > 0 ? initialData : undefined,
   });
+
+  const exceptions = React.useMemo(
+    () => exceptionData?.items || initialData || [],
+    [exceptionData?.items, initialData],
+  );
+  const serverTotalCount = exceptionData?.totalCount ?? exceptions.length;
+  const serverTotalPages = exceptionData?.totalPages ?? 1;
 
   const filteredExceptions = React.useMemo(() => {
     let result = exceptions;
@@ -709,7 +716,11 @@ export function ExceptionListClient({
             onClick={() => setStatusFilter('ALL')}
             className="h-7 text-xs font-semibold rounded-lg shrink-0"
           >
-            All Items ({exceptions.length})
+            All Items (
+            {serverTotalCount > exceptions.length
+              ? serverTotalCount.toLocaleString()
+              : exceptions.length}
+            )
           </Button>
           <Button
             variant={statusFilter === 'NEW_PAYEE' ? 'default' : 'ghost'}
@@ -997,7 +1008,7 @@ export function ExceptionListClient({
           </CardContent>
 
           {/* Table Pagination Footer */}
-          {sortedExceptions.length > pageSize && (
+          {(serverTotalCount > pageSize || sortedExceptions.length > pageSize) && (
             <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-2.5 border-t bg-muted/20 shrink-0">
               <div className="text-xs text-muted-foreground">
                 Showing{' '}
@@ -1008,7 +1019,14 @@ export function ExceptionListClient({
                 <span className="font-medium text-foreground">
                   {Math.min(currentPage * pageSize, sortedExceptions.length)}
                 </span>{' '}
-                of <span className="font-medium text-foreground">{sortedExceptions.length}</span>{' '}
+                of{' '}
+                <span className="font-medium text-foreground">
+                  {searchTerm || statusFilter !== 'ALL'
+                    ? `${sortedExceptions.length} filtered (${serverTotalCount.toLocaleString()} total)`
+                    : serverTotalCount > sortedExceptions.length
+                      ? `${serverTotalCount.toLocaleString()}`
+                      : sortedExceptions.length}
+                </span>{' '}
                 exceptions
               </div>
               <div className="flex items-center gap-1.5">
@@ -1023,13 +1041,25 @@ export function ExceptionListClient({
                   Previous
                 </Button>
                 <span className="text-xs font-mono px-2 text-muted-foreground">
-                  Page {currentPage} of {totalPages}
+                  Page {currentPage} of{' '}
+                  {serverTotalCount > sortedExceptions.length &&
+                  !searchTerm &&
+                  statusFilter === 'ALL'
+                    ? serverTotalPages
+                    : totalPages}
                 </span>
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={currentPage >= totalPages}
+                  disabled={
+                    currentPage >=
+                    (serverTotalCount > sortedExceptions.length &&
+                    !searchTerm &&
+                    statusFilter === 'ALL'
+                      ? serverTotalPages
+                      : totalPages)
+                  }
                   className="h-7 px-2.5 text-xs"
                 >
                   Next
@@ -1178,10 +1208,20 @@ export function ExceptionListClient({
             })}
 
             {/* Split View Left Pane Mini Pagination */}
-            {sortedExceptions.length > pageSize && (
+            {(serverTotalCount > pageSize || sortedExceptions.length > pageSize) && (
               <div className="flex items-center justify-between p-2 pt-3 border-t border-border/60 text-xs text-muted-foreground shrink-0 mt-auto">
                 <span>
-                  Page {currentPage} of {totalPages}
+                  Page {currentPage} of{' '}
+                  {serverTotalCount > sortedExceptions.length &&
+                  !searchTerm &&
+                  statusFilter === 'ALL'
+                    ? serverTotalPages
+                    : totalPages}
+                  {serverTotalCount > sortedExceptions.length && (
+                    <span className="ml-1 text-[11px] text-muted-foreground/80">
+                      ({serverTotalCount.toLocaleString()} total)
+                    </span>
+                  )}
                 </span>
                 <div className="flex items-center gap-1">
                   <Button
@@ -1197,7 +1237,14 @@ export function ExceptionListClient({
                     variant="outline"
                     size="sm"
                     onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                    disabled={currentPage >= totalPages}
+                    disabled={
+                      currentPage >=
+                      (serverTotalCount > sortedExceptions.length &&
+                      !searchTerm &&
+                      statusFilter === 'ALL'
+                        ? serverTotalPages
+                        : totalPages)
+                    }
                     className="h-7 px-2 text-xs"
                   >
                     <ChevronRight className="w-3.5 h-3.5" />

@@ -48,11 +48,15 @@ export default function TransactionsPage() {
   const pageSize = 50;
 
   const {
-    data: transactions = [],
+    data: transactionData,
     isLoading,
     refetch,
     isRefetching,
   } = useBankTransactionsQuery(tenantCurrency);
+
+  const transactions = React.useMemo(() => transactionData?.items || [], [transactionData?.items]);
+  const serverTotalCount = transactionData?.totalCount ?? transactions.length;
+  const serverTotalPages = transactionData?.totalPages ?? 1;
 
   type SortColumn = 'date' | 'payee' | 'account' | 'inflow' | 'outflow' | 'status';
   const [columnSort, setColumnSort] = React.useState<{
@@ -316,7 +320,9 @@ export default function TransactionsPage() {
             <p className="text-[11px] sm:text-xs text-muted-foreground mt-1 sm:mt-1.5 truncate">
               {isLoading
                 ? 'Checking ledger...'
-                : `${reconciledCount} of ${transactions.length} verified in books`}
+                : serverTotalCount > transactions.length
+                  ? `${reconciledCount} of ${serverTotalCount.toLocaleString()} verified in books`
+                  : `${reconciledCount} of ${transactions.length} verified in books`}
             </p>
           </CardContent>
         </Card>
@@ -653,7 +659,7 @@ export default function TransactionsPage() {
             </div>
 
             {/* Pagination Footer */}
-            {filtered.length > pageSize && (
+            {(serverTotalCount > pageSize || filtered.length > pageSize) && (
               <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 border-t bg-muted/20">
                 <div className="text-xs text-muted-foreground">
                   Showing{' '}
@@ -664,7 +670,14 @@ export default function TransactionsPage() {
                   <span className="font-medium text-foreground">
                     {Math.min(currentPage * pageSize, filtered.length)}
                   </span>{' '}
-                  of <span className="font-medium text-foreground">{filtered.length}</span>{' '}
+                  of{' '}
+                  <span className="font-medium text-foreground">
+                    {searchTerm || statusFilter !== 'ALL'
+                      ? `${filtered.length} filtered (${serverTotalCount.toLocaleString()} total)`
+                      : serverTotalCount > filtered.length
+                        ? `${serverTotalCount.toLocaleString()}`
+                        : filtered.length}
+                  </span>{' '}
                   transactions
                 </div>
                 <div className="flex items-center gap-1.5">
@@ -679,13 +692,21 @@ export default function TransactionsPage() {
                     Previous
                   </Button>
                   <span className="text-xs font-mono px-2 text-muted-foreground">
-                    Page {currentPage} of {totalPages}
+                    Page {currentPage} of{' '}
+                    {serverTotalCount > filtered.length && !searchTerm && statusFilter === 'ALL'
+                      ? serverTotalPages
+                      : totalPages}
                   </span>
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                    disabled={currentPage >= totalPages}
+                    disabled={
+                      currentPage >=
+                      (serverTotalCount > filtered.length && !searchTerm && statusFilter === 'ALL'
+                        ? serverTotalPages
+                        : totalPages)
+                    }
                     className="h-8 px-2.5 text-xs"
                   >
                     Next

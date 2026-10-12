@@ -182,23 +182,47 @@ function getActiveTenantCurrency(): string {
   return (typeof window !== 'undefined' ? authStorage.getTenantCurrency() : 'MYR') || 'MYR';
 }
 
-// --- Query Hooks ---
+export interface RawBankTransactionEnvelope {
+  data: RawBankTransaction[];
+  meta?: {
+    pagination?: {
+      totalCount: number;
+      page: number;
+      pageSize: number;
+      totalPages: number;
+    };
+  };
+}
+
+export interface BankTransactionsQueryResult {
+  items: TransactionItem[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
 
 /**
  * 1. Bank Transactions Query
  * Caches bank transactions with mapped formatting for 0ms page transitions.
+ * Exposes server total count and pagination metadata.
  */
 export function useBankTransactionsQuery(fallbackCurrency?: string) {
   const tenantId = getActiveTenantId();
   const defaultCurrency = fallbackCurrency || getActiveTenantCurrency();
 
-  return useQuery<TransactionItem[]>({
+  return useQuery<BankTransactionsQueryResult>({
     queryKey: queryKeys.transactions(tenantId),
     queryFn: async () => {
-      const res = await apiClient.get<{ data: RawBankTransaction[] }>('/banking/transactions');
+      const res = await apiClient.get<RawBankTransactionEnvelope>('/banking/transactions');
       const rawList = res.data || [];
+      const totalCount = res.meta?.pagination?.totalCount ?? rawList.length;
+      const page = res.meta?.pagination?.page ?? 1;
+      const pageSize = res.meta?.pagination?.pageSize ?? (rawList.length || 50);
+      const totalPages =
+        res.meta?.pagination?.totalPages ?? Math.max(1, Math.ceil(totalCount / pageSize));
 
-      return rawList.map((tx) => {
+      const items: TransactionItem[] = rawList.map((tx) => {
         const rawAmount = Number(tx.amountCents || 0) / 100;
         const isDeposit = rawAmount > 0;
         const absAmount = Math.abs(rawAmount);
@@ -225,6 +249,14 @@ export function useBankTransactionsQuery(fallbackCurrency?: string) {
           currency: tx.currency || defaultCurrency,
         };
       });
+
+      return {
+        items,
+        totalCount,
+        page,
+        pageSize,
+        totalPages,
+      };
     },
     staleTime: 5 * 60 * 1000,
   });
@@ -365,19 +397,27 @@ export function useDashboardOverviewQuery() {
     queryFn: async () => {
       const [accountsRes, txRes, excRes] = await Promise.allSettled([
         apiClient.get<{ data: BankAccount[] }>('/banking/accounts'),
-        apiClient.get<{ data: RawBankTransaction[] }>('/banking/transactions'),
-        apiClient.get<{ data: Array<{ id: string; status: string }> }>('/banking/exceptions', {
+        apiClient.get<RawBankTransactionEnvelope>('/banking/transactions'),
+        apiClient.get<{
+          data: Array<{ id: string; status: string }>;
+          meta?: { pagination?: { totalCount: number } };
+        }>('/banking/exceptions', {
           params: { status: 'OPEN' },
         }),
       ]);
 
       const accounts = accountsRes.status === 'fulfilled' ? accountsRes.value.data || [] : [];
-      const transactions = txRes.status === 'fulfilled' ? txRes.value.data || [] : [];
-      const exceptions = excRes.status === 'fulfilled' ? excRes.value.data || [] : [];
+      const txPayload = txRes.status === 'fulfilled' ? txRes.value : null;
+      const transactions = txPayload?.data || [];
+      const excPayload = excRes.status === 'fulfilled' ? excRes.value : null;
+      const exceptions = excPayload?.data || [];
 
       const openExceptions = exceptions.filter(
         (e) => !e.status || (e.status !== 'RESOLVED' && e.status !== 'DISMISSED'),
       );
+
+      const serverTxCount = txPayload?.meta?.pagination?.totalCount ?? transactions.length;
+      const serverExcCount = excPayload?.meta?.pagination?.totalCount ?? openExceptions.length;
 
       const totalBalanceCents = accounts.reduce(
         (sum, a) => sum + Number(a.currentBalanceCents || 0),
@@ -393,10 +433,10 @@ export function useDashboardOverviewQuery() {
       return {
         accounts,
         transactions,
-        exceptionsCount: openExceptions.length,
+        exceptionsCount: serverExcCount,
         totalBalanceCents,
         totalReconciledCents: reconciledSum,
-        transactionCount: transactions.length,
+        transactionCount: serverTxCount,
         recentTransactions: transactions.slice(0, 5),
         primaryCurrency,
       };

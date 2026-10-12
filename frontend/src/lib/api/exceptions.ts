@@ -101,19 +101,44 @@ export function cleanBankPayee(raw: string): string {
     .join(' ');
 }
 
-export async function getPendingExceptions(fallbackCurrency?: string): Promise<ExceptionItem[]> {
+export interface PaginatedExceptionsResult {
+  items: ExceptionItem[];
+  totalCount: number;
+  totalPages: number;
+  page: number;
+  pageSize: number;
+}
+
+export async function getPendingExceptions(
+  fallbackCurrency?: string,
+): Promise<PaginatedExceptionsResult> {
   try {
-    const res = await apiClient.get<{ data: RawExceptionDto[] }>('/banking/exceptions', {
+    const res = await apiClient.get<{
+      data: RawExceptionDto[];
+      meta?: {
+        pagination?: {
+          totalCount: number;
+          page: number;
+          pageSize: number;
+          totalPages: number;
+        };
+      };
+    }>('/banking/exceptions', {
       params: { status: 'OPEN' },
     });
     const list = (res.data || []).filter((item) => !item.status || item.status === 'OPEN');
+    const totalCount = res.meta?.pagination?.totalCount ?? list.length;
+    const page = res.meta?.pagination?.page ?? 1;
+    const pageSize = res.meta?.pagination?.pageSize ?? (list.length || 50);
+    const totalPages =
+      res.meta?.pagination?.totalPages ?? Math.max(1, Math.ceil(totalCount / pageSize));
 
     const defaultCurrency =
       fallbackCurrency ||
       (typeof window !== 'undefined' ? authStorage.getTenantCurrency() : 'MYR') ||
       'MYR';
 
-    return list.map((item) => {
+    const items: ExceptionItem[] = list.map((item) => {
       const rawType = (item.exceptionType || item.type || 'UNKNOWN_TRANSACTION') as ExceptionType;
       const sev = (item.severity?.toLowerCase() || 'medium') as 'high' | 'medium' | 'low';
 
@@ -297,9 +322,23 @@ export async function getPendingExceptions(fallbackCurrency?: string): Promise<E
         suggestedAccountCode,
       };
     });
+
+    return {
+      items,
+      totalCount,
+      page,
+      pageSize,
+      totalPages,
+    };
   } catch (err) {
     console.warn('Could not fetch exceptions from backend:', err);
-    return [];
+    return {
+      items: [],
+      totalCount: 0,
+      totalPages: 1,
+      page: 1,
+      pageSize: 50,
+    };
   }
 }
 
