@@ -218,20 +218,32 @@ export function ExceptionListClient({
       ),
     onMutate: async ({ id }) => {
       await queryClient.cancelQueries({ queryKey: exceptionKeys.lists() });
-      const previousQueries = queryClient.getQueriesData<ExceptionItem[]>({
+      const previousQueries = queryClient.getQueriesData<
+        PaginatedExceptionsResult | ExceptionItem[]
+      >({
         queryKey: exceptionKeys.lists(),
       });
 
-      queryClient.setQueriesData<ExceptionItem[]>({ queryKey: exceptionKeys.lists() }, (old) => {
-        if (!old) return [];
-        return old.filter((item) => item.id !== id);
-      });
-      queryClient.setQueryData<ExceptionItem[]>(
-        [...exceptionKeys.lists(), tenantCurrency],
-        (old) => {
-          if (!old) return [];
+      const filterItem = (old: PaginatedExceptionsResult | ExceptionItem[] | undefined) => {
+        if (!old) return old;
+        if (Array.isArray(old)) {
           return old.filter((item) => item.id !== id);
-        },
+        }
+        const updatedItems = old.items.filter((item) => item.id !== id);
+        return {
+          ...old,
+          items: updatedItems,
+          totalCount: Math.max(0, old.totalCount - (old.items.length - updatedItems.length)),
+        };
+      };
+
+      queryClient.setQueriesData<PaginatedExceptionsResult | ExceptionItem[]>(
+        { queryKey: exceptionKeys.lists() },
+        filterItem,
+      );
+      queryClient.setQueryData<PaginatedExceptionsResult | ExceptionItem[]>(
+        [...exceptionKeys.lists(), tenantCurrency],
+        filterItem,
       );
 
       setSelectedExceptionIds((prev) => {
@@ -241,8 +253,11 @@ export function ExceptionListClient({
         return next;
       });
 
-      const currentList =
-        queryClient.getQueryData<ExceptionItem[]>([...exceptionKeys.lists(), tenantCurrency]) || [];
+      const currentData = queryClient.getQueryData<PaginatedExceptionsResult | ExceptionItem[]>([
+        ...exceptionKeys.lists(),
+        tenantCurrency,
+      ]);
+      const currentList = Array.isArray(currentData) ? currentData : currentData?.items || [];
       if (currentList.length > 0) {
         setSelectedId(currentList[0].id);
       } else {
@@ -276,20 +291,32 @@ export function ExceptionListClient({
       resolveException(id, 'REJECT', 'Ignored and excluded from General Ledger.'),
     onMutate: async (id: string) => {
       await queryClient.cancelQueries({ queryKey: exceptionKeys.lists() });
-      const previousQueries = queryClient.getQueriesData<ExceptionItem[]>({
+      const previousQueries = queryClient.getQueriesData<
+        PaginatedExceptionsResult | ExceptionItem[]
+      >({
         queryKey: exceptionKeys.lists(),
       });
 
-      queryClient.setQueriesData<ExceptionItem[]>({ queryKey: exceptionKeys.lists() }, (old) => {
-        if (!old) return [];
-        return old.filter((item) => item.id !== id);
-      });
-      queryClient.setQueryData<ExceptionItem[]>(
-        [...exceptionKeys.lists(), tenantCurrency],
-        (old) => {
-          if (!old) return [];
+      const filterItem = (old: PaginatedExceptionsResult | ExceptionItem[] | undefined) => {
+        if (!old) return old;
+        if (Array.isArray(old)) {
           return old.filter((item) => item.id !== id);
-        },
+        }
+        const updatedItems = old.items.filter((item) => item.id !== id);
+        return {
+          ...old,
+          items: updatedItems,
+          totalCount: Math.max(0, old.totalCount - (old.items.length - updatedItems.length)),
+        };
+      };
+
+      queryClient.setQueriesData<PaginatedExceptionsResult | ExceptionItem[]>(
+        { queryKey: exceptionKeys.lists() },
+        filterItem,
+      );
+      queryClient.setQueryData<PaginatedExceptionsResult | ExceptionItem[]>(
+        [...exceptionKeys.lists(), tenantCurrency],
+        filterItem,
       );
 
       setSelectedExceptionIds((prev) => {
@@ -299,8 +326,11 @@ export function ExceptionListClient({
         return next;
       });
 
-      const currentList =
-        queryClient.getQueryData<ExceptionItem[]>([...exceptionKeys.lists(), tenantCurrency]) || [];
+      const currentData = queryClient.getQueryData<PaginatedExceptionsResult | ExceptionItem[]>([
+        ...exceptionKeys.lists(),
+        tenantCurrency,
+      ]);
+      const currentList = Array.isArray(currentData) ? currentData : currentData?.items || [];
       if (currentList.length > 0) {
         setSelectedId(currentList[0].id);
       } else {
@@ -358,21 +388,33 @@ export function ExceptionListClient({
       ),
     onMutate: async ({ ids }) => {
       await queryClient.cancelQueries({ queryKey: exceptionKeys.lists() });
-      const previousQueries = queryClient.getQueriesData<ExceptionItem[]>({
+      const previousQueries = queryClient.getQueriesData<
+        PaginatedExceptionsResult | ExceptionItem[]
+      >({
         queryKey: exceptionKeys.lists(),
       });
       const idSet = new Set(ids);
 
-      queryClient.setQueriesData<ExceptionItem[]>({ queryKey: exceptionKeys.lists() }, (old) => {
-        if (!old) return [];
-        return old.filter((item) => !idSet.has(item.id));
-      });
-      queryClient.setQueryData<ExceptionItem[]>(
-        [...exceptionKeys.lists(), tenantCurrency],
-        (old) => {
-          if (!old) return [];
+      const filterItems = (old: PaginatedExceptionsResult | ExceptionItem[] | undefined) => {
+        if (!old) return old;
+        if (Array.isArray(old)) {
           return old.filter((item) => !idSet.has(item.id));
-        },
+        }
+        const updatedItems = old.items.filter((item) => !idSet.has(item.id));
+        return {
+          ...old,
+          items: updatedItems,
+          totalCount: Math.max(0, old.totalCount - (old.items.length - updatedItems.length)),
+        };
+      };
+
+      queryClient.setQueriesData<PaginatedExceptionsResult | ExceptionItem[]>(
+        { queryKey: exceptionKeys.lists() },
+        filterItems,
+      );
+      queryClient.setQueryData<PaginatedExceptionsResult | ExceptionItem[]>(
+        [...exceptionKeys.lists(), tenantCurrency],
+        filterItems,
       );
 
       setSelectedExceptionIds((prev) => {
@@ -381,8 +423,11 @@ export function ExceptionListClient({
         return next;
       });
 
-      const currentList =
-        queryClient.getQueryData<ExceptionItem[]>([...exceptionKeys.lists(), tenantCurrency]) || [];
+      const currentData = queryClient.getQueryData<PaginatedExceptionsResult | ExceptionItem[]>([
+        ...exceptionKeys.lists(),
+        tenantCurrency,
+      ]);
+      const currentList = Array.isArray(currentData) ? currentData : currentData?.items || [];
       if (currentList.length > 0) {
         setSelectedId(currentList[0].id);
       } else {

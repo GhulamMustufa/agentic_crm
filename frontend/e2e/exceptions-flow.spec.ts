@@ -77,7 +77,17 @@ test.describe('Exception Center Review & Resolution Flow', () => {
         await route.fulfill({
           status: 200,
           contentType: 'application/json',
-          body: JSON.stringify({ data: exceptionsList }),
+          body: JSON.stringify({
+            data: exceptionsList,
+            meta: {
+              pagination: {
+                totalCount: exceptionsList.length,
+                page: 1,
+                pageSize: 50,
+                totalPages: 1,
+              },
+            },
+          }),
         });
       }
     });

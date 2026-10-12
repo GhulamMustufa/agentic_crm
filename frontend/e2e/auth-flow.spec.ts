@@ -22,10 +22,10 @@ test.describe('Authentication & Onboarding Flow', () => {
       });
     });
 
-    // Mock organization setup API
-    await page.route('**/api/v1/organizations', async (route) => {
+    // Mock organization setup API & details
+    await page.route(/\/api\/v1\/organizations/, async (route) => {
       await route.fulfill({
-        status: 201,
+        status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
           data: {
@@ -48,6 +48,24 @@ test.describe('Authentication & Onboarding Flow', () => {
     });
 
     // Mock dashboard queries
+    await page.route('**/api/v1/dashboard/**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            totalBalanceCents: 5000000,
+            transactionCount: 12,
+            totalReconciledCents: 4500000,
+            exceptionsCount: 0,
+            accounts: [],
+            recentTransactions: [],
+            primaryCurrency: 'USD',
+          },
+        }),
+      });
+    });
+
     await page.route('**/api/v1/banking/**', async (route) => {
       await route.fulfill({
         status: 200,
@@ -114,12 +132,41 @@ test.describe('Authentication & Onboarding Flow', () => {
       });
     });
 
-    await page.route('**/api/v1/organizations/**', async (route) => {
+    await page.route(/\/api\/v1\/organizations/, async (route) => {
+      const url = route.request().url();
+      if (url.endsWith('/organizations') || url.includes('/organizations?')) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            data: [{ id: 'org-1', name: 'OmniCorp Inc.', baseCurrency: 'USD' }],
+          }),
+        });
+      } else {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            data: { id: 'org-1', name: 'OmniCorp Inc.', baseCurrency: 'USD' },
+          }),
+        });
+      }
+    });
+
+    await page.route('**/api/v1/dashboard/**', async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
-          data: { id: 'org-1', name: 'OmniCorp Inc.', baseCurrency: 'USD' },
+          data: {
+            totalBalanceCents: 5000000,
+            transactionCount: 12,
+            totalReconciledCents: 4500000,
+            exceptionsCount: 0,
+            accounts: [],
+            recentTransactions: [],
+            primaryCurrency: 'USD',
+          },
         }),
       });
     });
