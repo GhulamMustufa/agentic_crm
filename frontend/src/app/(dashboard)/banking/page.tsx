@@ -172,9 +172,45 @@ export default function BankingPage() {
 
   // Multi-File Batch Upload Queue State
   const [isDragging, setIsDragging] = React.useState(false);
-  const [batchQueue, setBatchQueue] = React.useState<BatchQueueItem[]>([]);
+  const [batchQueue, setBatchQueue] = React.useState<BatchQueueItem[]>(() => {
+    if (typeof window === 'undefined') return [];
+    try {
+      const raw = localStorage.getItem(BATCH_QUEUE_STORAGE_KEY);
+      if (!raw) return [];
+      const parsed: BatchQueueItem[] = JSON.parse(raw);
+      const now = Date.now();
+      return parsed.filter((item) => {
+        if (
+          item.status === 'COMPLETED' &&
+          item.completedAt &&
+          now - item.completedAt > 2 * 3600 * 1000
+        ) {
+          return false;
+        }
+        return true;
+      });
+    } catch {
+      return [];
+    }
+  });
   const inFlightIdsRef = React.useRef<Set<string>>(new Set());
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  // Persist batch queue state across page navigation and refreshes
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const serializable = batchQueue.map(({ file, ...rest }) => rest);
+      localStorage.setItem(BATCH_QUEUE_STORAGE_KEY, JSON.stringify(serializable));
+    } catch {
+      // ignore
+    }
+  }, [batchQueue]);
+
+  // Always refresh statement history immediately whenever user navigates to the banking screen
+  React.useEffect(() => {
+    refetchStatements();
+  }, [refetchStatements]);
 
   const loadAccounts = React.useCallback(async () => {
     await refetchAccounts();
@@ -266,6 +302,129 @@ export default function BankingPage() {
     const start = (statementPage - 1) * statementPageSize;
     return sortedStatements.slice(start, start + statementPageSize);
   }, [sortedStatements, statementPage, statementPageSize]);
+
+  const pollStatementJob = React.useCallback(
+    async (jobId: string, item: BatchQueueItem) => {
+      const updateItem = (updater: Partial<BatchQueueItem>) => {
+        setBatchQueue((prev) => prev.map((q) => (q.id === item.id ? { ...q, ...updater } : q)));
+      };
+      let attempts = 0;
+      let completed = false;
+      while (attempts < 120 && !completed) {
+        attempts++;
+        try {
+          const statusRes = await apiClient.get<{
+            data: {
+              id: string;
+              state: string;
+              result: UploadResult | null;
+              failedReason?: string;
+              progress?:
+                { percent?: number; stage?: string; step?: number; message?: string } | number;
+            };
+          }>(`/banking/statements/jobs/${jobId}?fileName=${encodeURIComponent(item.fileName)}`, {
+            silent: true,
+          });
+          const { state, result, failedReason, progress } = statusRes.data;
+          if (progress && typeof progress === 'object') {
+            if (progress.stage === 'DOWNLOADING' || progress.stage === 'EXTRACTING') {
+              updateItem({
+                status: 'EXTRACTING',
+                stageName: 'Reading document layout & tables...',
+                step: 1,
+                progress: progress.percent || 35,
+              });
+            } else if (progress.stage === 'VALIDATING') {
+              updateItem({
+                status: 'VALIDATING',
+                stageName: 'Verifying numbers & checksums...',
+                step: 2,
+                progress: progress.percent || 55,
+              });
+            } else if (progress.stage === 'CATEGORIZING') {
+              updateItem({
+                status: 'CATEGORIZING',
+                stageName: 'Auto-categorizing payees & proposals...',
+                step: 3,
+                progress: progress.percent || 75,
+              });
+            } else if (progress.stage === 'RECONCILING') {
+              updateItem({
+                status: 'RECONCILING',
+                stageName: 'Reconciling general ledger...',
+                step: 4,
+                progress: progress.percent || 95,
+              });
+            }
+          }
+          if (state === 'completed' && result) {
+            updateItem({
+              status: 'COMPLETED',
+              stageName: 'Reconciled',
+              progress: 100,
+              step: 4,
+              statementId: result.statement?.id,
+              transactionsCount: result.transactions?.length || 0,
+              result,
+              completedAt: Date.now(),
+            });
+            invalidateBanking();
+            refetchStatements();
+            toast.success(`Statement "${item.fileName}" reconciled successfully!`);
+            completed = true;
+            break;
+          } else if (state === 'failed') {
+            updateItem({
+              status: 'FAILED',
+              stageName: 'Failed',
+              progress: 100,
+              errorMessage: failedReason || 'Processing failed',
+            });
+            invalidateBanking();
+            refetchStatements();
+            toast.error(`"${item.fileName}": ${failedReason || 'Statement parsing failed'}`);
+            completed = true;
+            break;
+          } else if (state === 'active') {
+            updateItem({ status: 'VALIDATING', stageName: 'Processing & reconciling...', step: 2 });
+          } else if (state === 'not_found') {
+            const statementsRes = await apiClient.get<{ data: BankStatementRecord[] }>(
+              '/banking/statements',
+              { silent: true },
+            );
+            const list = statementsRes.data || [];
+            const match = list.find((s) => s.fileName === item.fileName);
+            if (match && (match.status === 'PARSED' || match.status === 'RECONCILED')) {
+              updateItem({
+                status: 'COMPLETED',
+                stageName: 'Reconciled',
+                progress: 100,
+                step: 4,
+                completedAt: Date.now(),
+              });
+              toast.success(`Statement "${item.fileName}" completed!`);
+            } else {
+              updateItem({
+                status: 'FAILED',
+                stageName: 'Failed',
+                progress: 100,
+                errorMessage: 'Statement processing timed out or failed',
+              });
+            }
+            invalidateBanking();
+            refetchStatements();
+            completed = true;
+            break;
+          }
+        } catch (pollErr: any) {
+          console.warn('Queue item poll retry:', pollErr);
+        }
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+      }
+      inFlightIdsRef.current.delete(item.id);
+    },
+    [invalidateBanking, refetchStatements],
+  );
 
   // Individual Queue Item Worker (Unified Object Storage & Background Queue)
   const processQueueItem = React.useCallback(
@@ -365,127 +524,7 @@ export default function BankingPage() {
         const jobId = queueRes.data.jobId;
         updateItem({ jobId });
 
-        // 4. Poll & stream job status from BullMQ with database fallback
-        let attempts = 0;
-        let completed = false;
-
-        while (attempts < 120 && !completed) {
-          attempts++;
-          try {
-            const statusRes = await apiClient.get<{
-              data: {
-                id: string;
-                state: string;
-                result: UploadResult | null;
-                failedReason?: string;
-                progress?:
-                  { percent?: number; stage?: string; step?: number; message?: string } | number;
-              };
-            }>(`/banking/statements/jobs/${jobId}?fileName=${encodeURIComponent(item.fileName)}`, {
-              silent: true,
-            });
-
-            const { state, result, failedReason, progress } = statusRes.data;
-
-            if (progress && typeof progress === 'object') {
-              if (progress.stage === 'DOWNLOADING' || progress.stage === 'EXTRACTING') {
-                updateItem({
-                  status: 'EXTRACTING',
-                  stageName: 'Reading document layout & tables...',
-                  step: 1,
-                  progress: progress.percent || 35,
-                });
-              } else if (progress.stage === 'VALIDATING') {
-                updateItem({
-                  status: 'VALIDATING',
-                  stageName: 'Verifying numbers & checksums...',
-                  step: 2,
-                  progress: progress.percent || 55,
-                });
-              } else if (progress.stage === 'CATEGORIZING') {
-                updateItem({
-                  status: 'CATEGORIZING',
-                  stageName: 'Auto-categorizing payees & proposals...',
-                  step: 3,
-                  progress: progress.percent || 75,
-                });
-              } else if (progress.stage === 'RECONCILING') {
-                updateItem({
-                  status: 'RECONCILING',
-                  stageName: 'Reconciling general ledger...',
-                  step: 4,
-                  progress: progress.percent || 95,
-                });
-              }
-            }
-
-            if (state === 'completed' && result) {
-              updateItem({
-                status: 'COMPLETED',
-                stageName: 'Reconciled',
-                progress: 100,
-                step: 4,
-                statementId: result.statement?.id,
-                transactionsCount: result.transactions?.length || 0,
-                result,
-                completedAt: Date.now(),
-              });
-              invalidateBanking();
-              toast.success(`Statement "${item.fileName}" reconciled successfully!`);
-              completed = true;
-              break;
-            } else if (state === 'failed') {
-              updateItem({
-                status: 'FAILED',
-                stageName: 'Failed',
-                progress: 100,
-                errorMessage: failedReason || 'Processing failed',
-              });
-              invalidateBanking();
-              toast.error(`"${item.fileName}": ${failedReason || 'Statement parsing failed'}`);
-              completed = true;
-              break;
-            } else if (state === 'active') {
-              updateItem({
-                status: 'VALIDATING',
-                stageName: 'Processing & reconciling...',
-                step: 2,
-              });
-            } else if (state === 'not_found') {
-              // Fallback to database check
-              const statementsRes = await apiClient.get<{ data: BankStatementRecord[] }>(
-                '/banking/statements',
-                { silent: true },
-              );
-              const list = statementsRes.data || [];
-              const match = list.find((s) => s.fileName === item.fileName);
-              if (match && (match.status === 'PARSED' || match.status === 'RECONCILED')) {
-                updateItem({
-                  status: 'COMPLETED',
-                  stageName: 'Reconciled',
-                  progress: 100,
-                  step: 4,
-                  completedAt: Date.now(),
-                });
-                toast.success(`Statement "${item.fileName}" completed!`);
-              } else {
-                updateItem({
-                  status: 'FAILED',
-                  stageName: 'Failed',
-                  progress: 100,
-                  errorMessage: 'Statement processing timed out or failed',
-                });
-              }
-              invalidateBanking();
-              completed = true;
-              break;
-            }
-          } catch (pollErr: any) {
-            console.warn('Queue item poll retry:', pollErr);
-          }
-
-          await new Promise((resolve) => setTimeout(resolve, 1500));
-        }
+        await pollStatementJob(jobId, { ...item, jobId });
       } catch (err: any) {
         const errorMsg = err?.data?.message || err?.message || 'Upload processing failed';
         updateItem({
@@ -500,8 +539,50 @@ export default function BankingPage() {
         inFlightIdsRef.current.delete(item.id);
       }
     },
-    [selectedAccountId, manualBankName, manualAccountType, manualLast4, invalidateBanking],
+    [
+      selectedAccountId,
+      manualBankName,
+      manualAccountType,
+      manualLast4,
+      invalidateBanking,
+      pollStatementJob,
+    ],
   );
+
+  // Resume polling for any in-flight items restored from localStorage
+  React.useEffect(() => {
+    batchQueue.forEach((item) => {
+      const isInFlight =
+        item.status === 'UPLOADING' ||
+        item.status === 'EXTRACTING' ||
+        item.status === 'VALIDATING' ||
+        item.status === 'CATEGORIZING' ||
+        item.status === 'RECONCILING';
+
+      if (isInFlight) {
+        if (item.jobId && !inFlightIdsRef.current.has(item.id)) {
+          inFlightIdsRef.current.add(item.id);
+          pollStatementJob(item.jobId, item);
+        } else if (!item.jobId && !item.file) {
+          // File was lost before being uploaded to S3 / queued
+          setBatchQueue((prev) =>
+            prev.map((q) =>
+              q.id === item.id
+                ? {
+                    ...q,
+                    status: 'FAILED',
+                    stageName: 'Interrupted',
+                    progress: 100,
+                    errorMessage:
+                      'Upload interrupted when leaving page. Please re-select the file.',
+                  }
+                : q,
+            ),
+          );
+        }
+      }
+    });
+  }, [batchQueue, pollStatementJob]);
 
   // Queue Dispatcher Effect (Sequential Batch Queue Dispatcher, Concurrency = 1)
   React.useEffect(() => {

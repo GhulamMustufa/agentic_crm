@@ -258,7 +258,8 @@ export function useBankTransactionsQuery(fallbackCurrency?: string) {
         totalPages,
       };
     },
-    staleTime: 5 * 60 * 1000,
+    staleTime: 15 * 1000,
+    refetchOnMount: 'always',
   });
 }
 
@@ -274,7 +275,8 @@ export function useBankAccountsQuery() {
       const res = await apiClient.get<{ data: BankAccount[] }>('/banking/accounts');
       return res.data || [];
     },
-    staleTime: 5 * 60 * 1000,
+    staleTime: 15 * 1000,
+    refetchOnMount: 'always',
   });
 }
 
@@ -292,7 +294,18 @@ export function useBankStatementsQuery(bankAccountId?: string) {
       });
       return res.data || [];
     },
-    staleTime: 5 * 60 * 1000,
+    staleTime: 10 * 1000,
+    refetchOnMount: 'always',
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      if (
+        Array.isArray(data) &&
+        data.some((s) => s.status === 'PROCESSING' || s.status === 'UPLOADED')
+      ) {
+        return 2000;
+      }
+      return false;
+    },
   });
 }
 
@@ -441,7 +454,8 @@ export function useDashboardOverviewQuery() {
         primaryCurrency,
       };
     },
-    staleTime: 5 * 60 * 1000,
+    staleTime: 15 * 1000,
+    refetchOnMount: 'always',
   });
 }
 
