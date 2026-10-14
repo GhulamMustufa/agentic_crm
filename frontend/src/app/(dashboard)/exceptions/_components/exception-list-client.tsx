@@ -93,7 +93,7 @@ export function ExceptionListClient({
   }>({ column: null, direction: 'asc' });
 
   const [currentPage, setCurrentPage] = React.useState(1);
-  const pageSize = 20;
+  const pageSize = 50;
 
   const toggleColumnSort = (col: ExceptionSortColumn) => {
     setColumnSort((prev) => {

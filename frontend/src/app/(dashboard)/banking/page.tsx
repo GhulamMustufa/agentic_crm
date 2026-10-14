@@ -238,7 +238,7 @@ export default function BankingPage() {
   }>({ column: null, direction: 'asc' });
 
   const [statementPage, setStatementPage] = React.useState(1);
-  const statementPageSize = 10;
+  const statementPageSize = 50;
 
   const toggleStatementSort = (col: StatementSortColumn) => {
     setStatementSort((prev) => {
