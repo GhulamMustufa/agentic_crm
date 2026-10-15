@@ -27,7 +27,7 @@ import {
   X,
   AlertCircle,
 } from 'lucide-react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -44,6 +44,7 @@ import {
 import { EmptyState } from '@/components/shared/empty-state';
 import { formatCurrency, formatIsoDate } from '@/lib/formatters';
 import { useTenantCurrency } from '@/hooks/use-tenant-currency';
+import { ExceptionClustersBanner } from './exception-clusters-banner';
 import {
   exceptionKeys,
   ExceptionItem,
@@ -120,7 +121,11 @@ export function ExceptionListClient({
     );
   };
 
-  const { data: exceptionData, isLoading } = useQuery<PaginatedExceptionsResult>({
+  const {
+    data: exceptionData,
+    isLoading,
+    isFetching,
+  } = useQuery<PaginatedExceptionsResult>({
     queryKey: [...exceptionKeys.lists(), tenantCurrency, currentPage, pageSize],
     queryFn: () =>
       getPendingExceptions({
@@ -128,6 +133,7 @@ export function ExceptionListClient({
         pageSize,
         fallbackCurrency: tenantCurrency,
       }),
+    placeholderData: keepPreviousData,
   });
 
   const exceptions = React.useMemo(
@@ -734,6 +740,34 @@ export function ExceptionListClient({
   }
 
   if (exceptions.length === 0) {
+    if (serverTotalCount > 0 || batchResolveMutation.isPending || isFetching) {
+      return (
+        <div className="flex flex-col md:flex-row gap-4 flex-1 min-h-0">
+          <div className="w-full md:w-5/12 flex flex-col gap-2.5">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="p-3.5 rounded-xl border border-border/70 bg-card space-y-2.5">
+                <div className="flex justify-between items-center">
+                  <div className="h-4 w-32 bg-muted animate-pulse rounded" />
+                  <div className="h-4 w-16 bg-muted animate-pulse rounded" />
+                </div>
+                <div className="h-3 w-48 bg-muted/60 animate-pulse rounded" />
+                <div className="flex justify-between items-center pt-1">
+                  <div className="h-4 w-20 bg-muted animate-pulse rounded" />
+                  <div className="h-3 w-14 bg-muted/60 animate-pulse rounded" />
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="hidden md:flex w-full md:w-7/12 flex-col bg-card border border-border/80 rounded-2xl p-6 items-center justify-center space-y-3">
+            <Loader2 className="w-8 h-8 animate-spin text-primary" />
+            <p className="text-sm font-medium text-muted-foreground">
+              Loading next batch of exceptions...
+            </p>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="flex flex-col h-full pt-12">
         <EmptyState
@@ -754,6 +788,9 @@ export function ExceptionListClient({
 
   return (
     <div className="flex flex-col flex-1 min-h-0 space-y-3">
+      {/* Smart Payee Clusters Banner for bulk approvals */}
+      <ExceptionClustersBanner />
+
       {/* Filter Tabs Bar (Scrollable on Mobile) */}
       <div className="flex flex-wrap items-center justify-between gap-2 pb-0.5">
         <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar w-full sm:w-auto pb-1 sm:pb-0">

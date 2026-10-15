@@ -875,4 +875,90 @@ describe('BankProcessingService - AI Accountant Workflow', () => {
     expect(uploadResult.transactions).toEqual([]);
     expect(uploadResult.proposals).toEqual([]);
   });
+
+  it('aggregates pending exceptions into payee clusters and resolves clusters in bulk', async () => {
+    // 1. Seed multiple exceptions for recurring merchants
+    const exc1 = await bankingRepo.createExceptionItem({
+      tenantId,
+      entityType: 'PROPOSAL',
+      entityId: 'prop-1',
+      exceptionType: 'AMBIGUOUS_TRANSACTION',
+      severity: 'MEDIUM',
+      reason: "Unrecognized payee 'AWS EMEA SARL *101' (Confidence: 85%)",
+      evidence: [{ rawDescription: 'AWS EMEA SARL *101' }],
+      proposedResolution: {
+        amountCents: '15000',
+        signedAmountCents: '-15000',
+        currency: 'USD',
+      },
+    });
+
+    const exc2 = await bankingRepo.createExceptionItem({
+      tenantId,
+      entityType: 'PROPOSAL',
+      entityId: 'prop-2',
+      exceptionType: 'AMBIGUOUS_TRANSACTION',
+      severity: 'MEDIUM',
+      reason: "Unrecognized payee 'AWS EMEA SARL *102' (Confidence: 85%)",
+      evidence: [{ rawDescription: 'AWS EMEA SARL *102' }],
+      proposedResolution: {
+        amountCents: '20000',
+        signedAmountCents: '-20000',
+        currency: 'USD',
+      },
+    });
+
+    await bankingRepo.createExceptionItem({
+      tenantId,
+      entityType: 'PROPOSAL',
+      entityId: 'prop-3',
+      exceptionType: 'AMBIGUOUS_TRANSACTION',
+      severity: 'LOW',
+      reason: "Unrecognized payee 'GRAB HOLDINGS *RIDE' (Confidence: 90%)",
+      evidence: [{ rawDescription: 'GRAB HOLDINGS *RIDE' }],
+      proposedResolution: {
+        amountCents: '3500',
+        signedAmountCents: '-3500',
+        currency: 'USD',
+      },
+    });
+
+    // 2. Fetch clusters
+    const clusters = await bankProcessingService.getExceptionClusters(tenantId);
+    expect(clusters.length).toBeGreaterThanOrEqual(1);
+
+    const awsCluster = clusters.find((c) => c.payee.toLowerCase().includes('aws'));
+    expect(awsCluster).toBeDefined();
+    expect(awsCluster?.count).toBe(2);
+    expect(awsCluster?.totalAmountCents).toBe('35000');
+    expect(awsCluster?.exceptionIds).toContain(exc1.id);
+    expect(awsCluster?.exceptionIds).toContain(exc2.id);
+
+    // 3. Resolve AWS cluster with rule memory
+    const resolveResult = await bankProcessingService.resolveExceptionCluster(tenantId, userId, {
+      payee: awsCluster!.payee,
+      accountId: checkingLedgerAccId,
+      action: 'APPROVE',
+      rememberRule: true,
+      exceptionIds: awsCluster!.exceptionIds,
+    });
+
+    expect(resolveResult.resolvedCount).toBe(2);
+    expect(resolveResult.failedCount).toBe(0);
+    expect(resolveResult.ruleRemembered).toBe(true);
+
+    // 4. Verify exceptions are now RESOLVED
+    const updatedExc1 = await bankingRepo.findExceptionItemById(tenantId, exc1.id);
+    const updatedExc2 = await bankingRepo.findExceptionItemById(tenantId, exc2.id);
+    expect(updatedExc1?.status).toBe('RESOLVED');
+    expect(updatedExc2?.status).toBe('RESOLVED');
+
+    // 5. Verify Counterparty rule was created
+    const createdCp = await counterpartyRepo.findByNormalizedName(
+      tenantId,
+      awsCluster!.payee.toUpperCase().trim(),
+    );
+    expect(createdCp).toBeDefined();
+    expect(createdCp?.defaultAccountId).toBe(checkingLedgerAccId);
+  });
 });

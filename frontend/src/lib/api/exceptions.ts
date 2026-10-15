@@ -5,6 +5,7 @@ import { getCurrencySymbol } from '@/lib/formatters';
 export const exceptionKeys = {
   all: ['exceptions'] as const,
   lists: () => [...exceptionKeys.all, 'list'] as const,
+  clusters: () => [...exceptionKeys.all, 'clusters'] as const,
   details: () => [...exceptionKeys.all, 'detail'] as const,
   detail: (id: string) => [...exceptionKeys.details(), id] as const,
 };
@@ -395,4 +396,41 @@ export async function batchResolveExceptions(
     console.warn('Live batch exception resolution error:', err);
     return { ok: true, resolvedCount: ids.length, failedCount: 0 };
   }
+}
+
+export interface ExceptionCluster {
+  payee: string;
+  count: number;
+  totalAmountCents: string;
+  currency: string;
+  direction: 'INFLOW' | 'OUTFLOW';
+  suggestedCategory: string;
+  suggestedAccountCode?: string;
+  suggestedAccountId?: string;
+  averageConfidence: number;
+  exceptionIds: string[];
+}
+
+export async function getExceptionClusters(): Promise<ExceptionCluster[]> {
+  try {
+    const res = await apiClient.get<{ data: ExceptionCluster[] }>('/banking/exceptions/clusters');
+    return res.data || [];
+  } catch (err) {
+    console.warn('Could not fetch exception clusters:', err);
+    return [];
+  }
+}
+
+export async function resolveExceptionCluster(params: {
+  payee: string;
+  accountId?: string;
+  accountCode?: string;
+  action: 'APPROVE' | 'REJECT';
+  rememberRule?: boolean;
+  exceptionIds?: string[];
+}): Promise<{ resolvedCount: number; failedCount: number; payee: string }> {
+  const res = await apiClient.post<{
+    data: { resolvedCount: number; failedCount: number; payee: string };
+  }>('/banking/exceptions/resolve-cluster', params);
+  return res.data;
 }

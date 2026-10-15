@@ -87,3 +87,15 @@ export const batchResolveExceptionsSchema = z.object({
 
 export type BatchResolveExceptionsInput = z.input<typeof batchResolveExceptionsSchema>;
 export type BatchResolveExceptionsDto = z.infer<typeof batchResolveExceptionsSchema>;
+
+export const resolveExceptionClusterSchema = z.object({
+  payee: z.string().min(1),
+  accountId: z.string().uuid().optional(),
+  accountCode: z.string().optional(),
+  action: z.enum(['APPROVE', 'REJECT']).default('APPROVE'),
+  rememberRule: z.boolean().optional().default(true),
+  exceptionIds: z.array(z.string().min(1)).optional(),
+});
+
+export type ResolveExceptionClusterInput = z.input<typeof resolveExceptionClusterSchema>;
+export type ResolveExceptionClusterDto = z.infer<typeof resolveExceptionClusterSchema>;

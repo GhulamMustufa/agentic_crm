@@ -37,6 +37,7 @@ import type {
   RejectProposalInput,
   ResolveExceptionInput,
   BatchResolveExceptionsInput,
+  ResolveExceptionClusterInput,
 } from '../dto/banking.dto';
 
 function serializeBigInt(obj: unknown): unknown {
@@ -465,6 +466,29 @@ export class BankingController {
   ) {
     const tenantId = this.requireTenant(user);
     const result = await this.bankProcessingService.batchResolveExceptions(
+      tenantId,
+      user.userId,
+      dto,
+    );
+    return { data: serializeBigInt(result) };
+  }
+
+  @Get('exceptions/clusters')
+  @HttpCode(HttpStatus.OK)
+  async getExceptionClusters(@CurrentUser() user: TenantSessionContext) {
+    const tenantId = this.requireTenant(user);
+    const clusters = await this.bankProcessingService.getExceptionClusters(tenantId);
+    return { data: serializeBigInt(clusters) };
+  }
+
+  @Post('exceptions/resolve-cluster')
+  @HttpCode(HttpStatus.OK)
+  async resolveExceptionCluster(
+    @CurrentUser() user: TenantSessionContext,
+    @Body() dto: ResolveExceptionClusterInput,
+  ) {
+    const tenantId = this.requireTenant(user);
+    const result = await this.bankProcessingService.resolveExceptionCluster(
       tenantId,
       user.userId,
       dto,

@@ -35,10 +35,12 @@ import {
   rejectProposalSchema,
   resolveExceptionSchema,
   batchResolveExceptionsSchema,
+  resolveExceptionClusterSchema,
 } from '../dto/banking.dto';
 import { CsvStatementParser } from '../parsers/csv-statement.parser';
 import { PdfStatementParser, MalformedPdfError } from '../parsers/pdf-statement.parser';
 import { logMemoryDiagnostics } from '../utils/memory-diagnostics';
+import { cleanBankPayee } from '../utils/payee-cleaner';
 
 import type { AiClassificationResult } from './ai-accountant.service';
 import type { BankAccountEntity } from '../domain/bank-account.entity';
@@ -56,6 +58,7 @@ import type {
   RejectProposalInput,
   ResolveExceptionInput,
   BatchResolveExceptionsInput,
+  ResolveExceptionClusterInput,
 } from '../dto/banking.dto';
 
 export function computeSha256(data: string | Buffer): string {
@@ -1414,6 +1417,231 @@ export class BankProcessingService {
       resolvedCount,
       failedCount,
       results,
+    };
+  }
+
+  // --- Exception Clustering & Smart Resolution ---
+  async getExceptionClusters(tenantId: string): Promise<
+    Array<{
+      payee: string;
+      count: number;
+      totalAmountCents: string;
+      currency: string;
+      direction: 'INFLOW' | 'OUTFLOW';
+      suggestedCategory: string;
+      suggestedAccountCode?: string;
+      suggestedAccountId?: string;
+      averageConfidence: number;
+      exceptionIds: string[];
+    }>
+  > {
+    const openExceptions = await this.bankingRepo.listExceptionItems(tenantId, {
+      status: 'OPEN',
+      limit: 3000,
+    });
+
+    if (openExceptions.length === 0) {
+      return [];
+    }
+
+    const accounts = await this.ledgerService.listAccounts(tenantId);
+    const accountMap = new Map(accounts.map((a) => [a.id, a]));
+
+    const clusterMap = new Map<
+      string,
+      {
+        payee: string;
+        count: number;
+        totalAmountCents: bigint;
+        currency: string;
+        direction: 'INFLOW' | 'OUTFLOW';
+        suggestedAccountId?: string;
+        suggestedAccountCode?: string;
+        suggestedCategory?: string;
+        confidenceSum: number;
+        exceptionIds: string[];
+      }
+    >();
+
+    for (const exc of openExceptions) {
+      let rawText = '';
+      if (Array.isArray(exc.evidence)) {
+        for (const ev of exc.evidence) {
+          if (ev && typeof ev === 'object' && 'rawDescription' in ev) {
+            rawText = String((ev as Record<string, unknown>).rawDescription);
+            break;
+          }
+          if (ev && typeof ev === 'object' && 'matchedValue' in ev) {
+            rawText = String((ev as Record<string, unknown>).matchedValue);
+            break;
+          }
+        }
+      }
+
+      const payee = cleanBankPayee(rawText || exc.reason);
+      const proposed = exc.proposedResolution as Record<string, unknown> | undefined;
+      const amountStr = String(proposed?.amountCents || '0');
+      const amountCents = BigInt(amountStr.replace(/\D/g, '') || '0');
+      const currency = String(proposed?.currency || 'USD');
+      const signedAmount = String(proposed?.signedAmountCents || '0');
+      const direction: 'INFLOW' | 'OUTFLOW' = signedAmount.startsWith('-') ? 'OUTFLOW' : 'INFLOW';
+
+      const debitAccId = proposed?.suggestedDebitAccountId
+        ? String(proposed.suggestedDebitAccountId)
+        : undefined;
+      const creditAccId = proposed?.suggestedCreditAccountId
+        ? String(proposed.suggestedCreditAccountId)
+        : undefined;
+      const targetAccountId = direction === 'OUTFLOW' ? debitAccId : creditAccId;
+      const targetAccount = targetAccountId ? accountMap.get(targetAccountId) : undefined;
+
+      const confMatch = exc.reason.match(/Confidence:\s*(\d+)%/i);
+      const confidence = confMatch ? Number(confMatch[1]) / 100 : 0.75;
+
+      const existing = clusterMap.get(payee);
+      if (existing) {
+        existing.count++;
+        existing.totalAmountCents += amountCents;
+        existing.confidenceSum += confidence;
+        existing.exceptionIds.push(exc.id);
+        if (!existing.suggestedAccountId && targetAccountId) {
+          existing.suggestedAccountId = targetAccountId;
+          existing.suggestedAccountCode = targetAccount?.accountCode;
+          existing.suggestedCategory = targetAccount?.name;
+        }
+      } else {
+        clusterMap.set(payee, {
+          payee,
+          count: 1,
+          totalAmountCents: amountCents,
+          currency,
+          direction,
+          suggestedAccountId: targetAccountId,
+          suggestedAccountCode: targetAccount?.accountCode,
+          suggestedCategory: targetAccount?.name || 'General Expense',
+          confidenceSum: confidence,
+          exceptionIds: [exc.id],
+        });
+      }
+    }
+
+    const clusters = Array.from(clusterMap.values())
+      .map((c) => ({
+        payee: c.payee,
+        count: c.count,
+        totalAmountCents: c.totalAmountCents.toString(),
+        currency: c.currency,
+        direction: c.direction,
+        suggestedCategory: c.suggestedCategory || 'General Operating Expense',
+        suggestedAccountCode: c.suggestedAccountCode || '5010',
+        suggestedAccountId: c.suggestedAccountId,
+        averageConfidence: Math.round((c.confidenceSum / c.count) * 100) / 100,
+        exceptionIds: c.exceptionIds,
+      }))
+      .sort((a, b) => b.count - a.count);
+
+    return clusters.slice(0, 15);
+  }
+
+  async resolveExceptionCluster(
+    tenantId: string,
+    userId: string,
+    rawDto: ResolveExceptionClusterInput,
+  ): Promise<{
+    resolvedCount: number;
+    failedCount: number;
+    payee: string;
+    action: string;
+    ruleRemembered: boolean;
+  }> {
+    const parseResult = resolveExceptionClusterSchema.safeParse(rawDto);
+    if (!parseResult.success) {
+      throw new ValidationError(
+        'Resolve cluster validation failed',
+        parseResult.error.errors.map((e) => ({ field: e.path.join('.'), message: e.message })),
+      );
+    }
+    const dto = parseResult.data;
+
+    let targetExceptionIds = dto.exceptionIds;
+    if (!targetExceptionIds || targetExceptionIds.length === 0) {
+      const clusters = await this.getExceptionClusters(tenantId);
+      const match = clusters.find((c) => c.payee.toLowerCase() === dto.payee.toLowerCase());
+      targetExceptionIds = match ? match.exceptionIds : [];
+    }
+
+    let resolvedCount = 0;
+    let failedCount = 0;
+
+    const CHUNK_SIZE = 25;
+    for (let i = 0; i < targetExceptionIds.length; i += CHUNK_SIZE) {
+      const chunk = targetExceptionIds.slice(i, i + CHUNK_SIZE);
+      await Promise.all(
+        chunk.map(async (excId) => {
+          try {
+            if (dto.accountId && dto.action === 'APPROVE') {
+              const exc = await this.bankingRepo.findExceptionItemById(tenantId, excId);
+              if (exc && exc.entityType === 'PROPOSAL' && exc.entityId) {
+                const prop = await this.bankingRepo.findProposalById(tenantId, exc.entityId);
+                if (prop && prop.status === 'PROPOSED') {
+                  const direction = prop.debitAccountId ? 'OUTFLOW' : 'INFLOW';
+                  await this.bankingRepo.updateProposalStatus(tenantId, prop.id, 'PROPOSED', {
+                    modifications: {
+                      debitAccountId: direction === 'OUTFLOW' ? dto.accountId : prop.debitAccountId,
+                      creditAccountId:
+                        direction === 'INFLOW' ? dto.accountId : prop.creditAccountId,
+                    },
+                  });
+                }
+              }
+            }
+
+            await this.resolveException(tenantId, userId, excId, {
+              status: dto.action === 'REJECT' ? 'DISMISSED' : 'RESOLVED',
+              resolutionNotes: `Cluster resolved for payee "${dto.payee}".`,
+            });
+            resolvedCount++;
+          } catch {
+            failedCount++;
+          }
+        }),
+      );
+    }
+
+    let ruleRemembered = false;
+    if (dto.rememberRule && dto.accountId && dto.action === 'APPROVE') {
+      try {
+        const normalizedName = dto.payee.toUpperCase().trim();
+        const existingCp = await this.counterpartyRepo.findByNormalizedName(
+          tenantId,
+          normalizedName,
+        );
+        if (existingCp) {
+          await this.counterpartyRepo.update(tenantId, existingCp.id, {
+            defaultAccountId: dto.accountId,
+          });
+        } else {
+          await this.counterpartyRepo.create({
+            tenantId,
+            type: 'VENDOR',
+            legalName: dto.payee,
+            normalizedName,
+            defaultAccountId: dto.accountId,
+            paymentTermsDays: 30,
+          });
+        }
+        ruleRemembered = true;
+      } catch (cpErr) {
+        this.logger.warn(`Could not save learned counterparty rule for ${dto.payee}: ${cpErr}`);
+      }
+    }
+
+    return {
+      resolvedCount,
+      failedCount,
+      payee: dto.payee,
+      action: dto.action,
+      ruleRemembered,
     };
   }
 
