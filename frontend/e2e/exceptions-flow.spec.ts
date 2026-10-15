@@ -96,9 +96,10 @@ test.describe('Exception Center Review & Resolution Flow', () => {
   test('should inspect AI proposals and approve an exception with optimistic UI update', async ({
     page,
   }) => {
-    // 1. Visit Exception Center
+    // 1. Visit Exception Center & Switch to Triage Split View
     await page.goto('/exceptions');
     await expect(page.getByRole('heading', { name: /review & approvals/i })).toBeVisible();
+    await page.getByRole('button', { name: /triage split/i }).click();
 
     // 2. Verify Exception Items in Left Pane
     await expect(page.getByText(/stripe merchant payout/i).first()).toBeVisible();

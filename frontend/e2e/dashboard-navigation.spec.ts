@@ -83,7 +83,7 @@ test.describe('Dashboard & Navigation Flow', () => {
 
   test('should render dashboard metrics and navigate across main sections', async ({ page }) => {
     // 1. Visit Dashboard
-    await page.goto('/');
+    await page.goto('/overview');
     await expect(page.getByRole('heading', { name: /financial command center/i })).toBeVisible();
 
     // 2. Verify Key Metric Cards with exact match
@@ -103,7 +103,7 @@ test.describe('Dashboard & Navigation Flow', () => {
 
     // 5. Test Sidebar Navigation: Overview
     await page.getByRole('link', { name: 'Overview' }).click();
-    await expect(page).toHaveURL(/\//);
+    await expect(page).toHaveURL(/\/overview/);
     await expect(page.getByRole('heading', { name: /financial command center/i })).toBeVisible();
   });
 });
