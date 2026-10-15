@@ -77,7 +77,7 @@ export default function SetupPage() {
         console.warn('COA seed notice:', err);
       }
 
-      router.push('/');
+      router.push('/overview');
     } catch (err: unknown) {
       // API client will automatically show the error toast
       console.error(err);

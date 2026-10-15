@@ -23,7 +23,7 @@ import { apiClient } from '@/lib/api-client';
 import { BrandLogo } from '@/components/brand/brand-logo';
 
 const navigation = [
-  { name: 'Overview', href: '/', icon: LayoutDashboard },
+  { name: 'Overview', href: '/overview', icon: LayoutDashboard },
   { name: 'Approvals', href: '/exceptions', icon: CheckCircle },
   { name: 'Banking', href: '/banking', icon: Building2 },
   { name: 'Transactions', href: '/transactions', icon: Receipt },

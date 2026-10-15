@@ -84,7 +84,7 @@ export function ExceptionListClient({
   const [statusFilter, setStatusFilter] = React.useState<'ALL' | 'NEW_PAYEE' | 'NEEDS_CATEGORY'>(
     'ALL',
   );
-  const [viewMode, setViewMode] = React.useState<'split' | 'table'>('split');
+  const [viewMode, setViewMode] = React.useState<'split' | 'table'>('table');
   type ExceptionSortColumn =
     'date' | 'cleanPayee' | 'friendlyTypeLabel' | 'amount' | 'confidenceScore';
 

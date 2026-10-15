@@ -80,12 +80,12 @@ export default function LoginPage() {
           if (orgs[0].baseCurrency) {
             authStorage.setTenantCurrency(orgs[0].baseCurrency);
           }
-          router.push('/');
+          router.push('/overview');
         } else {
           router.push('/setup');
         }
       } catch {
-        router.push('/');
+        router.push('/overview');
       }
     } catch (err: unknown) {
       // API client will automatically show the error toast
