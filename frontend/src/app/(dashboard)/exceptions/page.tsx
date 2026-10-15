@@ -10,7 +10,7 @@ export default function ExceptionsPage() {
   const [searchTerm, setSearchTerm] = React.useState('');
 
   return (
-    <div className="flex flex-col min-h-0 md:h-[calc(100vh-8rem)]">
+    <div className="flex flex-col min-h-full space-y-4 pb-12">
       {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-5 shrink-0">
         <div>

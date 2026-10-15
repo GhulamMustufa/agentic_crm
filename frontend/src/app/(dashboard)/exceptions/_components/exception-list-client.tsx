@@ -917,7 +917,7 @@ export function ExceptionListClient({
           </Button>
         </Card>
       ) : viewMode === 'table' ? (
-        <Card className="flex-1 flex flex-col overflow-hidden">
+        <Card className="flex-1 flex flex-col overflow-hidden border border-border/80 shadow-xs rounded-xl min-h-[480px]">
           <CardContent className="p-0 flex-1 overflow-auto flex flex-col">
             {isAllOnPageSelected && filteredExceptions.length > paginatedExceptions.length && (
               <div className="flex items-center justify-between px-4 py-2 bg-primary/10 border-b border-primary/20 text-xs shrink-0">
@@ -1139,7 +1139,7 @@ export function ExceptionListClient({
         </Card>
       ) : (
         /* Main Master-Detail Split Screen */
-        <div className="flex flex-col md:flex-row gap-4 flex-1 min-h-0">
+        <div className="flex flex-col md:flex-row gap-4 flex-1 min-h-[580px] md:h-[calc(100vh-14rem)]">
           {/* Left Pane: Triage Cards List (40% Width) */}
           <div
             className={`w-full md:w-5/12 flex-col gap-2 overflow-y-auto pr-1.5 ${
