@@ -98,48 +98,51 @@
 }
 
 .dark {
-  /* Deep Financial Midnight (#090d16) */
-  --background: oklch(0.13 0.02 260);
-  --foreground: oklch(0.985 0 0);
+  /* Modern Dimmed Slate Canvas (#151b26) - No more pitch black void */
+  --background: oklch(0.21 0.02 255);
+  --foreground: oklch(0.96 0.01 250);
 
-  /* Elevated Dark Card Surfaces (#111827) */
-  --card: oklch(0.18 0.02 260);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.18 0.02 260);
-  --popover-foreground: oklch(0.985 0 0);
+  /* Elevated Slate Card Surfaces (#20293a) - Distinct, visible box elevation */
+  --card: oklch(0.27 0.025 255);
+  --card-foreground: oklch(0.96 0.01 250);
+  --popover: oklch(0.27 0.025 255);
+  --popover-foreground: oklch(0.96 0.01 250);
 
   /* Electric Sapphire Accent (#3b82f6) */
   --primary: oklch(0.65 0.21 255);
   --primary-foreground: oklch(0.99 0 0);
 
-  --secondary: oklch(0.24 0.02 260);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.24 0.02 260);
+  /* Interactive Secondary & Muted Surfaces (#2b364a / #263143) */
+  --secondary: oklch(0.32 0.025 255);
+  --secondary-foreground: oklch(0.96 0.01 250);
+  --muted: oklch(0.3 0.025 255);
 
-  /* Legible Slate-400 (#94a3b8) Muted Text on Dark Backgrounds */
-  --muted-foreground: oklch(0.72 0.02 240);
+  /* Crisp Slate-300 (#cbd5e1) Muted Text for effortless rapid scanning */
+  --muted-foreground: oklch(0.74 0.025 240);
 
-  --accent: oklch(0.24 0.02 260);
-  --accent-foreground: oklch(0.985 0 0);
+  --accent: oklch(0.32 0.025 255);
+  --accent-foreground: oklch(0.96 0.01 250);
   --destructive: oklch(0.704 0.191 22.216);
 
-  --border: oklch(1 0 0 / 12%);
-  --input: oklch(1 0 0 / 16%);
+  /* Crisp Defined Slate Borders (#343f54) - Boxes clearly pop with structure */
+  --border: oklch(0.36 0.025 255 / 75%);
+  --input: oklch(0.36 0.025 255 / 75%);
   --ring: oklch(0.65 0.21 255 / 50%);
 
   --chart-1: oklch(0.65 0.21 255);
-  --chart-2: oklch(0.68 0.18 150);
-  --chart-3: oklch(0.75 0.15 80);
+  --chart-2: oklch(0.7 0.18 150);
+  --chart-3: oklch(0.76 0.15 80);
   --chart-4: oklch(0.704 0.191 22.216);
-  --chart-5: oklch(0.72 0.02 240);
+  --chart-5: oklch(0.74 0.025 240);
 
-  --sidebar: oklch(0.16 0.02 260);
-  --sidebar-foreground: oklch(0.985 0 0);
+  /* Deep Anchor Sidebar (#111722) */
+  --sidebar: oklch(0.18 0.02 255);
+  --sidebar-foreground: oklch(0.96 0.01 250);
   --sidebar-primary: oklch(0.65 0.21 255);
   --sidebar-primary-foreground: oklch(0.99 0 0);
-  --sidebar-accent: oklch(0.24 0.02 260);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 12%);
+  --sidebar-accent: oklch(0.26 0.025 255);
+  --sidebar-accent-foreground: oklch(0.96 0.01 250);
+  --sidebar-border: oklch(0.32 0.02 255 / 60%);
   --sidebar-ring: oklch(0.65 0.21 255 / 50%);
 }
 
