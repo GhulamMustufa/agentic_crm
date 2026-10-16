@@ -65,7 +65,7 @@ export function LandingRoiCalculator() {
                   onChange={(e) => setTransactionCount(Number(e.target.value))}
                   className="w-full h-2.5 bg-muted rounded-lg appearance-none cursor-pointer accent-primary"
                 />
-                <div className="flex justify-between text-[11px] text-muted-foreground mt-1.5 font-mono">
+                <div className="flex justify-between text-xs text-muted-foreground mt-1.5 font-mono">
                   <span>100 / mo</span>
                   <span>1,000 / mo</span>
                   <span>2,500 / mo</span>
@@ -80,7 +80,7 @@ export function LandingRoiCalculator() {
                   <div className="text-lg sm:text-xl font-bold font-mono text-foreground mt-1">
                     ~{legacyHoursPerMonth} hrs/mo
                   </div>
-                  <div className="text-[11px] text-destructive mt-0.5">
+                  <div className="text-xs text-destructive mt-0.5 font-medium">
                     Manual typing & clicking
                   </div>
                 </div>
@@ -90,7 +90,7 @@ export function LandingRoiCalculator() {
                   <div className="text-lg sm:text-xl font-bold font-mono text-primary mt-1">
                     &lt; {agenticHoursPerMonth} hrs/mo
                   </div>
-                  <div className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-0.5">
+                  <div className="text-xs text-emerald-600 dark:text-emerald-400 mt-0.5 font-medium">
                     1-click approvals only
                   </div>
                 </div>
@@ -126,7 +126,7 @@ export function LandingRoiCalculator() {
                     <ArrowRight className="w-4 h-4" />
                   </Button>
                 </Link>
-                <div className="text-[11px] text-muted-foreground mt-2 text-center">
+                <div className="text-xs text-muted-foreground mt-2 text-center">
                   14-day free trial • Cancel anytime
                 </div>
               </div>

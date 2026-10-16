@@ -35,8 +35,8 @@ export function LandingNav() {
             <span className="font-bold text-base sm:text-lg tracking-tight text-foreground">
               Agentic OS
             </span>
-            <span className="hidden sm:inline-flex items-center text-[11px] font-medium px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
-              <Sparkles className="w-2.5 h-2.5 mr-1" />
+            <span className="hidden sm:inline-flex items-center text-xs font-semibold px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
+              <Sparkles className="w-3 h-3 mr-1" />
               Autonomous Finance
             </span>
           </div>

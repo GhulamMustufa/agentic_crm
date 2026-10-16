@@ -93,14 +93,14 @@ export function ExceptionClustersBanner() {
               </h3>
               <Badge
                 variant="secondary"
-                className="text-[11px] bg-primary/15 text-primary border-none font-medium px-2 py-0.5"
+                className="text-xs bg-primary/15 text-primary border-none font-semibold px-2.5 py-0.5"
               >
                 {meaningfulClusters.length}{' '}
                 {meaningfulClusters.length === 1 ? 'Merchant' : 'Merchants'} ·{' '}
                 {totalClusteredTransactions.toLocaleString()} Transactions
               </Badge>
             </div>
-            <p className="text-[11px] sm:text-xs text-muted-foreground truncate hidden sm:block">
+            <p className="text-xs text-muted-foreground truncate hidden sm:block">
               One-click approve recurring merchant clusters instead of reviewing hundreds of
               individual rows.
             </p>
@@ -174,36 +174,33 @@ export function ExceptionClustersBanner() {
                   <div className="space-y-1.5">
                     <div className="flex items-start justify-between gap-2">
                       <span
-                        className="font-medium text-xs sm:text-sm text-foreground line-clamp-1"
+                        className="font-bold text-sm text-foreground line-clamp-1"
                         title={cluster.payee}
                       >
                         {cluster.payee}
                       </span>
-                      <Badge
-                        variant="outline"
-                        className="text-[11px] font-mono shrink-0 px-1.5 py-0"
-                      >
+                      <Badge variant="outline" className="text-xs font-mono shrink-0 px-2 py-0.5">
                         {cluster.count.toLocaleString()} items
                       </Badge>
                     </div>
 
                     <div className="flex items-baseline gap-1.5">
-                      <span className="text-sm sm:text-base font-semibold text-foreground font-mono">
+                      <span className="text-sm sm:text-base font-bold text-foreground font-mono">
                         {formatCurrency(amountFloat, cluster.currency || tenantCurrency)}
                       </span>
-                      <span className="text-[11px] text-muted-foreground">total</span>
+                      <span className="text-xs text-muted-foreground">total</span>
                     </div>
 
                     <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
                       <Badge
                         variant="secondary"
-                        className="text-[10px] font-normal truncate max-w-[170px] px-1.5 py-0"
+                        className="text-xs font-medium truncate max-w-[170px] px-2 py-0.5"
                       >
                         {cluster.suggestedCategory}
                       </Badge>
                       <Badge
                         variant="outline"
-                        className="text-[10px] border-emerald-500/30 text-emerald-600 dark:text-emerald-400 bg-emerald-500/5 px-1.5 py-0"
+                        className="text-xs font-semibold border-emerald-500/30 text-emerald-600 dark:text-emerald-400 bg-emerald-500/5 px-2 py-0.5"
                       >
                         {Math.round(cluster.averageConfidence * 100)}% Match
                       </Badge>

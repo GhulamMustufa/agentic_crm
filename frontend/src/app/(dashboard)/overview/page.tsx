@@ -72,7 +72,7 @@ export default function DashboardPage() {
                 </span>
                 <Badge
                   variant="outline"
-                  className="text-amber-700 dark:text-amber-300 border-amber-400/40 text-[11px] font-medium px-2 py-0"
+                  className="text-amber-700 dark:text-amber-300 border-amber-400/40 text-xs font-semibold px-2.5 py-0.5"
                 >
                   Action Required
                 </Badge>
@@ -139,7 +139,7 @@ export default function DashboardPage() {
         {/* Card 1: Financial Health */}
         <Card className="relative overflow-hidden border-border/70 hover:border-border transition-colors">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1.5 sm:pb-2 p-3.5 sm:p-5">
-            <CardTitle className="text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-muted-foreground truncate">
+            <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground truncate">
               Financial Health
             </CardTitle>
             <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center shrink-0">
@@ -151,8 +151,8 @@ export default function DashboardPage() {
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
               <span className="truncate">{transactionCount > 0 ? '100% In Balance' : 'Ready'}</span>
             </div>
-            <p className="text-[11px] sm:text-xs text-muted-foreground mt-1 sm:mt-1.5 flex items-center gap-1 truncate">
-              <CheckCircle2 className="w-3 h-3 text-emerald-500 shrink-0" />
+            <p className="text-xs text-muted-foreground mt-1 sm:mt-1.5 flex items-center gap-1 truncate">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
               <span className="truncate">
                 {transactionCount > 0 ? 'Debits equal credits' : 'Awaiting statement'}
               </span>
@@ -163,7 +163,7 @@ export default function DashboardPage() {
         {/* Card 2: Cash & Runway */}
         <Card className="relative overflow-hidden border-border/70 hover:border-border transition-colors">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1.5 sm:pb-2 p-3.5 sm:p-5">
-            <CardTitle className="text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-muted-foreground truncate">
+            <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground truncate">
               Total Cash Balance
             </CardTitle>
             <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
@@ -174,8 +174,8 @@ export default function DashboardPage() {
             <div className="text-lg sm:text-2xl font-bold tracking-tight tabular-nums font-mono truncate">
               {loading ? '...' : formattedBalance}
             </div>
-            <p className="text-[11px] sm:text-xs text-muted-foreground mt-1 sm:mt-1.5 flex items-center gap-1 truncate">
-              <TrendingUp className="w-3 h-3 text-emerald-500 shrink-0" />
+            <p className="text-xs text-muted-foreground mt-1 sm:mt-1.5 flex items-center gap-1 truncate">
+              <TrendingUp className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
               <span className="truncate">
                 {totalBalanceCents > 0 ? (
                   <>
@@ -192,7 +192,7 @@ export default function DashboardPage() {
         {/* Card 3: Automated Bookkeeping */}
         <Card className="relative overflow-hidden border-border/70 hover:border-border transition-colors">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1.5 sm:pb-2 p-3.5 sm:p-5">
-            <CardTitle className="text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-muted-foreground truncate">
+            <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground truncate">
               Bookkeeping Accuracy
             </CardTitle>
             <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-blue-500/10 flex items-center justify-center shrink-0">
@@ -203,10 +203,10 @@ export default function DashboardPage() {
             <div className="text-lg sm:text-2xl font-bold tracking-tight tabular-nums truncate">
               {loading ? '...' : `${transactionCount} Processed`}
             </div>
-            <p className="text-[11px] sm:text-xs text-muted-foreground mt-1 sm:mt-1.5 flex items-center gap-1 truncate">
+            <p className="text-xs text-muted-foreground mt-1 sm:mt-1.5 flex items-center gap-1.5 truncate">
               <Badge
                 variant="outline"
-                className="text-[9px] sm:text-[10px] px-1 py-0 h-3.5 sm:h-4 bg-emerald-500/10 text-emerald-600 border-emerald-500/20 font-medium"
+                className="text-xs px-2 py-0.5 bg-emerald-500/10 text-emerald-600 border-emerald-500/20 font-semibold"
               >
                 98.4%
               </Badge>
@@ -225,7 +225,7 @@ export default function DashboardPage() {
         >
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1.5 sm:pb-2 p-3.5 sm:p-5">
             <CardTitle
-              className={`text-[11px] sm:text-xs font-semibold uppercase tracking-wider truncate ${
+              className={`text-xs font-semibold uppercase tracking-wider truncate ${
                 exceptionsCount > 0 ? 'text-amber-700 dark:text-amber-400' : 'text-muted-foreground'
               }`}
             >
@@ -252,7 +252,7 @@ export default function DashboardPage() {
               {loading ? '...' : exceptionsCount > 0 ? `${exceptionsCount} Pending` : '0 Pending'}
             </div>
             <p
-              className={`text-[11px] sm:text-xs mt-1 sm:mt-1.5 truncate ${
+              className={`text-xs mt-1 sm:mt-1.5 truncate ${
                 exceptionsCount > 0
                   ? 'text-amber-700 dark:text-amber-400 font-medium'
                   : 'text-muted-foreground'
@@ -306,7 +306,7 @@ export default function DashboardPage() {
               </div>
               <Badge
                 variant="outline"
-                className="text-[11px] font-mono gap-1 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 bg-emerald-500/10"
+                className="text-xs font-mono gap-1.5 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 font-semibold"
               >
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                 Live Feed
@@ -351,7 +351,7 @@ export default function DashboardPage() {
                       <p className="text-sm font-medium text-foreground leading-snug">
                         {item.title}
                       </p>
-                      <span className="text-[11px] text-muted-foreground shrink-0 font-mono">
+                      <span className="text-xs text-muted-foreground shrink-0 font-mono">
                         {item.time}
                       </span>
                     </div>

@@ -85,7 +85,7 @@ export function LandingHero() {
             <div className="text-xl sm:text-2xl font-bold tracking-tight text-foreground font-mono">
               &lt; 15 mins
             </div>
-            <p className="text-[11px] text-muted-foreground mt-0.5">Month-end close (vs 12 days)</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Month-end close (vs 12 days)</p>
           </div>
 
           <div className="p-3.5 sm:p-4 rounded-xl border border-border/70 bg-card/60 backdrop-blur-xs flex flex-col justify-between">
@@ -96,9 +96,7 @@ export function LandingHero() {
             <div className="text-xl sm:text-2xl font-bold tracking-tight text-foreground font-mono">
               1-Click
             </div>
-            <p className="text-[11px] text-muted-foreground mt-0.5">
-              Approve 100+ recurring charges
-            </p>
+            <p className="text-xs text-muted-foreground mt-0.5">Approve 100+ recurring charges</p>
           </div>
 
           <div className="p-3.5 sm:p-4 rounded-xl border border-border/70 bg-card/60 backdrop-blur-xs flex flex-col justify-between">
@@ -109,7 +107,7 @@ export function LandingHero() {
             <div className="text-xl sm:text-2xl font-bold tracking-tight text-emerald-600 dark:text-emerald-400 font-mono">
               100% Strict
             </div>
-            <p className="text-[11px] text-muted-foreground mt-0.5">Zero AI ledger hallucination</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Zero AI ledger hallucination</p>
           </div>
 
           <div className="p-3.5 sm:p-4 rounded-xl border border-border/70 bg-card/60 backdrop-blur-xs flex flex-col justify-between">
@@ -120,7 +118,7 @@ export function LandingHero() {
             <div className="text-xl sm:text-2xl font-bold tracking-tight text-foreground font-mono">
               AES-256
             </div>
-            <p className="text-[11px] text-muted-foreground mt-0.5">Bank-grade tenant encryption</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Bank-grade tenant encryption</p>
           </div>
         </div>
       </div>

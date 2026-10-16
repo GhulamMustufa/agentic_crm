@@ -108,7 +108,7 @@ export function LandingPricing() {
               }`}
             >
               <span>Annual Billing</span>
-              <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-bold">
+              <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-bold">
                 Save 20%
               </span>
             </button>
@@ -131,7 +131,7 @@ export function LandingPricing() {
               >
                 {tier.popular && (
                   <div className="absolute -top-3.5 left-1/2 -translate-x-1/2">
-                    <span className="px-3 py-1 rounded-full text-[11px] font-bold tracking-wide uppercase bg-primary text-primary-foreground shadow-sm">
+                    <span className="px-3 py-1 rounded-full text-xs font-bold tracking-wide uppercase bg-primary text-primary-foreground shadow-sm">
                       {tier.badge}
                     </span>
                   </div>
@@ -141,7 +141,10 @@ export function LandingPricing() {
                   <div className="flex justify-between items-start mb-2">
                     <h3 className="text-xl font-bold text-foreground">{tier.name}</h3>
                     {!tier.popular && tier.badge && (
-                      <Badge variant="outline" className="text-[10px] font-semibold border-border">
+                      <Badge
+                        variant="outline"
+                        className="text-xs font-semibold border-border px-2 py-0.5"
+                      >
                         {tier.badge}
                       </Badge>
                     )}
@@ -157,7 +160,7 @@ export function LandingPricing() {
                     </span>
                     <span className="text-xs text-muted-foreground font-medium">/ month</span>
                     {isAnnual && (
-                      <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium ml-2">
+                      <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium ml-2">
                         (billed annually)
                       </span>
                     )}
@@ -188,7 +191,7 @@ export function LandingPricing() {
                       <ArrowRight className="w-3.5 h-3.5" />
                     </Button>
                   </Link>
-                  <div className="text-[11px] text-muted-foreground text-center mt-2.5">
+                  <div className="text-xs text-muted-foreground text-center mt-2.5">
                     14-day free trial • Cancel anytime
                   </div>
                 </div>

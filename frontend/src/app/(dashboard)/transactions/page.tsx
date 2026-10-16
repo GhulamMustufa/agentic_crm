@@ -162,9 +162,9 @@ export default function TransactionsPage() {
         return (
           <Badge
             variant="outline"
-            className="bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 gap-1 text-[11px] font-medium"
+            className="bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 gap-1.5 text-xs font-semibold px-2 py-0.5"
           >
-            <CheckCircle2 className="w-3 h-3" />
+            <CheckCircle2 className="w-3.5 h-3.5" />
             Verified in Books
           </Badge>
         );
@@ -172,9 +172,9 @@ export default function TransactionsPage() {
         return (
           <Badge
             variant="outline"
-            className="bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-400 gap-1 text-[11px] font-medium"
+            className="bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-400 gap-1.5 text-xs font-semibold px-2 py-0.5"
           >
-            <Sparkles className="w-3 h-3" />
+            <Sparkles className="w-3.5 h-3.5" />
             AI Matched
           </Badge>
         );
@@ -182,14 +182,18 @@ export default function TransactionsPage() {
         return (
           <Badge
             variant="outline"
-            className="bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-400 gap-1 text-[11px] font-medium"
+            className="bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-400 gap-1.5 text-xs font-semibold px-2 py-0.5"
           >
-            <Clock className="w-3 h-3" />
+            <Clock className="w-3.5 h-3.5" />
             Needs Category
           </Badge>
         );
       default:
-        return <Badge variant="outline">{status}</Badge>;
+        return (
+          <Badge variant="outline" className="text-xs px-2 py-0.5">
+            {status}
+          </Badge>
+        );
     }
   };
 
@@ -264,7 +268,7 @@ export default function TransactionsPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1.5 sm:pb-2 p-3.5 sm:p-5">
-            <CardTitle className="text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-muted-foreground truncate">
+            <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground truncate">
               Deposits (Inflows)
             </CardTitle>
             <ArrowDownLeft className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-emerald-500 shrink-0" />
@@ -277,7 +281,7 @@ export default function TransactionsPage() {
                 +{formatCurrency(totalInflows, primaryCurrency)}
               </div>
             )}
-            <p className="text-[11px] sm:text-xs text-muted-foreground mt-1 sm:mt-1.5 truncate">
+            <p className="text-xs text-muted-foreground mt-1 sm:mt-1.5 truncate">
               {isLoading ? 'Calculating inflows...' : 'Customer payments & credits'}
             </p>
           </CardContent>
@@ -285,7 +289,7 @@ export default function TransactionsPage() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1.5 sm:pb-2 p-3.5 sm:p-5">
-            <CardTitle className="text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-muted-foreground truncate">
+            <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground truncate">
               Expenses (Outflows)
             </CardTitle>
             <ArrowUpRight className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-rose-500 shrink-0" />
@@ -298,7 +302,7 @@ export default function TransactionsPage() {
                 -{formatCurrency(totalOutflows, primaryCurrency)}
               </div>
             )}
-            <p className="text-[11px] sm:text-xs text-muted-foreground mt-1 sm:mt-1.5 truncate">
+            <p className="text-xs text-muted-foreground mt-1 sm:mt-1.5 truncate">
               {isLoading ? 'Calculating outflows...' : 'Vendor payments & costs'}
             </p>
           </CardContent>
@@ -306,7 +310,7 @@ export default function TransactionsPage() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1.5 sm:pb-2 p-3.5 sm:p-5">
-            <CardTitle className="text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-muted-foreground truncate">
+            <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground truncate">
               Auto-Reconciliation
             </CardTitle>
             <Sparkles className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-primary shrink-0" />
@@ -319,7 +323,7 @@ export default function TransactionsPage() {
                 {reconciliationRate}%
               </div>
             )}
-            <p className="text-[11px] sm:text-xs text-muted-foreground mt-1 sm:mt-1.5 truncate">
+            <p className="text-xs text-muted-foreground mt-1 sm:mt-1.5 truncate">
               {isLoading
                 ? 'Checking ledger...'
                 : serverTotalCount > transactions.length
@@ -331,7 +335,7 @@ export default function TransactionsPage() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1.5 sm:pb-2 p-3.5 sm:p-5">
-            <CardTitle className="text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-muted-foreground truncate">
+            <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground truncate">
               Ledger Audit Check
             </CardTitle>
             <ShieldCheck className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-emerald-500 shrink-0" />
@@ -344,7 +348,7 @@ export default function TransactionsPage() {
                 100% Balanced
               </div>
             )}
-            <p className="text-[11px] sm:text-xs text-muted-foreground mt-1 sm:mt-1.5 truncate">
+            <p className="text-xs text-muted-foreground mt-1 sm:mt-1.5 truncate">
               {isLoading ? 'Verifying double-entry...' : 'Debits strictly match credits'}
             </p>
           </CardContent>
@@ -583,7 +587,7 @@ export default function TransactionsPage() {
                         <div className="text-xs font-semibold text-foreground flex items-center gap-1.5">
                           <Badge
                             variant="outline"
-                            className="text-[10px] font-mono px-1.5 py-0 bg-muted"
+                            className="text-xs font-mono px-2 py-0.5 bg-muted font-medium"
                           >
                             {tx.accountCode}
                           </Badge>
@@ -650,7 +654,7 @@ export default function TransactionsPage() {
                     <div className="flex items-center gap-2 text-muted-foreground">
                       <span className="font-mono">{formatIsoDate(tx.date)}</span>
                       <span>•</span>
-                      <span className="font-mono text-[11px] bg-muted px-1.5 py-0.5 rounded">
+                      <span className="font-mono text-xs bg-muted px-2 py-0.5 rounded font-medium">
                         Acc {tx.accountCode}
                       </span>
                     </div>

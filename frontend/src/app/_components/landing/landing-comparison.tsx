@@ -121,7 +121,7 @@ export function LandingComparison() {
                   <th className="p-4 sm:p-5 text-sm font-bold text-primary bg-primary/5 border-x border-primary/20 w-[28%]">
                     <div className="flex items-center gap-1.5">
                       <span>Agentic Business OS</span>
-                      <Badge className="bg-primary text-[10px] text-primary-foreground px-1.5 py-0">
+                      <Badge className="bg-primary text-xs text-primary-foreground px-2 py-0.5 font-semibold">
                         Autonomous
                       </Badge>
                     </div>

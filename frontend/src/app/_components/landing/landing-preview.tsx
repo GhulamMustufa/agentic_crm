@@ -86,7 +86,7 @@ export function LandingPreview() {
               <div className="w-3 h-3 rounded-full bg-amber-500/80" />
               <div className="w-3 h-3 rounded-full bg-emerald-500/80" />
             </div>
-            <div className="text-[11px] font-mono text-muted-foreground/80 font-medium">
+            <div className="text-xs font-mono text-muted-foreground/80 font-medium">
               agentic-os.local / {activeTab}
             </div>
             <div className="w-12" />
@@ -127,7 +127,7 @@ export function LandingPreview() {
                   <div className="p-3 rounded-lg border border-border/70 bg-card">
                     <div className="text-muted-foreground">Extracted Lines</div>
                     <div className="text-lg font-bold font-mono text-foreground mt-1">452 Rows</div>
-                    <div className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-0.5">
+                    <div className="text-xs text-emerald-600 dark:text-emerald-400 mt-0.5 font-medium">
                       100% Parsed
                     </div>
                   </div>
@@ -136,7 +136,7 @@ export function LandingPreview() {
                     <div className="text-lg font-bold font-mono text-foreground mt-1">
                       398 Items
                     </div>
-                    <div className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-0.5">
+                    <div className="text-xs text-emerald-600 dark:text-emerald-400 mt-0.5 font-medium">
                       Matched with AR/AP
                     </div>
                   </div>
@@ -145,7 +145,9 @@ export function LandingPreview() {
                     <div className="text-lg font-bold font-mono text-primary mt-1">
                       54 Exceptions
                     </div>
-                    <div className="text-[11px] text-muted-foreground mt-0.5">Routed to Triage</div>
+                    <div className="text-xs text-muted-foreground mt-0.5 font-medium">
+                      Routed to Triage
+                    </div>
                   </div>
                 </div>
               </div>
@@ -178,18 +180,18 @@ export function LandingPreview() {
                     <div>
                       <div className="flex justify-between items-start">
                         <span className="font-semibold text-sm">Google Cloud / Workspace</span>
-                        <Badge variant="outline" className="text-[11px] font-mono">
+                        <Badge variant="outline" className="text-xs font-mono px-2 py-0.5">
                           18 items
                         </Badge>
                       </div>
                       <div className="text-lg font-bold font-mono mt-2">$2,410.00</div>
                       <div className="flex items-center gap-1.5 mt-2">
-                        <Badge variant="secondary" className="text-[10px]">
+                        <Badge variant="secondary" className="text-xs font-medium px-2 py-0.5">
                           6010 — Cloud Software
                         </Badge>
                         <Badge
                           variant="outline"
-                          className="text-[10px] text-emerald-600 border-emerald-500/30"
+                          className="text-xs font-semibold text-emerald-600 border-emerald-500/30 px-2 py-0.5"
                         >
                           99% Match
                         </Badge>
@@ -204,18 +206,18 @@ export function LandingPreview() {
                     <div>
                       <div className="flex justify-between items-start">
                         <span className="font-semibold text-sm">Amazon Web Services</span>
-                        <Badge variant="outline" className="text-[11px] font-mono">
+                        <Badge variant="outline" className="text-xs font-mono px-2 py-0.5">
                           24 items
                         </Badge>
                       </div>
                       <div className="text-lg font-bold font-mono mt-2">$6,840.50</div>
                       <div className="flex items-center gap-1.5 mt-2">
-                        <Badge variant="secondary" className="text-[10px]">
+                        <Badge variant="secondary" className="text-xs font-medium px-2 py-0.5">
                           6010 — Cloud Hosting
                         </Badge>
                         <Badge
                           variant="outline"
-                          className="text-[10px] text-emerald-600 border-emerald-500/30"
+                          className="text-xs font-semibold text-emerald-600 border-emerald-500/30 px-2 py-0.5"
                         >
                           98% Match
                         </Badge>
@@ -230,18 +232,18 @@ export function LandingPreview() {
                     <div>
                       <div className="flex justify-between items-start">
                         <span className="font-semibold text-sm">Stripe Merchant Payouts</span>
-                        <Badge variant="outline" className="text-[11px] font-mono">
+                        <Badge variant="outline" className="text-xs font-mono px-2 py-0.5">
                           12 items
                         </Badge>
                       </div>
                       <div className="text-lg font-bold font-mono mt-2">$34,120.00</div>
                       <div className="flex items-center gap-1.5 mt-2">
-                        <Badge variant="secondary" className="text-[10px]">
+                        <Badge variant="secondary" className="text-xs font-medium px-2 py-0.5">
                           4010 — Customer Revenue
                         </Badge>
                         <Badge
                           variant="outline"
-                          className="text-[10px] text-emerald-600 border-emerald-500/30"
+                          className="text-xs font-semibold text-emerald-600 border-emerald-500/30 px-2 py-0.5"
                         >
                           99% Match
                         </Badge>
@@ -301,7 +303,7 @@ export function LandingPreview() {
                   </div>
                   <Badge
                     variant="outline"
-                    className="border-emerald-500/30 text-emerald-600 bg-background text-[11px] font-mono"
+                    className="border-emerald-500/30 text-emerald-600 bg-background text-xs font-mono font-semibold"
                   >
                     PROVABLY ACCURATE
                   </Badge>

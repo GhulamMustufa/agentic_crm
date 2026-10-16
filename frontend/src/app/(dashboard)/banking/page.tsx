@@ -944,7 +944,10 @@ export default function BankingPage() {
                     Select an account to associate with statement uploads.
                   </CardDescription>
                 </div>
-                <Badge variant="outline" className="text-[11px] font-mono text-muted-foreground">
+                <Badge
+                  variant="outline"
+                  className="text-xs font-mono text-muted-foreground px-2 py-0.5"
+                >
                   {accounts.length} {accounts.length === 1 ? 'Account' : 'Accounts'}
                 </Badge>
               </div>
@@ -977,7 +980,7 @@ export default function BankingPage() {
                         {!selectedAccountId && (
                           <Badge
                             variant="secondary"
-                            className="text-[10px] bg-primary/15 text-primary border-primary/20 font-medium px-2 py-0"
+                            className="text-xs bg-primary/15 text-primary border-primary/20 font-semibold px-2 py-0.5"
                           >
                             Active
                           </Badge>
@@ -1019,7 +1022,7 @@ export default function BankingPage() {
                             {isSelected && (
                               <Badge
                                 variant="secondary"
-                                className="text-[10px] bg-primary/15 text-primary border-primary/20 font-medium px-2 py-0"
+                                className="text-xs bg-primary/15 text-primary border-primary/20 font-semibold px-2 py-0.5"
                               >
                                 Selected
                               </Badge>
@@ -1078,7 +1081,7 @@ export default function BankingPage() {
                 </div>
                 <Badge
                   variant="outline"
-                  className="text-[11px] font-mono text-emerald-600 dark:text-emerald-400 border-emerald-500/20 bg-emerald-500/10"
+                  className="text-xs font-mono text-emerald-600 dark:text-emerald-400 border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 font-semibold"
                 >
                   <ShieldCheck className="w-3.5 h-3.5 mr-1" />
                   Bank-Grade Encryption
@@ -1188,7 +1191,7 @@ export default function BankingPage() {
                   ].map((tag) => (
                     <span
                       key={tag}
-                      className="inline-flex items-center text-[10px] font-medium px-2 py-0.5 rounded-md bg-muted text-muted-foreground border border-border/50"
+                      className="inline-flex items-center text-xs font-medium px-2.5 py-0.5 rounded-md bg-muted text-muted-foreground border border-border/50"
                     >
                       {tag}
                     </span>
@@ -1281,11 +1284,11 @@ export default function BankingPage() {
                               <span className="font-semibold text-xs text-foreground font-mono truncate max-w-[200px] sm:max-w-xs">
                                 {item.fileName}
                               </span>
-                              <span className="text-[10px] text-muted-foreground">
+                              <span className="text-xs font-mono text-muted-foreground">
                                 ({(item.fileSize / (1024 * 1024)).toFixed(2)} MB)
                               </span>
                             </div>
-                            <div className="text-[11px] text-muted-foreground truncate mt-0.5">
+                            <div className="text-xs text-muted-foreground truncate mt-0.5">
                               {item.stageName}
                             </div>
                           </div>
@@ -1295,7 +1298,7 @@ export default function BankingPage() {
                           {isQueued && (
                             <Badge
                               variant="outline"
-                              className="text-[10px] bg-muted/60 text-muted-foreground border-border/70"
+                              className="text-xs bg-muted/60 text-muted-foreground border-border/70 px-2 py-0.5 font-medium"
                             >
                               Queued
                             </Badge>
@@ -1303,22 +1306,25 @@ export default function BankingPage() {
                           {isRunning && (
                             <Badge
                               variant="outline"
-                              className="text-[10px] bg-primary/10 text-primary border-primary/30 font-medium"
+                              className="text-xs bg-primary/10 text-primary border-primary/30 font-semibold px-2 py-0.5"
                             >
-                              <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                              <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
                               {item.progress}%
                             </Badge>
                           )}
                           {isDone && (
                             <Badge
                               variant="outline"
-                              className="text-[10px] bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 font-medium"
+                              className="text-xs bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 font-semibold px-2 py-0.5"
                             >
                               Reconciled ✓
                             </Badge>
                           )}
                           {isFail && (
-                            <Badge variant="destructive" className="text-[10px]">
+                            <Badge
+                              variant="destructive"
+                              className="text-xs px-2 py-0.5 font-semibold"
+                            >
                               Failed
                             </Badge>
                           )}
@@ -1402,7 +1408,7 @@ export default function BankingPage() {
                           <Button
                             size="sm"
                             variant="outline"
-                            className="h-6 text-[11px] px-2"
+                            className="h-7 text-xs px-2.5 font-medium"
                             onClick={() => {
                               if (item.file) {
                                 setBatchQueue((prev) =>
@@ -1564,7 +1570,7 @@ export default function BankingPage() {
                     let statusBadge = (
                       <Badge
                         variant="outline"
-                        className="text-[11px] font-medium bg-muted text-muted-foreground"
+                        className="text-xs font-semibold bg-muted text-muted-foreground px-2 py-0.5"
                       >
                         {stmt.status}
                       </Badge>
@@ -1574,9 +1580,9 @@ export default function BankingPage() {
                       statusBadge = (
                         <Badge
                           variant="outline"
-                          className="text-[11px] font-medium bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 gap-1"
+                          className="text-xs font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 gap-1.5 px-2 py-0.5"
                         >
-                          <CheckCircle2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                           Reconciled
                         </Badge>
                       );
@@ -1584,9 +1590,9 @@ export default function BankingPage() {
                       statusBadge = (
                         <Badge
                           variant="outline"
-                          className="text-[11px] font-medium bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20 gap-1"
+                          className="text-xs font-semibold bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20 gap-1.5 px-2 py-0.5"
                         >
-                          <Sparkles className="w-3 h-3 text-blue-600 dark:text-blue-400" />
+                          <Sparkles className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
                           Parsed
                         </Badge>
                       );
@@ -1594,16 +1600,19 @@ export default function BankingPage() {
                       statusBadge = (
                         <Badge
                           variant="outline"
-                          className="text-[11px] font-medium bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20 gap-1"
+                          className="text-xs font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20 gap-1.5 px-2 py-0.5"
                         >
-                          <Loader2 className="w-3 h-3 animate-spin text-amber-600 dark:text-amber-400" />
+                          <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-600 dark:text-amber-400" />
                           Processing
                         </Badge>
                       );
                     } else if (stmt.status === 'FAILED') {
                       statusBadge = (
-                        <Badge variant="destructive" className="text-[11px] font-medium gap-1">
-                          <AlertCircle className="w-3 h-3" />
+                        <Badge
+                          variant="destructive"
+                          className="text-xs font-semibold gap-1.5 px-2 py-0.5"
+                        >
+                          <AlertCircle className="w-3.5 h-3.5" />
                           Failed
                         </Badge>
                       );
@@ -1611,9 +1620,9 @@ export default function BankingPage() {
                       statusBadge = (
                         <Badge
                           variant="outline"
-                          className="text-[11px] font-medium bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20 gap-1"
+                          className="text-xs font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20 gap-1.5 px-2 py-0.5"
                         >
-                          <AlertCircle className="w-3 h-3" />
+                          <AlertCircle className="w-3.5 h-3.5" />
                           Needs Review
                         </Badge>
                       );
@@ -1629,7 +1638,7 @@ export default function BankingPage() {
                                 {stmt.fileName}
                               </span>
                               {stmt.errorMessage && (
-                                <span className="text-[10px] text-destructive truncate block max-w-[200px]">
+                                <span className="text-xs text-destructive truncate block max-w-[200px]">
                                   {stmt.errorMessage}
                                 </span>
                               )}

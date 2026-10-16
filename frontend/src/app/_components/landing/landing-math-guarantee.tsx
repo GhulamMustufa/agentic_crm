@@ -66,7 +66,7 @@ export function LandingMathGuarantee() {
               </div>
             </div>
 
-            <div className="mt-6 pt-4 border-t border-primary/15 text-[11px] text-muted-foreground">
+            <div className="mt-6 pt-4 border-t border-primary/15 text-xs text-muted-foreground font-medium">
               ⚠️ The AI is physically restricted from writing to ledger tables or modifying bank
               balances.
             </div>
@@ -116,7 +116,7 @@ export function LandingMathGuarantee() {
               </div>
             </div>
 
-            <div className="mt-6 pt-4 border-t border-emerald-500/20 text-[11px] text-emerald-700 dark:text-emerald-300 font-medium">
+            <div className="mt-6 pt-4 border-t border-emerald-500/20 text-xs text-emerald-700 dark:text-emerald-300 font-medium">
               🔒 Inviolable guarantee: No transaction is ever recorded unless verified by
               mathematical proof.
             </div>

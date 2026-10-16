@@ -322,7 +322,7 @@ export default function ReportsPage() {
                         <TableRow key={item.accountId} className="hover:bg-muted/30">
                           <TableCell className="font-medium text-sm py-2.5">
                             <div>{item.accountName}</div>
-                            <span className="text-[11px] font-mono text-muted-foreground">
+                            <span className="text-xs font-mono text-muted-foreground">
                               Account #{item.accountCode}
                             </span>
                           </TableCell>
@@ -356,7 +356,7 @@ export default function ReportsPage() {
                         <TableRow key={item.accountId} className="hover:bg-muted/30">
                           <TableCell className="font-medium text-sm py-2.5">
                             <div>{item.accountName}</div>
-                            <span className="text-[11px] font-mono text-muted-foreground">
+                            <span className="text-xs font-mono text-muted-foreground">
                               Account #{item.accountCode}
                             </span>
                           </TableCell>
@@ -434,7 +434,7 @@ export default function ReportsPage() {
                         <TableRow key={item.accountId} className="hover:bg-muted/30">
                           <TableCell className="font-medium text-sm py-2.5">
                             <div>{item.accountName}</div>
-                            <span className="text-[11px] font-mono text-muted-foreground">
+                            <span className="text-xs font-mono text-muted-foreground">
                               Account #{item.accountCode}
                             </span>
                           </TableCell>
@@ -467,7 +467,7 @@ export default function ReportsPage() {
                         <TableRow key={item.accountId} className="hover:bg-muted/30">
                           <TableCell className="font-medium text-sm py-2.5">
                             <div>{item.accountName}</div>
-                            <span className="text-[11px] font-mono text-muted-foreground">
+                            <span className="text-xs font-mono text-muted-foreground">
                               Account #{item.accountCode}
                             </span>
                           </TableCell>
@@ -500,7 +500,7 @@ export default function ReportsPage() {
                         <TableRow key={item.accountId} className="hover:bg-muted/30">
                           <TableCell className="font-medium text-sm py-2.5">
                             <div>{item.accountName}</div>
-                            <span className="text-[11px] font-mono text-muted-foreground">
+                            <span className="text-xs font-mono text-muted-foreground">
                               Account #{item.accountCode}
                             </span>
                           </TableCell>
@@ -569,7 +569,7 @@ export default function ReportsPage() {
                             <TableCell>
                               <Badge
                                 variant="outline"
-                                className="text-[11px] font-normal text-muted-foreground"
+                                className="text-xs font-medium text-muted-foreground px-2 py-0.5"
                               >
                                 {row.classification}
                               </Badge>

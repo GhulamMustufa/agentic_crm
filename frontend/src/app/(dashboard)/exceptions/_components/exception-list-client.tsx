@@ -666,7 +666,7 @@ export function ExceptionListClient({
       return (
         <Badge
           variant="outline"
-          className="text-[10px] font-medium border-emerald-500/30 text-emerald-600 bg-emerald-500/10 dark:text-emerald-400 shrink-0"
+          className="text-xs font-semibold border-emerald-500/30 text-emerald-600 bg-emerald-500/10 dark:text-emerald-400 shrink-0 px-2 py-0.5"
         >
           🟢 {confidence}% High Match
         </Badge>
@@ -676,7 +676,7 @@ export function ExceptionListClient({
       return (
         <Badge
           variant="outline"
-          className="text-[10px] font-medium border-amber-500/30 text-amber-600 bg-amber-500/10 dark:text-amber-400 shrink-0"
+          className="text-xs font-semibold border-amber-500/30 text-amber-600 bg-amber-500/10 dark:text-amber-400 shrink-0 px-2 py-0.5"
         >
           🟡 {confidence}% Suggested
         </Badge>
@@ -685,7 +685,7 @@ export function ExceptionListClient({
     return (
       <Badge
         variant="outline"
-        className="text-[10px] font-medium border-rose-500/30 text-rose-600 bg-rose-500/10 dark:text-rose-400 shrink-0"
+        className="text-xs font-semibold border-rose-500/30 text-rose-600 bg-rose-500/10 dark:text-rose-400 shrink-0 px-2 py-0.5"
       >
         🔴 {confidence}% Review
       </Badge>
@@ -831,29 +831,29 @@ export function ExceptionListClient({
               variant={viewMode === 'split' ? 'secondary' : 'ghost'}
               size="sm"
               onClick={() => setViewMode('split')}
-              className="h-6 text-[11px] px-2.5 gap-1 rounded-md"
+              className="h-7 text-xs px-2.5 gap-1.5 rounded-md font-medium"
             >
-              <LayoutList className="w-3 h-3" />
+              <LayoutList className="w-3.5 h-3.5" />
               Triage Split
             </Button>
             <Button
               variant={viewMode === 'table' ? 'secondary' : 'ghost'}
               size="sm"
               onClick={() => setViewMode('table')}
-              className="h-6 text-[11px] px-2.5 gap-1 rounded-md"
+              className="h-7 text-xs px-2.5 gap-1.5 rounded-md font-medium"
             >
-              <Table2 className="w-3 h-3" />
+              <Table2 className="w-3.5 h-3.5" />
               Table View
             </Button>
           </div>
 
           <div className="hidden lg:flex items-center gap-2 text-xs text-muted-foreground border-l border-border/60 pl-2.5">
             <span>Shortcuts:</span>
-            <kbd className="px-1.5 py-0.5 text-[10px] font-mono bg-muted rounded border border-border">
+            <kbd className="px-1.5 py-0.5 text-xs font-mono bg-muted rounded border border-border font-semibold">
               Enter
             </kbd>
             <span>Approve</span>
-            <kbd className="px-1.5 py-0.5 text-[10px] font-mono bg-muted rounded border border-border">
+            <kbd className="px-1.5 py-0.5 text-xs font-mono bg-muted rounded border border-border font-semibold">
               S
             </kbd>
             <span>Skip</span>
@@ -944,7 +944,7 @@ export function ExceptionListClient({
                   <button
                     type="button"
                     onClick={() => setSelectedExceptionIds(new Set())}
-                    className="text-muted-foreground hover:text-foreground text-[11px] underline cursor-pointer"
+                    className="text-muted-foreground hover:text-foreground text-xs underline cursor-pointer font-medium"
                   >
                     Clear selection
                   </button>
@@ -1031,20 +1031,20 @@ export function ExceptionListClient({
                         {formatIsoDate(exc.date)}
                       </TableCell>
                       <TableCell>
-                        <div className="font-semibold text-xs text-foreground flex items-center gap-1.5">
+                        <div className="font-bold text-sm text-foreground flex items-center gap-2">
                           {getTypeIcon(exc.type)}
-                          <span>{exc.cleanPayee}</span>
+                          <span className="truncate">{exc.cleanPayee}</span>
                         </div>
-                        <div className="text-[11px] text-muted-foreground mt-0.5 max-w-sm truncate">
+                        <div className="text-xs text-muted-foreground mt-0.5 max-w-sm truncate">
                           {exc.friendlyQuestion}
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Badge variant="secondary" className="text-[10px] font-medium px-1.5 py-0">
+                        <Badge variant="secondary" className="text-xs font-medium px-2 py-0.5">
                           {exc.friendlyTypeLabel}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-right font-mono font-semibold text-xs tabular-nums whitespace-nowrap">
+                      <TableCell className="text-right font-mono font-bold text-sm tabular-nums whitespace-nowrap">
                         <span
                           className={
                             isOutflow ? 'text-foreground' : 'text-emerald-600 dark:text-emerald-400'
@@ -1160,13 +1160,13 @@ export function ExceptionListClient({
                 <span>Select all on page ({paginatedExceptions.length})</span>
               </label>
               {selectedExceptionIds.size > 0 && (
-                <span className="font-medium text-primary text-[11px]">
+                <span className="font-semibold text-primary text-xs">
                   {selectedExceptionIds.size} selected
                 </span>
               )}
             </div>
             {isAllOnPageSelected && filteredExceptions.length > paginatedExceptions.length && (
-              <div className="p-2.5 rounded-xl bg-primary/10 border border-primary/20 text-[11px] text-foreground shrink-0 space-y-1">
+              <div className="p-2.5 rounded-xl bg-primary/10 border border-primary/20 text-xs text-foreground shrink-0 space-y-1">
                 <div>
                   All <strong>{paginatedExceptions.length}</strong> items on this page are selected.
                 </div>
@@ -1184,7 +1184,7 @@ export function ExceptionListClient({
                     <button
                       type="button"
                       onClick={() => setSelectedExceptionIds(new Set())}
-                      className="text-muted-foreground underline text-[10px] cursor-pointer"
+                      className="text-muted-foreground hover:text-foreground underline text-xs cursor-pointer font-medium"
                     >
                       Clear
                     </button>
@@ -1236,11 +1236,11 @@ export function ExceptionListClient({
                     <div className="flex-1 min-w-0">
                       {/* Top Row: Clean Payee & Prominent Amount */}
                       <div className="flex justify-between items-start gap-2 mb-0.5">
-                        <span className="font-semibold text-xs sm:text-sm text-foreground truncate">
+                        <span className="font-bold text-sm text-foreground truncate">
                           {exc.cleanPayee}
                         </span>
                         <span
-                          className={`font-mono tabular-nums font-semibold text-xs sm:text-sm whitespace-nowrap shrink-0 ${
+                          className={`font-mono tabular-nums font-bold text-sm whitespace-nowrap shrink-0 ${
                             isOutflow ? 'text-foreground' : 'text-emerald-600 dark:text-emerald-400'
                           }`}
                         >
@@ -1250,22 +1250,19 @@ export function ExceptionListClient({
                       </div>
 
                       {/* Middle Row: Plain-English Question */}
-                      <p className="text-[11px] text-muted-foreground truncate mb-2">
+                      <p className="text-xs text-muted-foreground truncate mb-2">
                         {exc.friendlyQuestion}
                       </p>
 
                       {/* Bottom Row: Badges & Date */}
                       <div className="flex justify-between items-center text-xs">
                         <div className="flex items-center gap-1.5 flex-wrap">
-                          <Badge
-                            variant="secondary"
-                            className="text-[10px] font-medium px-1.5 py-0"
-                          >
+                          <Badge variant="secondary" className="text-xs font-medium px-2 py-0.5">
                             {exc.friendlyTypeLabel}
                           </Badge>
                           {getConfidenceBadge(exc.confidenceScore)}
                         </div>
-                        <span className="tabular-nums text-muted-foreground text-[10px] shrink-0">
+                        <span className="tabular-nums font-mono text-muted-foreground text-xs shrink-0">
                           {formatIsoDate(exc.date)}
                         </span>
                       </div>
@@ -1280,7 +1277,7 @@ export function ExceptionListClient({
               <div className="flex items-center justify-between p-2 pt-3 border-t border-border/60 text-xs text-muted-foreground shrink-0 mt-auto">
                 <span>
                   Page {currentPage} of {totalPages}
-                  <span className="ml-1 text-[11px] text-muted-foreground/80">
+                  <span className="ml-1 text-xs text-muted-foreground/80">
                     ({serverTotalCount.toLocaleString()} total)
                   </span>
                 </span>
@@ -1332,12 +1329,12 @@ export function ExceptionListClient({
                       <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
                         <Badge
                           variant="outline"
-                          className="font-mono text-[10px] bg-background shrink-0"
+                          className="font-mono text-xs font-semibold bg-background shrink-0 px-2 py-0.5"
                         >
                           ID: {selectedException.id.slice(0, 8).toUpperCase()}
                         </Badge>
                         {getConfidenceBadge(selectedException.confidenceScore)}
-                        <span className="text-[11px] text-muted-foreground shrink-0">
+                        <span className="text-xs font-mono text-muted-foreground shrink-0">
                           • {formatIsoDate(selectedException.date)}
                         </span>
                       </div>
@@ -1347,7 +1344,7 @@ export function ExceptionListClient({
                     </div>
 
                     <div className="sm:text-right shrink-0 flex sm:flex-col items-baseline sm:items-end justify-between sm:justify-start gap-2 pt-1 sm:pt-0 border-t sm:border-t-0 border-border/40">
-                      <div className="text-[10px] text-muted-foreground uppercase font-semibold tracking-wider">
+                      <div className="text-xs text-muted-foreground uppercase font-bold tracking-wider">
                         Amount
                       </div>
                       <div
@@ -1384,7 +1381,7 @@ export function ExceptionListClient({
                     </button>
 
                     {showRawMemo && (
-                      <div className="mt-2 p-2.5 rounded-lg bg-background/80 border border-border/70 font-mono text-[11px] text-muted-foreground break-all leading-relaxed">
+                      <div className="mt-2 p-2.5 rounded-lg bg-background/80 border border-border/70 font-mono text-xs text-muted-foreground break-all leading-relaxed">
                         {selectedException.rawMemo}
                       </div>
                     )}
@@ -1409,7 +1406,7 @@ export function ExceptionListClient({
                     <div>
                       <label className="text-xs font-semibold text-foreground mb-1.5 flex items-center justify-between">
                         <span>Assign General Ledger Category:</span>
-                        <span className="text-[11px] font-normal text-muted-foreground font-mono">
+                        <span className="text-xs font-semibold text-muted-foreground font-mono">
                           Code: {selectedCategoryCode}
                         </span>
                       </label>
@@ -1445,7 +1442,7 @@ export function ExceptionListClient({
                     </div>
 
                     {/* Double-Entry Ledger Guarantee */}
-                    <div className="p-2.5 rounded-lg bg-muted/40 border border-border/60 text-[11px] text-muted-foreground flex items-center gap-2">
+                    <div className="p-2.5 rounded-lg bg-muted/40 border border-border/60 text-xs text-muted-foreground flex items-center gap-2">
                       <ShieldCheck className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
                       <span>
                         Records Debit <strong>{selectedCategoryObj.name}</strong> & Credit{' '}
@@ -1618,7 +1615,7 @@ export function ExceptionListClient({
                   {/* Summary Metric Cards */}
                   <div className="grid grid-cols-2 gap-3">
                     <div className="p-3 bg-muted/40 rounded-xl border border-border/60">
-                      <div className="text-[11px] font-medium text-muted-foreground">
+                      <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                         Approvable For Posting
                       </div>
                       <div className="text-lg font-bold text-foreground mt-0.5">
@@ -1630,7 +1627,7 @@ export function ExceptionListClient({
                       </div>
                     </div>
                     <div className="p-3 bg-muted/40 rounded-xl border border-border/60">
-                      <div className="text-[11px] font-medium text-muted-foreground">
+                      <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                         Excluded / Anomalies
                       </div>
                       <div className="text-lg font-bold text-foreground mt-0.5">
@@ -1663,7 +1660,7 @@ export function ExceptionListClient({
                     <div className="space-y-2">
                       <div className="flex items-center justify-between text-xs font-semibold text-foreground px-0.5">
                         <span>Ledger Account Allocation Breakdown</span>
-                        <span className="text-muted-foreground font-normal text-[11px]">
+                        <span className="text-muted-foreground font-medium text-xs font-mono">
                           Offset: Acct 1010
                         </span>
                       </div>
@@ -1674,13 +1671,13 @@ export function ExceptionListClient({
                             className="p-2.5 flex items-center justify-between text-xs hover:bg-muted/30"
                           >
                             <div>
-                              <div className="font-medium text-foreground">
+                              <div className="font-semibold text-foreground">
                                 <span className="font-mono text-muted-foreground mr-1.5">
                                   {code}
                                 </span>
                                 {item.name}
                               </div>
-                              <div className="text-[11px] text-muted-foreground mt-0.5">
+                              <div className="text-xs text-muted-foreground mt-0.5">
                                 {item.count} {item.count === 1 ? 'transaction' : 'transactions'}
                               </div>
                             </div>
@@ -1694,7 +1691,7 @@ export function ExceptionListClient({
                   )}
 
                   {/* Accounting Invariant Notice */}
-                  <div className="text-[11px] text-muted-foreground flex items-center gap-1.5 px-0.5">
+                  <div className="text-xs text-muted-foreground flex items-center gap-1.5 px-0.5">
                     <ShieldCheck className="w-3.5 h-3.5 text-primary shrink-0" />
                     <span>
                       Deterministic double-entry balanced postings (Debits = Credits). Auditable via
@@ -1710,7 +1707,7 @@ export function ExceptionListClient({
                       <strong className="font-semibold">
                         Dismiss {selectedExceptionIds.size} transactions:
                       </strong>
-                      <p className="mt-1 text-muted-foreground text-[11px]">
+                      <p className="mt-1 text-muted-foreground text-xs">
                         These items will be marked as dismissed and excluded from your financial
                         statements without creating journal entries.
                       </p>

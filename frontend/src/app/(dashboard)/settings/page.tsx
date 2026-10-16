@@ -319,7 +319,7 @@ export default function SettingsPage() {
         >
           <Users className="w-4 h-4" />
           Team & Roles
-          <Badge variant="secondary" className="ml-1 text-[11px] h-4 px-1.5">
+          <Badge variant="secondary" className="ml-1 text-xs h-5 px-2 font-medium">
             {members.length}
           </Badge>
         </Button>
@@ -350,7 +350,7 @@ export default function SettingsPage() {
               </div>
               <Badge
                 variant="outline"
-                className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 text-[11px] sm:text-xs font-mono shrink-0"
+                className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 text-xs font-mono shrink-0 px-2.5 py-0.5 font-semibold"
               >
                 Zero Hallucinations Guarantee
               </Badge>
@@ -442,7 +442,7 @@ export default function SettingsPage() {
                   }
                   className="w-full accent-primary h-2 bg-muted rounded-lg cursor-pointer"
                 />
-                <div className="flex justify-between text-[11px] text-muted-foreground">
+                <div className="flex justify-between text-xs text-muted-foreground">
                   <span>50% (Permissive)</span>
                   <span className="font-semibold text-primary">95% (Recommended Default)</span>
                   <span>100% (Strict Exact Match)</span>
@@ -622,7 +622,7 @@ export default function SettingsPage() {
                     placeholder="e.g. Acme Corp Pte Ltd"
                     className="h-9 text-sm"
                   />
-                  <p className="text-[11px] text-muted-foreground">
+                  <p className="text-xs text-muted-foreground">
                     Printed on customer invoices, financial reports, and tax statements.
                   </p>
                 </div>
@@ -634,7 +634,7 @@ export default function SettingsPage() {
                     disabled
                     className="bg-muted font-mono h-9 text-sm"
                   />
-                  <p className="text-[11px] text-muted-foreground">
+                  <p className="text-xs text-muted-foreground">
                     Permanent tenant identifier assigned upon workspace creation.
                   </p>
                 </div>
@@ -659,7 +659,7 @@ export default function SettingsPage() {
                       General Ledger Currency
                     </Badge>
                   </div>
-                  <p className="text-[11px] text-muted-foreground">
+                  <p className="text-xs text-muted-foreground">
                     All financial statements, balance sheets, and trial balances calculate in this
                     currency.
                   </p>
@@ -681,7 +681,7 @@ export default function SettingsPage() {
                     <option value="America/Los_Angeles">America/Los_Angeles (PST/PDT)</option>
                     <option value="Europe/London">Europe/London (GMT/BST)</option>
                   </select>
-                  <p className="text-[11px] text-muted-foreground">
+                  <p className="text-xs text-muted-foreground">
                     Determines fiscal period cutoffs and statement transaction timestamps.
                   </p>
                 </div>
@@ -871,11 +871,11 @@ export default function SettingsPage() {
                           <div className="flex items-center justify-between text-xs text-muted-foreground pt-1 border-t border-border/40">
                             <Badge
                               variant="outline"
-                              className="text-[10px] bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
+                              className="text-xs bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 px-2 py-0.5 font-medium"
                             >
                               {mem.status}
                             </Badge>
-                            <span className="font-mono text-[11px]">
+                            <span className="font-mono text-xs">
                               Joined {new Date(mem.createdAt).toLocaleDateString()}
                             </span>
                           </div>
@@ -899,28 +899,28 @@ export default function SettingsPage() {
             <CardContent className="pt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
               <div className="p-3 rounded-lg border border-border/60 bg-card space-y-1">
                 <span className="font-semibold text-foreground">Owner</span>
-                <p className="text-muted-foreground text-[11px] leading-relaxed">
+                <p className="text-muted-foreground text-xs leading-relaxed">
                   Full authority over billing, bank accounts, guardrail policies, and member
                   invites.
                 </p>
               </div>
               <div className="p-3 rounded-lg border border-border/60 bg-card space-y-1">
                 <span className="font-semibold text-foreground">Controller</span>
-                <p className="text-muted-foreground text-[11px] leading-relaxed">
+                <p className="text-muted-foreground text-xs leading-relaxed">
                   Approves transaction exceptions, finalizes fiscal periods, and posts adjusting
                   journal entries.
                 </p>
               </div>
               <div className="p-3 rounded-lg border border-border/60 bg-card space-y-1">
                 <span className="font-semibold text-foreground">Bookkeeper</span>
-                <p className="text-muted-foreground text-[11px] leading-relaxed">
+                <p className="text-muted-foreground text-xs leading-relaxed">
                   Issues customer invoices, registers vendor bills, and uploads bank statement
                   feeds.
                 </p>
               </div>
               <div className="p-3 rounded-lg border border-border/60 bg-card space-y-1">
                 <span className="font-semibold text-foreground">Auditor</span>
-                <p className="text-muted-foreground text-[11px] leading-relaxed">
+                <p className="text-muted-foreground text-xs leading-relaxed">
                   Read-only access to Trial Balances, Balance Sheets, and immutable system audit
                   trails.
                 </p>
