@@ -98,7 +98,13 @@ export default function LoginPage() {
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-col items-center gap-2 text-center">
-        <BrandLogo size={48} className="rounded-xl shadow-md border-cyan-500/30" priority />
+        <Link
+          href="/"
+          title="Go to Home"
+          className="transition-transform hover:scale-105 cursor-pointer"
+        >
+          <BrandLogo size={48} className="rounded-xl shadow-md border-cyan-500/30" priority />
+        </Link>
         <h1 className="text-2xl font-bold tracking-tight">Welcome back</h1>
         <p className="text-sm text-muted-foreground">Enter your email to sign in to your account</p>
       </div>

@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
@@ -89,9 +90,15 @@ export default function SetupPage() {
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-col items-center gap-2 text-center">
-        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
-          <Building className="h-6 w-6 text-primary" />
-        </div>
+        <Link
+          href="/"
+          title="Go to Home"
+          className="transition-transform hover:scale-105 cursor-pointer"
+        >
+          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
+            <Building className="h-6 w-6 text-primary" />
+          </div>
+        </Link>
         <h1 className="text-2xl font-bold tracking-tight">Set up your organization</h1>
         <p className="text-sm text-muted-foreground">
           Let&apos;s get your workspace ready for your AI Accountant.
