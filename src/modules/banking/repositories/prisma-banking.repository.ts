@@ -959,7 +959,7 @@ export class PrismaBankingRepository implements IBankingRepository {
       },
       ...(limit !== undefined ? { take: limit } : {}),
       ...(offset !== undefined ? { skip: offset } : {}),
-      orderBy: { createdAt: 'desc' },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
     });
 
     const proposalIds = items

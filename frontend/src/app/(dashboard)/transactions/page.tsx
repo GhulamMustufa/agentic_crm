@@ -50,6 +50,7 @@ export default function TransactionsPage() {
   const {
     data: transactionData,
     isLoading,
+    isPlaceholderData,
     refetch,
     isRefetching,
   } = useBankTransactionsQuery({
@@ -515,7 +516,13 @@ export default function TransactionsPage() {
           </CardContent>
         </Card>
       ) : (
-        <Card>
+        <Card
+          className={
+            isPlaceholderData
+              ? 'opacity-60 transition-opacity duration-150'
+              : 'transition-opacity duration-150'
+          }
+        >
           <CardContent className="p-0">
             {/* Desktop Table View */}
             <div className="hidden md:block">

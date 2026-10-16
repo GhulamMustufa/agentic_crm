@@ -1,6 +1,6 @@
 'use client';
 
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
 import { authStorage } from '@/lib/auth-storage';
 import { cleanBankPayee } from '@/lib/api/exceptions';
@@ -294,6 +294,7 @@ export function useBankTransactionsQuery(
     },
     staleTime: 15 * 1000,
     refetchOnMount: 'always',
+    placeholderData: keepPreviousData,
   });
 }
 
