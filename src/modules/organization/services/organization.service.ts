@@ -1,5 +1,9 @@
+import * as crypto from 'crypto';
+
 import { Inject, Injectable } from '@nestjs/common';
 
+import { AppConfigService } from '../../../core/config/config.service';
+import { EmailService } from '../../../core/email/email.service';
 import {
   ConflictError,
   ValidationError,
@@ -27,6 +31,7 @@ import type {
   TenantEntity,
   TenantMembershipEntity,
   TenantSettingsEntity,
+  TenantInvitationEntity,
 } from '../domain/tenant.entity';
 
 @Injectable()
@@ -36,6 +41,8 @@ export class OrganizationService {
     private readonly tenantRepo: ITenantRepository,
     @Inject(USER_REPOSITORY_TOKEN)
     private readonly userRepo: IUserRepository,
+    private readonly emailService: EmailService,
+    private readonly config: AppConfigService,
   ) {}
 
   async createOrganization(userId: string, rawDto: CreateTenantDto): Promise<TenantEntity> {
@@ -113,7 +120,13 @@ export class OrganizationService {
     tenantId: string,
     inviterUserId: string,
     rawDto: InviteMemberDto,
-  ): Promise<{ membershipId: string; email: string; roleCode: string }> {
+  ): Promise<{
+    invitationId: string;
+    email: string;
+    roleCode: string;
+    expiresAt: Date;
+    debugInviteUrl?: string;
+  }> {
     const parseResult = inviteMemberSchema.safeParse(rawDto);
     if (!parseResult.success) {
       throw new ValidationError(
@@ -122,6 +135,7 @@ export class OrganizationService {
       );
     }
     const dto = parseResult.data;
+    const normalizedEmail = dto.email.toLowerCase().trim();
 
     // Verify inviter is member with OWNER or CONTROLLER
     const inviterMembership = await this.tenantRepo.findMembership(tenantId, inviterUserId);
@@ -129,35 +143,86 @@ export class OrganizationService {
       throw new AuthorizationError('Only an Owner or Controller may invite new members');
     }
 
-    // Check if target user exists, or create invited placeholder
-    let targetUser = await this.userRepo.findByEmail(dto.email);
-    if (!targetUser) {
-      targetUser = await this.userRepo.create({
-        email: dto.email.toLowerCase().trim(),
-        fullName: dto.email.split('@')[0] || 'Invited User',
-        passwordHash: 'INVITATION_PENDING',
-        isSuperadmin: false,
-        status: 'INVITED',
-      });
+    // Check if target user exists and is already an active member of this organization
+    const existingUser = await this.userRepo.findByEmail(normalizedEmail);
+    if (existingUser) {
+      const existingMembership = await this.tenantRepo.findMembership(tenantId, existingUser.id);
+      if (existingMembership && existingMembership.status === 'ACTIVE') {
+        throw new ConflictError(
+          `User '${normalizedEmail}' is already an active member of this organization`,
+        );
+      }
     }
 
-    const existingMembership = await this.tenantRepo.findMembership(tenantId, targetUser.id);
-    if (existingMembership) {
-      throw new ConflictError(`User '${dto.email}' is already a member of this organization`);
+    // Revoke any previous pending invitation for this tenant & email
+    const existingPending = await this.tenantRepo.findPendingInvitation(tenantId, normalizedEmail);
+    if (existingPending) {
+      await this.tenantRepo.updateInvitationStatus(existingPending.id, 'REVOKED');
     }
 
-    const membership = await this.tenantRepo.createMembership({
+    // Generate secure 32-byte cryptographic token
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+
+    const invitation = await this.tenantRepo.createInvitation({
       tenantId,
-      userId: targetUser.id,
+      email: normalizedEmail,
       roleCode: dto.roleCode,
-      status: 'ACTIVE',
+      tokenHash,
+      invitedByUserId: inviterUserId,
+      status: 'PENDING',
+      expiresAt,
     });
 
+    const tenant = await this.tenantRepo.findTenantById(tenantId);
+    const inviterUser = await this.userRepo.findById(inviterUserId);
+    const frontendBaseUrl = this.config.get('FRONTEND_URL') || 'http://localhost:3000';
+    const inviteUrl = `${frontendBaseUrl.replace(/\/$/, '')}/invite?token=${rawToken}`;
+
+    await this.emailService.sendOrganizationInviteEmail(
+      normalizedEmail,
+      inviterUser?.fullName || 'A team administrator',
+      tenant?.legalName || 'your organization',
+      dto.roleCode,
+      inviteUrl,
+    );
+
     return {
-      membershipId: membership.id,
-      email: targetUser.email,
-      roleCode: membership.roleCode,
+      invitationId: invitation.id,
+      email: invitation.email,
+      roleCode: invitation.roleCode,
+      expiresAt: invitation.expiresAt,
+      ...(this.config.isDevelopment || this.config.isTest ? { debugInviteUrl: inviteUrl } : {}),
     };
+  }
+
+  async listPendingInvitations(
+    tenantId: string,
+    userId: string,
+  ): Promise<TenantInvitationEntity[]> {
+    const membership = await this.tenantRepo.findMembership(tenantId, userId);
+    if (!membership || membership.status !== 'ACTIVE') {
+      throw new AuthorizationError('You do not belong to this organization');
+    }
+    return this.tenantRepo.listPendingInvitations(tenantId);
+  }
+
+  async revokeInvitation(
+    tenantId: string,
+    userId: string,
+    invitationId: string,
+  ): Promise<{ success: boolean }> {
+    const membership = await this.tenantRepo.findMembership(tenantId, userId);
+    if (!membership || !['OWNER', 'CONTROLLER'].includes(membership.roleCode)) {
+      throw new AuthorizationError('Only an Owner or Controller may revoke invitations');
+    }
+    const invitation = await this.tenantRepo.findInvitationById(invitationId);
+    if (!invitation || invitation.tenantId !== tenantId) {
+      throw new NotFoundError('Invitation not found');
+    }
+    await this.tenantRepo.updateInvitationStatus(invitationId, 'REVOKED');
+    return { success: true };
   }
 
   async getMembers(tenantId: string, userId: string): Promise<TenantMembershipEntity[]> {

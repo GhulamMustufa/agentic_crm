@@ -7,9 +7,10 @@ import type {
   TenantEntity,
   TenantMembershipEntity,
   TenantSettingsEntity,
+  TenantInvitationEntity,
 } from '../domain/tenant.entity';
 import type { ITenantRepository } from '../domain/tenant.repository.interface';
-import type { Tenant, TenantMembership, TenantSettings } from '@prisma/client';
+import type { Tenant, TenantMembership, TenantSettings, TenantInvitation } from '@prisma/client';
 
 @Injectable()
 export class PrismaTenantRepository implements ITenantRepository {
@@ -60,6 +61,35 @@ export class PrismaTenantRepository implements ITenantRepository {
       requireReceiptAboveCents: model.requireReceiptAboveCents,
       updatedAt: model.updatedAt,
       version: model.version,
+    };
+  }
+
+  private toInvitationEntity(
+    model: TenantInvitation & {
+      tenant?: Tenant | null;
+      invitedBy?: { id: string; email: string; fullName: string } | null;
+    },
+  ): TenantInvitationEntity {
+    return {
+      id: model.id,
+      tenantId: model.tenantId,
+      email: model.email,
+      roleCode: model.roleCode,
+      tokenHash: model.tokenHash,
+      invitedByUserId: model.invitedByUserId,
+      status: model.status as 'PENDING' | 'ACCEPTED' | 'REVOKED' | 'EXPIRED',
+      expiresAt: model.expiresAt,
+      acceptedAt: model.acceptedAt || undefined,
+      createdAt: model.createdAt,
+      updatedAt: model.updatedAt,
+      tenant: model.tenant ? this.toTenantEntity(model.tenant) : undefined,
+      invitedBy: model.invitedBy
+        ? {
+            id: model.invitedBy.id,
+            email: model.invitedBy.email,
+            fullName: model.invitedBy.fullName,
+          }
+        : undefined,
     };
   }
 
@@ -207,5 +237,115 @@ export class PrismaTenantRepository implements ITenantRepository {
     });
 
     return this.toSettingsEntity(record);
+  }
+
+  async createInvitation(
+    invitation: Omit<TenantInvitationEntity, 'id' | 'createdAt' | 'updatedAt' | 'acceptedAt'>,
+  ): Promise<TenantInvitationEntity> {
+    const created = await this.prisma.tenantInvitation.create({
+      data: {
+        tenantId: invitation.tenantId,
+        email: invitation.email.toLowerCase().trim(),
+        roleCode: invitation.roleCode,
+        tokenHash: invitation.tokenHash,
+        invitedByUserId: invitation.invitedByUserId,
+        status: invitation.status ?? 'PENDING',
+        expiresAt: invitation.expiresAt,
+      },
+      include: {
+        tenant: true,
+        invitedBy: {
+          select: { id: true, email: true, fullName: true },
+        },
+      },
+    });
+
+    return this.toInvitationEntity(created);
+  }
+
+  async findInvitationById(id: string): Promise<TenantInvitationEntity | null> {
+    const invitation = await this.prisma.tenantInvitation.findUnique({
+      where: { id },
+      include: {
+        tenant: true,
+        invitedBy: {
+          select: { id: true, email: true, fullName: true },
+        },
+      },
+    });
+    return invitation ? this.toInvitationEntity(invitation) : null;
+  }
+
+  async findInvitationByTokenHash(tokenHash: string): Promise<TenantInvitationEntity | null> {
+    const invitation = await this.prisma.tenantInvitation.findUnique({
+      where: { tokenHash },
+      include: {
+        tenant: true,
+        invitedBy: {
+          select: { id: true, email: true, fullName: true },
+        },
+      },
+    });
+    return invitation ? this.toInvitationEntity(invitation) : null;
+  }
+
+  async findPendingInvitation(
+    tenantId: string,
+    email: string,
+  ): Promise<TenantInvitationEntity | null> {
+    const invitation = await this.prisma.tenantInvitation.findFirst({
+      where: {
+        tenantId,
+        email: email.toLowerCase().trim(),
+        status: 'PENDING',
+        expiresAt: { gt: new Date() },
+      },
+      include: {
+        tenant: true,
+        invitedBy: {
+          select: { id: true, email: true, fullName: true },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    return invitation ? this.toInvitationEntity(invitation) : null;
+  }
+
+  async listPendingInvitations(tenantId: string): Promise<TenantInvitationEntity[]> {
+    const invitations = await this.prisma.tenantInvitation.findMany({
+      where: {
+        tenantId,
+        status: 'PENDING',
+        expiresAt: { gt: new Date() },
+      },
+      include: {
+        invitedBy: {
+          select: { id: true, email: true, fullName: true },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    return invitations.map((inv) => this.toInvitationEntity(inv));
+  }
+
+  async updateInvitationStatus(
+    id: string,
+    status: 'PENDING' | 'ACCEPTED' | 'REVOKED' | 'EXPIRED',
+    acceptedAt?: Date,
+  ): Promise<TenantInvitationEntity> {
+    const updated = await this.prisma.tenantInvitation.update({
+      where: { id },
+      data: {
+        status,
+        ...(acceptedAt !== undefined ? { acceptedAt } : {}),
+      },
+      include: {
+        tenant: true,
+        invitedBy: {
+          select: { id: true, email: true, fullName: true },
+        },
+      },
+    });
+    return this.toInvitationEntity(updated);
   }
 }

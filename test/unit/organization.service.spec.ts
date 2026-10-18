@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 
+import { AppConfigService } from '@/core/config/config.service';
+import { EmailService } from '@/core/email/email.service';
 import { ConflictError, AuthorizationError, ValidationError } from '@/core/errors/app-error';
 import { InMemoryUserRepository } from '@/modules/identity/repositories/in-memory-user.repository';
 import { InMemoryTenantRepository } from '@/modules/organization/repositories/in-memory-tenant.repository';
@@ -9,12 +11,18 @@ describe('OrganizationService', () => {
   let orgService: OrganizationService;
   let tenantRepo: InMemoryTenantRepository;
   let userRepo: InMemoryUserRepository;
+  let emailService: EmailService;
+  let config: AppConfigService;
   let userId: string;
 
   beforeEach(async () => {
+    config = new AppConfigService({
+      FRONTEND_URL: 'http://localhost:3000',
+    });
+    emailService = new EmailService(config);
     tenantRepo = new InMemoryTenantRepository();
     userRepo = new InMemoryUserRepository();
-    orgService = new OrganizationService(tenantRepo, userRepo);
+    orgService = new OrganizationService(tenantRepo, userRepo, emailService, config);
 
     const user = await userRepo.create({
       email: 'alex@example.com',
@@ -78,7 +86,7 @@ describe('OrganizationService', () => {
     ).rejects.toThrow(ValidationError);
   });
 
-  it('should allow OWNER to invite a new member with BOOKKEEPER role', async () => {
+  it('should allow OWNER to invite a new member with BOOKKEEPER role and dispatch email', async () => {
     const tenant = await orgService.createOrganization(userId, {
       legalName: 'Acme Corp',
       slug: 'acme-corp',
@@ -93,10 +101,17 @@ describe('OrganizationService', () => {
 
     expect(inviteResult.email).toBe('elena@bookkeeper.com');
     expect(inviteResult.roleCode).toBe('BOOKKEEPER');
+    expect(inviteResult.invitationId).toBeDefined();
+    expect(inviteResult.expiresAt).toBeInstanceOf(Date);
+    expect(inviteResult.debugInviteUrl).toContain('/invite?token=');
 
-    // Member user should now exist
-    const invitedUser = await userRepo.findByEmail('elena@bookkeeper.com');
-    expect(invitedUser).toBeDefined();
+    // Email dispatch verification
+    expect(emailService.lastSentInviteUrl).toBe(inviteResult.debugInviteUrl);
+
+    // Should appear in pending invitations
+    const pending = await orgService.listPendingInvitations(tenant.id, userId);
+    expect(pending).toHaveLength(1);
+    expect(pending[0]?.email).toBe('elena@bookkeeper.com');
   });
 
   it('should prevent non-owner/controller from inviting members', async () => {
@@ -131,7 +146,7 @@ describe('OrganizationService', () => {
     ).rejects.toThrow(AuthorizationError);
   });
 
-  it('should list all members of the organization for active members', async () => {
+  it('should prevent inviting a user who is already an active member', async () => {
     const tenant = await orgService.createOrganization(userId, {
       legalName: 'Acme Corp',
       slug: 'acme-corp',
@@ -139,9 +154,59 @@ describe('OrganizationService', () => {
       timezone: 'UTC',
     });
 
-    await orgService.inviteMember(tenant.id, userId, {
-      email: 'member@example.com',
+    await expect(
+      orgService.inviteMember(tenant.id, userId, {
+        email: 'alex@example.com',
+        roleCode: 'CONTROLLER',
+      }),
+    ).rejects.toThrow(ConflictError);
+  });
+
+  it('should allow OWNER to revoke a pending invitation', async () => {
+    const tenant = await orgService.createOrganization(userId, {
+      legalName: 'Acme Corp',
+      slug: 'acme-corp',
+      baseCurrency: 'USD',
+      timezone: 'UTC',
+    });
+
+    const inviteResult = await orgService.inviteMember(tenant.id, userId, {
+      email: 'revoke.me@example.com',
       roleCode: 'AUDITOR',
+    });
+
+    const revokeResult = await orgService.revokeInvitation(
+      tenant.id,
+      userId,
+      inviteResult.invitationId,
+    );
+    expect(revokeResult.success).toBe(true);
+
+    const pending = await orgService.listPendingInvitations(tenant.id, userId);
+    expect(pending).toHaveLength(0);
+  });
+
+  it('should list all active members of the organization', async () => {
+    const tenant = await orgService.createOrganization(userId, {
+      legalName: 'Acme Corp',
+      slug: 'acme-corp',
+      baseCurrency: 'USD',
+      timezone: 'UTC',
+    });
+
+    const auditor = await userRepo.create({
+      email: 'auditor@example.com',
+      passwordHash: 'hash',
+      fullName: 'Auditor User',
+      isSuperadmin: false,
+      status: 'ACTIVE',
+    });
+
+    await tenantRepo.createMembership({
+      tenantId: tenant.id,
+      userId: auditor.id,
+      roleCode: 'AUDITOR',
+      status: 'ACTIVE',
     });
 
     const members = await orgService.getMembers(tenant.id, userId);

@@ -35,3 +35,23 @@ export interface TenantSettingsEntity {
   updatedAt: Date;
   version: number;
 }
+
+export interface TenantInvitationEntity {
+  id: string;
+  tenantId: string;
+  email: string;
+  roleCode: string;
+  tokenHash: string;
+  invitedByUserId: string;
+  status: 'PENDING' | 'ACCEPTED' | 'REVOKED' | 'EXPIRED';
+  expiresAt: Date;
+  acceptedAt?: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+  tenant?: TenantEntity;
+  invitedBy?: {
+    id: string;
+    email: string;
+    fullName: string;
+  };
+}

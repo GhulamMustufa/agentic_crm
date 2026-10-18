@@ -27,6 +27,8 @@ model User {
   resolvedProposals         Proposal[]              @relation("ResolvedProposals")
   bankingResolvedExceptions BankingExceptionItem[]  @relation("BankingResolvedExceptions")
   approvedPayrollRuns       PayrollRun[]            @relation("ApprovedPayrollRuns")
+  passwordResetTokens       PasswordResetToken[]
+  sentInvitations           TenantInvitation[]      @relation("SentInvitations")
 }
 
 model UserSession {
@@ -39,6 +41,19 @@ model UserSession {
   expiresAt        DateTime
   isRevoked        Boolean  @default(false)
   createdAt        DateTime @default(now())
+}
+
+model PasswordResetToken {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String   @unique
+  expiresAt DateTime
+  isUsed    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([tokenHash])
+  @@index([userId])
 }
 
 model Tenant {
@@ -82,6 +97,27 @@ model Tenant {
   stockMovements         StockMovement[]
   inventoryAlerts        InventoryAlert[]
   auditEvents            AuditEvent[]
+  invitations            TenantInvitation[]
+}
+
+model TenantInvitation {
+  id              String    @id @default(uuid())
+  tenantId        String
+  tenant          Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  email           String
+  roleCode        String    @default("BOOKKEEPER")
+  tokenHash       String    @unique
+  invitedByUserId String
+  invitedBy       User      @relation("SentInvitations", fields: [invitedByUserId], references: [id], onDelete: Cascade)
+  status          String    @default("PENDING") // PENDING, ACCEPTED, REVOKED, EXPIRED
+  expiresAt       DateTime
+  acceptedAt      DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([tokenHash])
+  @@index([tenantId, email])
+  @@index([email])
 }
 
 model TenantMembership {

@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 
 import { OrganizationController } from './controllers/organization.controller';
 import { TENANT_REPOSITORY_TOKEN } from './domain/tenant.repository.interface';
@@ -8,7 +8,7 @@ import { PrismaModule } from '../../core/prisma/prisma.module';
 import { IdentityModule } from '../identity/identity.module';
 
 @Module({
-  imports: [IdentityModule, PrismaModule],
+  imports: [forwardRef(() => IdentityModule), PrismaModule],
   controllers: [OrganizationController],
   providers: [
     OrganizationService,

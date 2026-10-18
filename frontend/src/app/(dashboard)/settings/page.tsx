@@ -20,7 +20,8 @@ import {
   DollarSign,
   Percent,
   Receipt,
-  FileCheck,
+  Clock,
+  Loader2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -72,6 +73,20 @@ interface TeamMember {
   };
 }
 
+interface PendingInvitation {
+  id: string;
+  email: string;
+  roleCode: string;
+  status: string;
+  expiresAt: string;
+  createdAt: string;
+  invitedBy?: {
+    id: string;
+    email: string;
+    fullName: string;
+  };
+}
+
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = React.useState<SettingsTab>('AI_GUARDRAILS');
   const [loading, setLoading] = React.useState(true);
@@ -99,6 +114,10 @@ export default function SettingsPage() {
 
   // Members state
   const [members, setMembers] = React.useState<TeamMember[]>([]);
+  const [pendingInvitations, setPendingInvitations] = React.useState<PendingInvitation[]>([]);
+  const [revokingInviteId, setRevokingInviteId] = React.useState<string | null>(null);
+  const [recentInviteUrl, setRecentInviteUrl] = React.useState<string | null>(null);
+
   const [inviteModalOpen, setInviteModalOpen] = React.useState(false);
   const [inviteEmail, setInviteEmail] = React.useState('');
   const [inviteRole, setInviteRole] = React.useState<
@@ -113,10 +132,11 @@ export default function SettingsPage() {
   const loadSettingsData = React.useCallback(async (tid: string) => {
     try {
       setLoading(true);
-      const [settingsRes, orgRes, membersRes] = await Promise.allSettled([
+      const [settingsRes, orgRes, membersRes, invitesRes] = await Promise.allSettled([
         apiClient.get<{ data: Record<string, unknown> }>(`/organizations/${tid}/settings`),
         apiClient.get<{ data: TenantDetails }>(`/organizations/${tid}`),
         apiClient.get<{ data: TeamMember[] }>(`/organizations/${tid}/members`),
+        apiClient.get<{ data: PendingInvitation[] }>(`/organizations/${tid}/invitations`),
       ]);
 
       if (settingsRes.status === 'fulfilled' && settingsRes.value.data) {
@@ -139,6 +159,10 @@ export default function SettingsPage() {
 
       if (membersRes.status === 'fulfilled' && membersRes.value.data) {
         setMembers(membersRes.value.data);
+      }
+
+      if (invitesRes.status === 'fulfilled' && invitesRes.value.data) {
+        setPendingInvitations(invitesRes.value.data);
       }
     } catch {
       toast.error('Failed to load organization settings');
@@ -208,23 +232,57 @@ export default function SettingsPage() {
 
     try {
       setInvitingMember(true);
-      await apiClient.post(`/organizations/${tenantId}/members`, {
+      const res = await apiClient.post<{
+        data: {
+          invitationId: string;
+          email: string;
+          roleCode: string;
+          debugInviteUrl?: string;
+        };
+      }>(`/organizations/${tenantId}/members`, {
         email: inviteEmail.trim(),
         roleCode: inviteRole,
       });
-      toast.success(`Invitation sent to ${inviteEmail}`);
+
+      if (res.data?.debugInviteUrl) {
+        setRecentInviteUrl(res.data.debugInviteUrl);
+        navigator.clipboard.writeText(res.data.debugInviteUrl);
+        toast.success(`Invitation created! Secure link copied to clipboard.`);
+      } else {
+        toast.success(`Invitation sent via Resend to ${inviteEmail}`);
+      }
+
       setInviteEmail('');
       setInviteModalOpen(false);
-      const membersRes = await apiClient.get<{ data: TeamMember[] }>(
-        `/organizations/${tenantId}/members`,
-      );
-      if (membersRes.data) {
-        setMembers(membersRes.data);
+
+      const [membersRes, invitesRes] = await Promise.allSettled([
+        apiClient.get<{ data: TeamMember[] }>(`/organizations/${tenantId}/members`),
+        apiClient.get<{ data: PendingInvitation[] }>(`/organizations/${tenantId}/invitations`),
+      ]);
+      if (membersRes.status === 'fulfilled' && membersRes.value.data) {
+        setMembers(membersRes.value.data);
+      }
+      if (invitesRes.status === 'fulfilled' && invitesRes.value.data) {
+        setPendingInvitations(invitesRes.value.data);
       }
     } catch (err: any) {
       toast.error(err?.message || 'Failed to invite team member');
     } finally {
       setInvitingMember(false);
+    }
+  };
+
+  const handleRevokeInvitation = async (invitationId: string) => {
+    if (!tenantId) return;
+    try {
+      setRevokingInviteId(invitationId);
+      await apiClient.delete(`/organizations/${tenantId}/invitations/${invitationId}`);
+      toast.success('Invitation revoked');
+      setPendingInvitations((prev) => prev.filter((inv) => inv.id !== invitationId));
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to revoke invitation');
+    } finally {
+      setRevokingInviteId(null);
     }
   };
 
@@ -764,6 +822,29 @@ export default function SettingsPage() {
               </Button>
             </CardHeader>
             <CardContent className="pt-4">
+              {recentInviteUrl && (
+                <div className="mb-4 rounded-lg border border-primary/20 bg-primary/5 p-3 flex items-center justify-between gap-3 text-xs">
+                  <div className="min-w-0 flex items-center gap-2">
+                    <span className="font-semibold text-primary shrink-0">Latest Invite Link:</span>
+                    <span className="font-mono text-muted-foreground truncate">
+                      {recentInviteUrl}
+                    </span>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs shrink-0 cursor-pointer"
+                    onClick={() => {
+                      navigator.clipboard.writeText(recentInviteUrl);
+                      toast.success('Invite link copied to clipboard');
+                    }}
+                  >
+                    <Copy className="w-3 h-3 mr-1" />
+                    Copy
+                  </Button>
+                </div>
+              )}
+
               {members.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground text-sm">
                   No team members found.
@@ -887,6 +968,132 @@ export default function SettingsPage() {
               )}
             </CardContent>
           </Card>
+
+          {/* Pending Invitations Section */}
+          {pendingInvitations.length > 0 && (
+            <Card className="border-border/70 shadow-xs">
+              <CardHeader className="pb-3 border-b border-border/40 flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle className="text-base font-semibold text-foreground flex items-center gap-2">
+                    <Clock className="w-4 h-4 text-amber-500" />
+                    Pending Invitations
+                    <Badge variant="secondary" className="text-xs px-2 py-0.5 ml-1">
+                      {pendingInvitations.length}
+                    </Badge>
+                  </CardTitle>
+                  <CardDescription className="text-xs">
+                    Sent invitations awaiting user registration or onboarding acceptance. Links are
+                    valid for 7 days.
+                  </CardDescription>
+                </div>
+              </CardHeader>
+              <CardContent className="pt-4">
+                <div className="rounded-xl border border-border/70 overflow-hidden">
+                  {/* Desktop Table View */}
+                  <div className="hidden md:block">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Invitee Email</TableHead>
+                          <TableHead>Role</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead>Sent Date</TableHead>
+                          <TableHead>Expires</TableHead>
+                          <TableHead className="text-right">Action</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {pendingInvitations.map((inv) => (
+                          <TableRow key={inv.id} className="hover:bg-muted/30">
+                            <TableCell className="font-mono text-xs text-foreground font-medium">
+                              {inv.email}
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="outline" className="font-mono text-xs">
+                                {inv.roleCode}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <Badge
+                                variant="outline"
+                                className="text-xs bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20"
+                              >
+                                Pending
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-xs text-muted-foreground font-mono">
+                              {new Date(inv.createdAt).toLocaleDateString()}
+                            </TableCell>
+                            <TableCell className="text-xs text-muted-foreground font-mono">
+                              {new Date(inv.expiresAt).toLocaleDateString()}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                disabled={revokingInviteId === inv.id}
+                                onClick={() => handleRevokeInvitation(inv.id)}
+                                className="text-xs text-destructive hover:bg-destructive/10 h-8 cursor-pointer"
+                              >
+                                {revokingInviteId === inv.id ? (
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                ) : (
+                                  'Revoke'
+                                )}
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+
+                  {/* Mobile View */}
+                  <div className="md:hidden divide-y divide-border">
+                    {pendingInvitations.map((inv) => (
+                      <div key={inv.id} className="p-4 space-y-2">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <div className="font-medium font-mono text-xs text-foreground">
+                              {inv.email}
+                            </div>
+                            <div className="text-[11px] text-muted-foreground">
+                              Sent {new Date(inv.createdAt).toLocaleDateString()} &middot; Expires{' '}
+                              {new Date(inv.expiresAt).toLocaleDateString()}
+                            </div>
+                          </div>
+                          <Badge variant="outline" className="font-mono text-xs">
+                            {inv.roleCode}
+                          </Badge>
+                        </div>
+                        <div className="flex items-center justify-between pt-1">
+                          <Badge
+                            variant="outline"
+                            className="text-xs bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20"
+                          >
+                            Pending
+                          </Badge>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            disabled={revokingInviteId === inv.id}
+                            onClick={() => handleRevokeInvitation(inv.id)}
+                            className="text-xs text-destructive hover:bg-destructive/10 h-8 cursor-pointer"
+                          >
+                            {revokingInviteId === inv.id ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              'Revoke'
+                            )}
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Role Reference Card */}
           <Card className="border-border/70 bg-muted/20 shadow-sm">

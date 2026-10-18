@@ -3,9 +3,13 @@ import { Injectable, Inject } from '@nestjs/common';
 import { ConflictError, NotFoundError } from '../../../core/errors/app-error';
 import { PrismaService } from '../../../core/prisma/prisma.service';
 
-import type { UserEntity, UserSessionEntity } from '../domain/user.entity';
+import type {
+  UserEntity,
+  UserSessionEntity,
+  PasswordResetTokenEntity,
+} from '../domain/user.entity';
 import type { IUserRepository } from '../domain/user.repository.interface';
-import type { User, UserSession } from '@prisma/client';
+import type { User, UserSession, PasswordResetToken } from '@prisma/client';
 
 @Injectable()
 export class PrismaUserRepository implements IUserRepository {
@@ -34,6 +38,17 @@ export class PrismaUserRepository implements IUserRepository {
       ipAddress: model.ipAddress || undefined,
       expiresAt: model.expiresAt,
       isRevoked: model.isRevoked,
+      createdAt: model.createdAt,
+    };
+  }
+
+  private toPasswordResetTokenEntity(model: PasswordResetToken): PasswordResetTokenEntity {
+    return {
+      id: model.id,
+      userId: model.userId,
+      tokenHash: model.tokenHash,
+      expiresAt: model.expiresAt,
+      isUsed: model.isUsed,
       createdAt: model.createdAt,
     };
   }
@@ -133,6 +148,43 @@ export class PrismaUserRepository implements IUserRepository {
     await this.prisma.userSession.updateMany({
       where: { userId },
       data: { isRevoked: true },
+    });
+  }
+
+  async createPasswordResetToken(data: {
+    userId: string;
+    tokenHash: string;
+    expiresAt: Date;
+  }): Promise<PasswordResetTokenEntity> {
+    const created = await this.prisma.passwordResetToken.create({
+      data: {
+        userId: data.userId,
+        tokenHash: data.tokenHash,
+        expiresAt: data.expiresAt,
+        isUsed: false,
+      },
+    });
+    return this.toPasswordResetTokenEntity(created);
+  }
+
+  async findPasswordResetToken(tokenHash: string): Promise<PasswordResetTokenEntity | null> {
+    const token = await this.prisma.passwordResetToken.findUnique({
+      where: { tokenHash },
+    });
+    return token ? this.toPasswordResetTokenEntity(token) : null;
+  }
+
+  async markPasswordResetTokenUsed(id: string): Promise<void> {
+    await this.prisma.passwordResetToken.update({
+      where: { id },
+      data: { isUsed: true },
+    });
+  }
+
+  async invalidateUserPasswordResetTokens(userId: string): Promise<void> {
+    await this.prisma.passwordResetToken.updateMany({
+      where: { userId, isUsed: false },
+      data: { isUsed: true },
     });
   }
 }

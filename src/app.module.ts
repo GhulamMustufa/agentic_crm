@@ -8,6 +8,7 @@ import { AiModule } from './core/ai/ai.module';
 import { ConfigModule } from './core/config/config.module';
 import { AppConfigService } from './core/config/config.service';
 import { ContextModule } from './core/context/context.module';
+import { EmailModule } from './core/email/email.module';
 import { FeatureFlagModule } from './core/feature-flags/feature-flag.module';
 import { LoggingModule } from './core/logging/logging.module';
 import { PrismaModule } from './core/prisma/prisma.module';
@@ -49,6 +50,7 @@ import { PayrollModule } from './modules/payroll/payroll.module';
     ContextModule,
     SecurityModule,
     StorageModule,
+    EmailModule,
     QueueModule,
     AiModule,
     FeatureFlagModule,

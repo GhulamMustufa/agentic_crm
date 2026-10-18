@@ -5,6 +5,7 @@ import type {
   TenantEntity,
   TenantMembershipEntity,
   TenantSettingsEntity,
+  TenantInvitationEntity,
 } from '../domain/tenant.entity';
 import type { ITenantRepository } from '../domain/tenant.repository.interface';
 
@@ -13,6 +14,7 @@ export class InMemoryTenantRepository implements ITenantRepository {
   private readonly tenants = new Map<string, TenantEntity>();
   private readonly memberships = new Map<string, TenantMembershipEntity>();
   private readonly settings = new Map<string, TenantSettingsEntity>();
+  private readonly invitations = new Map<string, TenantInvitationEntity>();
 
   async createTenant(
     tenant: Omit<TenantEntity, 'id' | 'createdAt' | 'updatedAt' | 'version'>,
@@ -120,9 +122,87 @@ export class InMemoryTenantRepository implements ITenantRepository {
     return updated;
   }
 
+  async createInvitation(
+    invitation: Omit<TenantInvitationEntity, 'id' | 'createdAt' | 'updatedAt' | 'acceptedAt'>,
+  ): Promise<TenantInvitationEntity> {
+    const id = uuidv4();
+    const now = new Date();
+    const created: TenantInvitationEntity = {
+      ...invitation,
+      id,
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.invitations.set(id, created);
+    return created;
+  }
+
+  async findInvitationById(id: string): Promise<TenantInvitationEntity | null> {
+    return this.invitations.get(id) ?? null;
+  }
+
+  async findInvitationByTokenHash(tokenHash: string): Promise<TenantInvitationEntity | null> {
+    for (const inv of this.invitations.values()) {
+      if (inv.tokenHash === tokenHash) {
+        return inv;
+      }
+    }
+    return null;
+  }
+
+  async findPendingInvitation(
+    tenantId: string,
+    email: string,
+  ): Promise<TenantInvitationEntity | null> {
+    const normalized = email.toLowerCase().trim();
+    const now = new Date();
+    for (const inv of this.invitations.values()) {
+      if (
+        inv.tenantId === tenantId &&
+        inv.email.toLowerCase().trim() === normalized &&
+        inv.status === 'PENDING' &&
+        inv.expiresAt > now
+      ) {
+        return inv;
+      }
+    }
+    return null;
+  }
+
+  async listPendingInvitations(tenantId: string): Promise<TenantInvitationEntity[]> {
+    const result: TenantInvitationEntity[] = [];
+    const now = new Date();
+    for (const inv of this.invitations.values()) {
+      if (inv.tenantId === tenantId && inv.status === 'PENDING' && inv.expiresAt > now) {
+        result.push(inv);
+      }
+    }
+    return result;
+  }
+
+  async updateInvitationStatus(
+    id: string,
+    status: 'PENDING' | 'ACCEPTED' | 'REVOKED' | 'EXPIRED',
+    acceptedAt?: Date,
+  ): Promise<TenantInvitationEntity> {
+    const existing = this.invitations.get(id);
+    if (!existing) {
+      throw new Error(`Invitation not found: ${id}`);
+    }
+    const updated: TenantInvitationEntity = {
+      ...existing,
+      status,
+      ...(acceptedAt !== undefined ? { acceptedAt } : {}),
+      updatedAt: new Date(),
+    };
+    this.invitations.set(id, updated);
+    return updated;
+  }
+
   clear(): void {
     this.tenants.clear();
     this.memberships.clear();
     this.settings.clear();
+    this.invitations.clear();
   }
 }

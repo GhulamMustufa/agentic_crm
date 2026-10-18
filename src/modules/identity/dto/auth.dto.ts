@@ -35,3 +35,24 @@ export interface AuthResponseDto {
   };
   tokens: AuthTokens;
 }
+
+export const forgotPasswordSchema = z.object({
+  email: z.string().email('Valid email required').max(255),
+});
+
+export type ForgotPasswordDto = z.infer<typeof forgotPasswordSchema>;
+
+export const resetPasswordSchema = z.object({
+  token: z.string().min(1, 'Reset token is required'),
+  newPassword: z.string().min(8, 'Password must be at least 8 characters').max(100),
+});
+
+export type ResetPasswordDto = z.infer<typeof resetPasswordSchema>;
+
+export const acceptInviteSchema = z.object({
+  token: z.string().min(1, 'Invitation token is required'),
+  fullName: z.string().min(2, 'Full name must be at least 2 characters').max(150).optional(),
+  password: z.string().min(8, 'Password must be at least 8 characters').max(100).optional(),
+});
+
+export type AcceptInviteDto = z.infer<typeof acceptInviteSchema>;

@@ -37,6 +37,11 @@ export default function LoginPage() {
         // Clean up the URL
         window.history.replaceState({}, '', '/login');
       }
+      if (urlParams.get('reset') === 'success') {
+        toast.success('Password reset successfully! Please sign in with your new password.');
+        // Clean up the URL
+        window.history.replaceState({}, '', '/login');
+      }
     }
   }, []);
 
@@ -147,7 +152,7 @@ export default function LoginPage() {
           </form>
         </CardContent>
         <CardFooter className="flex flex-col gap-4 text-center text-sm">
-          <Link href="#" className="text-primary hover:underline underline-offset-4">
+          <Link href="/forgot-password" className="text-primary hover:underline underline-offset-4">
             Forgot your password?
           </Link>
           <div className="text-muted-foreground">

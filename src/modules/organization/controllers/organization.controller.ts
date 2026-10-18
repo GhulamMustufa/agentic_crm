@@ -3,6 +3,7 @@ import {
   Post,
   Get,
   Patch,
+  Delete,
   Body,
   Param,
   UseGuards,
@@ -77,6 +78,27 @@ export class OrganizationController {
   async getMembers(@CurrentUser() user: TenantSessionContext, @Param('id') tenantId: string) {
     const members = await this.orgService.getMembers(tenantId, user.userId);
     return { data: members };
+  }
+
+  @Get(':id/invitations')
+  @HttpCode(HttpStatus.OK)
+  async getPendingInvitations(
+    @CurrentUser() user: TenantSessionContext,
+    @Param('id') tenantId: string,
+  ) {
+    const invitations = await this.orgService.listPendingInvitations(tenantId, user.userId);
+    return { data: invitations };
+  }
+
+  @Delete(':id/invitations/:inviteId')
+  @HttpCode(HttpStatus.OK)
+  async revokeInvitation(
+    @CurrentUser() user: TenantSessionContext,
+    @Param('id') tenantId: string,
+    @Param('inviteId') inviteId: string,
+  ) {
+    const result = await this.orgService.revokeInvitation(tenantId, user.userId, inviteId);
+    return { data: result };
   }
 
   @Get(':id/settings')

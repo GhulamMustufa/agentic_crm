@@ -206,6 +206,29 @@ CREATE TABLE tenant_memberships (
 CREATE INDEX idx_tenant_memberships_user ON tenant_memberships (user_id, status);
 ```
 
+#### `tenant_invitations`
+
+- **Why it exists:** Governs cryptographically secure team member onboarding with token hashing, 7-day expiration, and Resend email delivery. Prevents dead-end placeholder users from polluting the authoritative `users` table.
+
+```sql
+CREATE TABLE tenant_invitations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    email VARCHAR(255) NOT NULL,
+    role_code VARCHAR(50) NOT NULL DEFAULT 'BOOKKEEPER',
+    token_hash VARCHAR(64) NOT NULL UNIQUE,
+    invited_by_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    status VARCHAR(20) NOT NULL DEFAULT 'PENDING', -- PENDING, ACCEPTED, REVOKED, EXPIRED
+    expires_at TIMESTAMPTZ NOT NULL,
+    accepted_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp()
+);
+CREATE INDEX idx_tenant_invitations_token ON tenant_invitations (token_hash);
+CREATE INDEX idx_tenant_invitations_tenant_email ON tenant_invitations (tenant_id, email);
+CREATE INDEX idx_tenant_invitations_email ON tenant_invitations (email);
+```
+
 #### `fiscal_years`
 
 - **Why it exists:** Governs official 12-month accounting cycles for statutory reporting.

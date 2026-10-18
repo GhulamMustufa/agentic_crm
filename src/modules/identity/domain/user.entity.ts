@@ -29,3 +29,12 @@ export interface RoleEntity {
   description?: string;
   permissions: string[];
 }
+
+export interface PasswordResetTokenEntity {
+  id: string;
+  userId: string;
+  tokenHash: string;
+  expiresAt: Date;
+  isUsed: boolean;
+  createdAt: Date;
+}

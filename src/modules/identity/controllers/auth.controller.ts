@@ -3,6 +3,7 @@ import {
   Post,
   Get,
   Body,
+  Query,
   Req,
   HttpCode,
   HttpStatus,
@@ -15,7 +16,15 @@ import { JwtAuthGuard } from '../../../core/security/guards/jwt-auth.guard';
 import { AuthService } from '../services/auth.service';
 
 import type { TenantSessionContext } from '../../../core/context/tenant-context.service';
-import type { RegisterDto, LoginDto, RefreshTokenDto, AuthResponseDto } from '../dto/auth.dto';
+import type {
+  RegisterDto,
+  LoginDto,
+  RefreshTokenDto,
+  AuthResponseDto,
+  ForgotPasswordDto,
+  ResetPasswordDto,
+  AcceptInviteDto,
+} from '../dto/auth.dto';
 import type { Request } from 'express';
 
 @Controller('api/v1/auth')
@@ -45,6 +54,45 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   async refresh(@Body() dto: RefreshTokenDto): Promise<{ data: AuthResponseDto }> {
     const result = await this.authService.refreshToken(dto);
+    return { data: result };
+  }
+
+  @Public()
+  @Post('forgot-password')
+  @HttpCode(HttpStatus.OK)
+  async forgotPassword(
+    @Body() dto: ForgotPasswordDto,
+  ): Promise<{ data: { message: string; debugToken?: string } }> {
+    const result = await this.authService.requestPasswordReset(dto);
+    return { data: result };
+  }
+
+  @Public()
+  @Post('reset-password')
+  @HttpCode(HttpStatus.OK)
+  async resetPassword(@Body() dto: ResetPasswordDto): Promise<{ data: { message: string } }> {
+    const result = await this.authService.resetPassword(dto);
+    return { data: result };
+  }
+
+  @Public()
+  @Get('invite')
+  @HttpCode(HttpStatus.OK)
+  async getInvite(@Query('token') token: string) {
+    const details = await this.authService.getInvitationDetails(token);
+    return { data: details };
+  }
+
+  @Public()
+  @Post('accept-invite')
+  @HttpCode(HttpStatus.OK)
+  async acceptInvite(
+    @Body() dto: AcceptInviteDto,
+    @Req() req: Request,
+  ): Promise<{ data: AuthResponseDto }> {
+    const ip = req.ip || (req.headers['x-forwarded-for'] as string);
+    const userAgent = req.headers['user-agent'];
+    const result = await this.authService.acceptInvitation(dto, { ip, userAgent });
     return { data: result };
   }
 

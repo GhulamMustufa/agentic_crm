@@ -1,4 +1,9 @@
-import type { TenantEntity, TenantMembershipEntity, TenantSettingsEntity } from './tenant.entity';
+import type {
+  TenantEntity,
+  TenantMembershipEntity,
+  TenantSettingsEntity,
+  TenantInvitationEntity,
+} from './tenant.entity';
 
 export interface ITenantRepository {
   createTenant(
@@ -21,6 +26,19 @@ export interface ITenantRepository {
   upsertSettings(
     settings: Omit<TenantSettingsEntity, 'updatedAt' | 'version'>,
   ): Promise<TenantSettingsEntity>;
+
+  createInvitation(
+    invitation: Omit<TenantInvitationEntity, 'id' | 'createdAt' | 'updatedAt' | 'acceptedAt'>,
+  ): Promise<TenantInvitationEntity>;
+  findInvitationById(id: string): Promise<TenantInvitationEntity | null>;
+  findInvitationByTokenHash(tokenHash: string): Promise<TenantInvitationEntity | null>;
+  findPendingInvitation(tenantId: string, email: string): Promise<TenantInvitationEntity | null>;
+  listPendingInvitations(tenantId: string): Promise<TenantInvitationEntity[]>;
+  updateInvitationStatus(
+    id: string,
+    status: 'PENDING' | 'ACCEPTED' | 'REVOKED' | 'EXPIRED',
+    acceptedAt?: Date,
+  ): Promise<TenantInvitationEntity>;
 }
 
 export const TENANT_REPOSITORY_TOKEN = Symbol('ITenantRepository');

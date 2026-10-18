@@ -190,3 +190,61 @@ All error responses return a standardized, machine-readable envelope:
 
 - **Auto-Generated OpenAPI (Swagger):** All NestJS controllers must use `@ApiTags()`, `@ApiOperation()`, `@ApiResponse()`, and `@ApiProperty()` decorators.
 - **Contract Verification:** OpenAPI specs are automatically generated and committed at `/docs/api/openapi.json`. Frontend client SDKs and mock servers are generated directly from this spec.
+
+---
+
+## 9. Identity, Password Recovery & Team Invitation Contracts
+
+### 9.1 Authentication & Password Recovery
+
+- `POST /api/v1/auth/forgot-password`
+  - **Auth:** Public
+  - **Body:** `{ "email": "user@example.com" }`
+  - **Behavior:** Generates a secure random 32-byte hex token, stores its SHA-256 hash with a 1-hour expiration, and dispatches a branded reset link via Resend. Always returns `200 OK` with generic confirmation to prevent user enumeration.
+- `POST /api/v1/auth/reset-password`
+  - **Auth:** Public
+  - **Body:** `{ "token": "<raw-hex-token>", "newPassword": "<secure-password>" }`
+  - **Behavior:** Verifies hash and expiration, updates bcrypt password hash, invalidates reset token, and revokes prior sessions.
+
+### 9.2 Team Member Onboarding & Invitation Lifecycles
+
+- `POST /api/v1/organizations/:id/invitations`
+  - **Auth:** Bearer JWT (Requires `OWNER` or `ADMIN` role in target tenant)
+  - **Body:** `{ "email": "colleague@company.com", "role": "BOOKKEEPER" }`
+  - **Behavior:** Creates or updates a pending invitation with a 7-day TTL, hashes token, and sends branded email via Resend containing the onboarding URL (`/invite?token=...`).
+  - **Response:**
+    ```json
+    {
+      "data": {
+        "id": "inv_0192a83b",
+        "email": "colleague@company.com",
+        "role": "BOOKKEEPER",
+        "expiresAt": "2026-10-25T12:00:00.000Z",
+        "status": "PENDING"
+      }
+    }
+    ```
+- `GET /api/v1/organizations/:id/invitations`
+  - **Auth:** Bearer JWT (Requires `OWNER` or `ADMIN` role in target tenant)
+  - **Behavior:** Retrieves all active `PENDING` invitations for tenant `:id`.
+- `DELETE /api/v1/organizations/:id/invitations/:inviteId`
+  - **Auth:** Bearer JWT (Requires `OWNER` or `ADMIN` role in target tenant)
+  - **Behavior:** Marks the invitation as `REVOKED` and invalidates onboarding tokens.
+- `GET /api/v1/auth/invite?token=<token>`
+  - **Auth:** Public
+  - **Behavior:** Inspects invitation validity without consuming it. Returns metadata:
+    ```json
+    {
+      "data": {
+        "email": "colleague@company.com",
+        "role": "BOOKKEEPER",
+        "organizationName": "Acme Corp",
+        "inviterName": "Alice Smith",
+        "userExists": false
+      }
+    }
+    ```
+- `POST /api/v1/auth/accept-invite`
+  - **Auth:** Public
+  - **Body:** `{ "token": "<raw-token>", "fullName": "Bob Doe", "password": "Password123!" }` (`fullName` and `password` required only if `userExists: false`)
+  - **Behavior:** Atomically transitions invitation to `ACCEPTED`, registers user (if new) or links existing user to tenant membership, and issues authenticated JWT tokens with tenant context.
