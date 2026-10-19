@@ -55,6 +55,80 @@ Agentic Business OS is an enterprise-grade multi-tenant SaaS designed to automat
 
 ---
 
+## Phase 2: Banking Ingestion, Multi-Bank Parsers & Reconciliation
+
+- **Multi-Bank Ingestion:** Native text and layout parsers for major US and international financial institutions (Chase, Silicon Valley Bank, Mercury, Maybank, ICBC).
+- **Deterministic Checksum Validation:** Verifies statement running balance arithmetic before any transaction enters the database ($\text{Opening Balance} + \text{Credits} - \text{Debits} == \text{Closing Balance}$).
+- **Transaction Line Hashing:** SHA-256 payload hashing prevents duplicate line insertions across overlapping bank statements.
+- **AI Payee Cleaner & Entity Resolution:** Normalizes raw bank strings (e.g. `AMZN MKTP US*2K` $\to$ Amazon Marketplace) into clean counterparty entities.
+- **Automated Settlement & Reconciliation:** High-confidence transactions ($\ge 95\%$) automatically match open invoices and post balanced ledger entries.
+- **Exception Center:** Real-time triage interface for ambiguous transactions, unmapped payees, and discrepancy resolution with bulk cluster actions.
+
+---
+
+## Phase 3: Financial Reporting & Executive Dashboards
+
+- **Trial Balance:** Interactive statement verifying debit/credit equilibrium across all active accounts with period filtering.
+- **Profit & Loss (Income Statement):** Real-time revenue vs. expense breakdown calculating Net Operating Income.
+- **Balance Sheet:** Verifies the fundamental accounting equation ($\text{Assets} == \text{Liabilities} + \text{Equity}$).
+- **Interactive Drill-Downs:** 1-click drill-down from reporting line items to source journal entries and bank transactions.
+
+---
+
+## Phase 4: Modern Dimmed Slate Theme, Resend Email & Onboarding
+
+- **Modern Dimmed Slate Theme:** Optimized dark mode canvas (`oklch(0.21 0.02 255)`) with physical card elevation, high-contrast borders, and anti-glare typography.
+- **Resend Email Integration:** Branded transactional email delivery for team invitations and password recovery.
+- **Forgot & Reset Password Workflow:** OWASP anti-enumeration safeguards, 32-byte crypto tokens, 1-hour expiration, and complete multi-session revocation.
+- **Team Member Invitation System:** Cryptographic token invitation lifecycle (`TenantInvitation` model) supporting both brand-new user registration and 1-click account linking for existing platform users.
+- **Dual-Pane Auth Layout:** Enterprise split layout with live mathematical guarantee metrics and security feature highlights.
+
+---
+
+## 🏗️ System Architecture & Data Flow
+
+```mermaid
+flowchart TD
+    subgraph Ingestion["1. Statement Ingestion"]
+        PDF["Bank Statement (PDF / CSV)"] --> Upload["Dropzone Upload / API"]
+        Upload --> Hash["Compute File SHA-256 (Deduplication)"]
+        Hash --> Parser["Multi-Bank Parser (Chase, Mercury, Maybank, ICBC)"]
+        Parser --> MathCheck["Financial Checksum Engine (Opening + Credits - Debits == Closing)"]
+    end
+
+    subgraph Extraction["2. Transaction Processing"]
+        MathCheck --> TxExtract["Extract Line Items (Integer Cents)"]
+        TxExtract --> LineHash["Transaction Hash Deduplication"]
+    end
+
+    subgraph AdvisoryAI["3. Advisory AI Accountant"]
+        LineHash --> Payee["Entity Resolution & Payee Cleaning"]
+        Payee --> Match["Match Invoices & Chart of Accounts"]
+        Match --> Score{"Confidence >= 95%?"}
+    end
+
+    subgraph DeterministicCore["4. Deterministic Financial Core"]
+        Score -->|Yes| AutoGate["Deterministic Validation Gate"]
+        AutoGate --> PostGL["Post Balanced Journal Entry"]
+        PostGL --> SettleInv["Settle Invoice (Mark Paid)"]
+        SettleInv --> Audit["Record Cryptographic Audit Event (SHA-256)"]
+    end
+
+    subgraph ExceptionCenter["5. Exception Orchestration"]
+        Score -->|No / Ambiguous| Quarantine["Quarantine to Exception Center"]
+        Quarantine --> HumanReview["1-Click CFO / Bookkeeper Triage"]
+        HumanReview -->|Approve / Correct| AutoGate
+    end
+
+    subgraph Reporting["6. Real-Time Financial Intelligence"]
+        PostGL --> TB["Trial Balance (Debit == Credit Check)"]
+        PostGL --> PnL["Profit & Loss (Income Statement)"]
+        PostGL --> BS["Balance Sheet (Assets == Liabilities + Equity)"]
+    end
+```
+
+---
+
 ## Project Structure
 
 ```
@@ -64,11 +138,15 @@ Agentic Business OS is an enterprise-grade multi-tenant SaaS designed to automat
 │   ├── ARCHITECTURE.md      # Master system design & domain map
 │   ├── CODING_STANDARDS.md  # Engineering directives
 │   └── DATABASE_SCHEMA.md   # Relational schemas & DDL
+├── frontend/                # Next.js 16 App Router application
+│   ├── e2e/                 # Playwright end-to-end test suites
+│   └── src/app/             # (auth), (dashboard), components, styles
 ├── src/
 │   ├── core/                # Reusable platform primitives
 │   │   ├── ai/              # AI provider abstraction gateway
 │   │   ├── config/          # Zod-validated environment configuration
 │   │   ├── context/         # AsyncLocalStorage tenant context
+│   │   ├── email/           # Resend email service & templates
 │   │   ├── errors/          # RFC 7807 problem details error handling
 │   │   ├── feature-flags/   # Tenant-aware feature toggling
 │   │   ├── logging/         # RFC 5424 structured JSON logging with redaction
@@ -78,14 +156,18 @@ Agentic Business OS is an enterprise-grade multi-tenant SaaS designed to automat
 │   ├── migrations/          # PostgreSQL DDL migrations
 │   └── modules/             # Bounded business domains
 │       ├── audit/           # Hash-chained immutable audit log
+│       ├── banking/         # Bank accounts, statement parsers, reconciliation
 │       ├── counterparties/  # Customers, vendors, name normalization
-│       ├── identity/        # Users, authentication, session tokens
+│       ├── exceptions/      # Exception Center & proposal approval
+│       ├── identity/        # Users, authentication, session tokens, invitations
+│       ├── inventory/       # Inventory items, valuation, movements
 │       ├── invoices/        # AR invoices, AP bills, payments, allocations
-│       ├── ledger/          # Chart of accounts, periods, journal entries, balances, financial reports
-│       └── organization/    # Tenants, memberships, organization settings
+│       ├── ledger/          # Chart of accounts, periods, journal entries, balances, reports
+│       ├── organization/    # Tenants, memberships, organization settings
+│       └── payroll/         # Payroll runs, compensation, tax withholdings
 └── test/
     ├── integration/         # Supertest end-to-end API integration tests
-    └── unit/                # Domain and service unit test suites
+    └── unit/                # Vitest domain and service unit test suites
 ```
 
 ---
@@ -96,6 +178,8 @@ Agentic Business OS is an enterprise-grade multi-tenant SaaS designed to automat
 
 - Node.js >= 20.0.0
 - npm >= 10.0.0
+- PostgreSQL 16+ (or Neon Serverless Postgres)
+- Redis 7+ (optional for local in-memory fallback)
 
 ### Installation
 
@@ -104,45 +188,70 @@ Agentic Business OS is an enterprise-grade multi-tenant SaaS designed to automat
 git clone https://github.com/GhulamMustufa/agentic_crm.git
 cd agentic_crm
 
-# Install dependencies
+# Install backend dependencies
 npm ci
+
+# Install frontend dependencies
+npm --prefix frontend ci
 
 # Configure environment variables
 cp .env.example .env
 ```
 
+### Database Sync
+
+```bash
+# Generate Prisma Client & push schema to PostgreSQL
+npx prisma generate
+npx prisma db push
+```
+
+### Running the System
+
+```bash
+# Start backend API (Port 3001)
+npm run start:dev
+
+# Start frontend application (Port 3000)
+npm --prefix frontend run dev
+```
+
 ### Quality Gates & Verification
 
 ```bash
-# Run unit & integration test suites
+# Run unit & integration test suites (34 test files, 200+ unit tests)
 npm test
 
-# Run strict TypeScript typechecking
+# Run strict TypeScript typechecking (Backend & Frontend)
 npm run typecheck
+npm --prefix frontend run typecheck
 
-# Run static code analysis
+# Run static code analysis & linting
 npm run lint
+npm --prefix frontend run lint
 
-# Verify code formatting
-npm run format:check
+# Run Playwright E2E tests
+npm --prefix frontend run test:e2e
 
-# Execute production build
+# Execute production builds
 npm run build
+npm --prefix frontend run build
 ```
 
 ---
 
 ## Documentation Index
 
-| Topic                                   | Document                                                                                   |
+| Topic                                   | Authoritative Document                                                                     |
 | :-------------------------------------- | :----------------------------------------------------------------------------------------- |
 | **Plain-English Platform Guide**        | [`docs/SYSTEM_ONBOARDING_GUIDE.md`](docs/SYSTEM_ONBOARDING_GUIDE.md)                       |
 | **Accounting Codes & Exceptions Guide** | [`docs/ACCOUNTING_CONCEPTS_AND_EXCEPTIONS.md`](docs/ACCOUNTING_CONCEPTS_AND_EXCEPTIONS.md) |
-| **System Architecture**                 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)                                             |
-| **Coding Standards**                    | [`docs/CODING_STANDARDS.md`](docs/CODING_STANDARDS.md)                                     |
-| **Database Schema**                     | [`docs/DATABASE_SCHEMA.md`](docs/DATABASE_SCHEMA.md)                                       |
-| **Frontend Standards**                  | [`docs/FRONTEND_STANDARDS.md`](docs/FRONTEND_STANDARDS.md)                                 |
-| **Backend Standards**                   | [`docs/BACKEND_STANDARDS.md`](docs/BACKEND_STANDARDS.md)                                   |
-| **API Standards**                       | [`docs/API_STANDARDS.md`](docs/API_STANDARDS.md)                                           |
+| **System Architecture & Domain Map**    | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)                                             |
+| **Product Vision & Personas**           | [`docs/PRODUCT.md`](docs/PRODUCT.md)                                                       |
+| **Master Coding Standards**             | [`docs/CODING_STANDARDS.md`](docs/CODING_STANDARDS.md)                                     |
+| **Relational Database Schemas & DDL**   | [`docs/DATABASE_SCHEMA.md`](docs/DATABASE_SCHEMA.md)                                       |
+| **REST API Contracts & Idempotency**    | [`docs/API_STANDARDS.md`](docs/API_STANDARDS.md)                                           |
+| **Frontend & UI/UX Standards**          | [`docs/FRONTEND_STANDARDS.md`](docs/FRONTEND_STANDARDS.md)                                 |
+| **Design System & Theme Tokens**        | [`docs/DESIGN_SYSTEM.md`](docs/DESIGN_SYSTEM.md)                                           |
 | **Git Workflow**                        | [`docs/GIT_WORKFLOW.md`](docs/GIT_WORKFLOW.md)                                             |
 | **Repository Governance**               | [`AGENTS.md`](AGENTS.md)                                                                   |
