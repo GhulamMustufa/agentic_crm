@@ -279,7 +279,9 @@ function InviteContent() {
           </Badge>
         </div>
         <CardTitle className="text-xl font-bold tracking-tight text-foreground">
-          Join {inviteDetails.tenantName}
+          <h1 className="text-xl font-bold tracking-tight text-foreground">
+            Join {inviteDetails.tenantName}
+          </h1>
         </CardTitle>
         <CardDescription className="text-xs text-muted-foreground">
           <strong>{inviteDetails.inviterName}</strong> has invited you to collaborate on Agentic
