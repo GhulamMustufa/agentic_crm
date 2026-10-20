@@ -50,7 +50,7 @@ import type {
   BankTransactionStatus,
 } from '../domain/bank-transaction.entity';
 import type { ExceptionItemEntity } from '../domain/exception-item.entity';
-import type { ProposalEntity } from '../domain/proposal.entity';
+import type { ProposalEntity, AiDecisionEvidence } from '../domain/proposal.entity';
 import type {
   CreateBankAccountInput,
   UploadStatementInput,
@@ -990,12 +990,63 @@ export class BankProcessingService {
     }
 
     // Stage 4: Post to Authoritative General Ledger
-    const entry = await this.ledgerService.postJournalEntry(tenantId, userId, {
-      entryDate: transaction.transactionDate,
-      description: `Reconciliation: ${transaction.rawDescription} (Ref: ${transaction.referenceNumber || 'N/A'})`,
-      sourceType: 'BANK_RECONCILIATION',
-      sourceId: transaction.id,
-      lines: [
+    const evidenceList = (
+      Array.isArray(proposal.evidence) ? proposal.evidence : []
+    ) as AiDecisionEvidence[];
+    const gatewayEvidence = evidenceList.find((e) => e.source === 'PAYMENT_GATEWAY_NET_PAYOUT');
+    const batchEvidence = evidenceList.find((e) => e.source === 'BATCH_INVOICE_SETTLEMENT');
+
+    let journalLines: Array<{
+      accountId: string;
+      debitCents: bigint;
+      creditCents: bigint;
+      memo: string;
+    }>;
+
+    if (gatewayEvidence && gatewayEvidence.feeCents && gatewayEvidence.grossAmountCents) {
+      const feeCents = BigInt(gatewayEvidence.feeCents);
+      const grossAmountCents = BigInt(gatewayEvidence.grossAmountCents);
+
+      let feeAccountId = gatewayEvidence.feeAccountId;
+      if (!feeAccountId) {
+        const feeAccount = await this.ledgerService.ensureAccount(
+          tenantId,
+          '6030',
+          'Bank Charges & Payment Processing Fees',
+          'EXPENSE',
+          'EXPENSE',
+        );
+        feeAccountId = feeAccount.id;
+      }
+      const feeAccount = await this.ledgerService.getAccountById(tenantId, feeAccountId);
+      const feeAccName = feeAccount?.name || 'Payment Processing Fees';
+
+      // Deterministic 3-Line Double Entry:
+      // Line 1: Debit Operating Cash (Net Received)
+      // Line 2: Debit Merchant Processing Fees (Expense)
+      // Line 3: Credit Accounts Receivable (Gross Invoice Total)
+      journalLines = [
+        {
+          accountId: proposal.debitAccountId,
+          debitCents: proposal.amountCents,
+          creditCents: 0n,
+          memo: `Debit Cash: ${debitAcc.name}`,
+        },
+        {
+          accountId: feeAccountId,
+          debitCents: feeCents,
+          creditCents: 0n,
+          memo: `Debit Fee: ${feeAccName}`,
+        },
+        {
+          accountId: proposal.creditAccountId,
+          debitCents: 0n,
+          creditCents: grossAmountCents,
+          memo: `Credit AR: ${creditAcc.name}`,
+        },
+      ];
+    } else {
+      journalLines = [
         {
           accountId: proposal.debitAccountId,
           debitCents: proposal.amountCents,
@@ -1008,16 +1059,47 @@ export class BankProcessingService {
           creditCents: proposal.amountCents,
           memo: `Credit: ${creditAcc.name}`,
         },
-      ],
+      ];
+    }
+
+    const entry = await this.ledgerService.postJournalEntry(tenantId, userId, {
+      entryDate: transaction.transactionDate,
+      description: `Reconciliation: ${transaction.rawDescription} (Ref: ${transaction.referenceNumber || 'N/A'})`,
+      sourceType: 'BANK_RECONCILIATION',
+      sourceId: transaction.id,
+      lines: journalLines,
     });
 
     // Stage 5: If Invoice Matched, settle invoice amount due
-    if (proposal.invoiceId) {
+    if (
+      batchEvidence &&
+      batchEvidence.batchAllocations &&
+      batchEvidence.batchAllocations.length > 0
+    ) {
+      for (const alloc of batchEvidence.batchAllocations) {
+        const inv = await this.invoiceRepo.findInvoiceById(tenantId, alloc.invoiceId);
+        if (inv) {
+          const allocCents = BigInt(alloc.allocatedCents);
+          const newDue = inv.amountDueCents > allocCents ? inv.amountDueCents - allocCents : 0n;
+          await this.invoiceRepo.updateInvoiceAmountDue(tenantId, inv.id, newDue);
+          await this.invoiceRepo.updateInvoiceStatus(
+            tenantId,
+            inv.id,
+            newDue === 0n ? 'PAID' : 'PARTIALLY_PAID',
+          );
+        }
+      }
+    } else if (proposal.invoiceId) {
       const inv = await this.invoiceRepo.findInvoiceById(tenantId, proposal.invoiceId);
       if (inv) {
+        const effectiveSettledCents =
+          gatewayEvidence && gatewayEvidence.grossAmountCents
+            ? BigInt(gatewayEvidence.grossAmountCents)
+            : proposal.amountCents;
+
         const newDue =
-          inv.amountDueCents > proposal.amountCents
-            ? inv.amountDueCents - proposal.amountCents
+          inv.amountDueCents > effectiveSettledCents
+            ? inv.amountDueCents - effectiveSettledCents
             : 0n;
         await this.invoiceRepo.updateInvoiceAmountDue(tenantId, inv.id, newDue);
         await this.invoiceRepo.updateInvoiceStatus(

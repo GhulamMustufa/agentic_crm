@@ -9,12 +9,27 @@ export type ProposalType =
   | 'REVENUE_CLASSIFICATION'
   | 'AMBIGUOUS';
 
+export interface BatchAllocationItem {
+  invoiceId: string;
+  invoiceNumber: string;
+  allocatedCents: string;
+}
+
 export interface AiDecisionEvidence {
   source: string;
   field?: string;
   matchedValue?: string;
   confidenceContribution?: number;
   reason?: string;
+  // Phase B: Advanced Reconciliation metadata
+  feeCents?: string;
+  grossAmountCents?: string;
+  feeAccountId?: string;
+  feeAccountCode?: string;
+  batchAllocations?: BatchAllocationItem[];
+  remainingDueCents?: string;
+  allocatedCents?: string;
+  metadata?: Record<string, unknown>;
 }
 
 export interface ProposalEntity {

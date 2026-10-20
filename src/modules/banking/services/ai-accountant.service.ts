@@ -3,6 +3,7 @@ import { Injectable } from '@nestjs/common';
 import { AiGatewayService } from '../../../core/ai/ai-gateway.service';
 import { fuzzyContains, normalizeAlphanumeric } from '../utils/fuzzy-matcher';
 import { matchGlobalMerchant } from '../utils/global-merchant-catalog';
+import { findInvoiceSubsetSum } from '../utils/subset-sum';
 
 import type { CounterpartyEntity } from '../../counterparties/domain/counterparty.entity';
 import type { InvoiceEntity } from '../../invoices/domain/invoice.entity';
@@ -78,6 +79,9 @@ export class AiAccountantService {
     const generalRevenueAcc =
       knowledge.accounts.find((a) => a.accountCode === '4010' || a.classification === 'REVENUE')
         ?.id || arAcc;
+    const feeAcc =
+      knowledge.accounts.find((a) => a.accountCode === '6030' || a.accountCode === '5030')?.id ||
+      generalExpenseAcc;
     const suspenseAcc =
       knowledge.accounts.find((a) => a.accountCode === '3999')?.id || generalExpenseAcc;
 
@@ -294,6 +298,203 @@ export class AiAccountantService {
               autoPostEligible: confidenceScore >= 0.95,
             };
           }
+        }
+      } else if (invNumInDesc && absAmount < inv.amountDueCents) {
+        // Partial Payment Match with explicit invoice number in narrative
+        const remainingDue = inv.amountDueCents - absAmount;
+        if (inv.invoiceType === 'INVOICE' && isCredit) {
+          return {
+            proposalType: 'INVOICE_MATCH',
+            confidenceScore: 0.96,
+            evidence: [
+              {
+                source: 'INVOICE_NUMBER',
+                matchedValue: inv.invoiceNumber,
+                reason: `Invoice '${inv.invoiceNumber}' identified in description for partial settlement`,
+              },
+              {
+                source: 'PARTIAL_INVOICE_PAYMENT',
+                matchedValue: `$${Number(absAmount) / 100}`,
+                reason: `Partial payment of $${Number(absAmount) / 100} received towards open balance $${Number(inv.amountDueCents) / 100} on invoice ${inv.invoiceNumber} ($${Number(remainingDue) / 100} remaining balance due)`,
+                allocatedCents: absAmount.toString(),
+                remainingDueCents: remainingDue.toString(),
+              },
+            ],
+            rationale: `Partial customer payment received for Invoice ${inv.invoiceNumber} ($${Number(absAmount) / 100} paid, $${Number(remainingDue) / 100} balance remaining).`,
+            suggestedDebitAccountId: operatingCashAcc,
+            suggestedCreditAccountId: arAcc,
+            suggestedCounterpartyId: inv.counterpartyId,
+            suggestedInvoiceId: inv.id,
+            isAmbiguous: false,
+            autoPostEligible: true,
+          };
+        } else if (inv.invoiceType === 'BILL' && !isCredit) {
+          return {
+            proposalType: 'VENDOR_PAYMENT',
+            confidenceScore: 0.96,
+            evidence: [
+              {
+                source: 'BILL_NUMBER',
+                matchedValue: inv.invoiceNumber,
+                reason: `Bill '${inv.invoiceNumber}' identified in description for partial settlement`,
+              },
+              {
+                source: 'PARTIAL_INVOICE_PAYMENT',
+                matchedValue: `$${Number(absAmount) / 100}`,
+                reason: `Partial disbursement of $${Number(absAmount) / 100} towards open balance $${Number(inv.amountDueCents) / 100} on bill ${inv.invoiceNumber} ($${Number(remainingDue) / 100} remaining balance due)`,
+                allocatedCents: absAmount.toString(),
+                remainingDueCents: remainingDue.toString(),
+              },
+            ],
+            rationale: `Partial vendor disbursement for Bill ${inv.invoiceNumber} ($${Number(absAmount) / 100} paid, $${Number(remainingDue) / 100} balance remaining).`,
+            suggestedDebitAccountId: apAcc,
+            suggestedCreditAccountId: operatingCashAcc,
+            suggestedCounterpartyId: inv.counterpartyId,
+            suggestedInvoiceId: inv.id,
+            isAmbiguous: false,
+            autoPostEligible: true,
+          };
+        }
+      }
+    }
+
+    // --- RULE C1: Payment Gateway Net Payouts (Stripe, PayPal, Square, Shopify) ---
+    if (isCredit) {
+      const isProcessorPattern =
+        descUpper.includes('STRIPE') ||
+        descUpper.includes('PAYPAL') ||
+        descUpper.includes('SQUARE') ||
+        descUpper.includes('SHOPIFY') ||
+        descUpper.includes('ADYEN') ||
+        descUpper.includes('BRAINTREE') ||
+        descUpper.includes('PAYOUT') ||
+        descUpper.includes('MERCHANT');
+
+      const customerInvoices = knowledge.openInvoices.filter((i) => i.invoiceType === 'INVOICE');
+      for (const inv of customerInvoices) {
+        if (inv.amountDueCents > absAmount) {
+          const feeCents = inv.amountDueCents - absAmount;
+          const feeRatio = Number(feeCents) / Number(inv.amountDueCents);
+
+          // Standard merchant processing fees typically span 0.5% to 8.0%
+          if (feeRatio >= 0.005 && feeRatio <= 0.08) {
+            const invNorm = normalizeAlphanumeric(inv.invoiceNumber);
+            const descNorm = normalizeAlphanumeric(descUpper);
+            const invNumInDesc =
+              descUpper.includes(inv.invoiceNumber.toUpperCase()) ||
+              (invNorm.length >= 4 && descNorm.includes(invNorm));
+
+            const cp = knowledge.counterparties.find((c) => c.id === inv.counterpartyId);
+            const cpMatch =
+              cp &&
+              (descUpper.includes(cp.normalizedName.toUpperCase()) ||
+                descUpper.includes(cp.legalName.toUpperCase()) ||
+                fuzzyContains(descUpper, cp.legalName, 0.82).match);
+
+            if (invNumInDesc || cpMatch || isProcessorPattern) {
+              const confidenceScore = invNumInDesc ? 0.99 : cpMatch ? 0.96 : 0.96;
+              return {
+                proposalType: 'INVOICE_MATCH',
+                confidenceScore,
+                evidence: [
+                  {
+                    source: 'PAYMENT_GATEWAY_NET_PAYOUT',
+                    matchedValue: `$${Number(absAmount) / 100}`,
+                    reason: `Net payout of $${Number(absAmount) / 100} matches gross Invoice ${inv.invoiceNumber} ($${Number(inv.amountDueCents) / 100}) less $${Number(feeCents) / 100} (${(feeRatio * 100).toFixed(2)}%) merchant fee`,
+                    feeCents: feeCents.toString(),
+                    grossAmountCents: inv.amountDueCents.toString(),
+                    feeAccountId: feeAcc,
+                    feeAccountCode: '6030',
+                  },
+                ],
+                rationale: `Payment gateway net payout ($${Number(absAmount) / 100}) matched to Invoice ${inv.invoiceNumber} ($${Number(inv.amountDueCents) / 100}) with $${Number(feeCents) / 100} processing fee automatically recognized.`,
+                suggestedDebitAccountId: operatingCashAcc,
+                suggestedCreditAccountId: arAcc,
+                suggestedCounterpartyId: inv.counterpartyId,
+                suggestedInvoiceId: inv.id,
+                isAmbiguous: false,
+                autoPostEligible: true,
+              };
+            }
+          }
+        }
+      }
+    }
+
+    // --- RULE C2: Multi-Invoice Batch Settlement (1 Deposit -> Multiple Invoices) ---
+    if (isCredit) {
+      const customerInvoices = knowledge.openInvoices.filter((i) => i.invoiceType === 'INVOICE');
+      if (customerInvoices.length >= 2) {
+        // A. Prioritize counterparty explicitly mentioned in narrative
+        for (const cp of knowledge.counterparties) {
+          const cpMatch =
+            descUpper.includes(cp.normalizedName.toUpperCase()) ||
+            descUpper.includes(cp.legalName.toUpperCase()) ||
+            fuzzyContains(descUpper, cp.legalName, 0.82).match;
+
+          if (cpMatch) {
+            const cpInvoices = customerInvoices.filter((i) => i.counterpartyId === cp.id);
+            const subset = findInvoiceSubsetSum(cpInvoices, absAmount);
+            if (subset) {
+              return {
+                proposalType: 'INVOICE_MATCH',
+                confidenceScore: 0.96,
+                evidence: [
+                  {
+                    source: 'BATCH_INVOICE_SETTLEMENT',
+                    matchedValue: `$${Number(absAmount) / 100}`,
+                    reason: `Lump-sum payment of $${Number(absAmount) / 100} settles ${subset.length} open invoices for ${cp.legalName} (${subset.map((i) => i.invoiceNumber).join(', ')})`,
+                    batchAllocations: subset.map((i) => ({
+                      invoiceId: i.id,
+                      invoiceNumber: i.invoiceNumber,
+                      allocatedCents: i.amountDueCents.toString(),
+                    })),
+                  },
+                ],
+                rationale: `Batch customer payment of $${Number(absAmount) / 100} settles ${subset.length} open invoices: ${subset.map((i) => i.invoiceNumber).join(', ')}.`,
+                suggestedDebitAccountId: operatingCashAcc,
+                suggestedCreditAccountId: arAcc,
+                suggestedCounterpartyId: cp.id,
+                suggestedInvoiceId: subset[0]!.id,
+                isAmbiguous: false,
+                autoPostEligible: true,
+              };
+            }
+          }
+        }
+
+        // B. Global subset match across open customer invoices
+        const globalSubset = findInvoiceSubsetSum(customerInvoices, absAmount);
+        if (globalSubset) {
+          const anyInvInDesc = globalSubset.some(
+            (i) =>
+              descUpper.includes(i.invoiceNumber.toUpperCase()) ||
+              normalizeAlphanumeric(descUpper).includes(normalizeAlphanumeric(i.invoiceNumber)),
+          );
+          const confidenceScore = anyInvInDesc ? 0.96 : 0.92;
+          return {
+            proposalType: 'INVOICE_MATCH',
+            confidenceScore,
+            evidence: [
+              {
+                source: 'BATCH_INVOICE_SETTLEMENT',
+                matchedValue: `$${Number(absAmount) / 100}`,
+                reason: `Lump-sum payment of $${Number(absAmount) / 100} settles ${globalSubset.length} open invoices (${globalSubset.map((i) => i.invoiceNumber).join(', ')})`,
+                batchAllocations: globalSubset.map((i) => ({
+                  invoiceId: i.id,
+                  invoiceNumber: i.invoiceNumber,
+                  allocatedCents: i.amountDueCents.toString(),
+                })),
+              },
+            ],
+            rationale: `Batch customer payment of $${Number(absAmount) / 100} settles ${globalSubset.length} open invoices: ${globalSubset.map((i) => i.invoiceNumber).join(', ')}.`,
+            suggestedDebitAccountId: operatingCashAcc,
+            suggestedCreditAccountId: arAcc,
+            suggestedCounterpartyId: globalSubset[0]!.counterpartyId,
+            suggestedInvoiceId: globalSubset[0]!.id,
+            isAmbiguous: false,
+            autoPostEligible: confidenceScore >= 0.95,
+          };
         }
       }
     }
