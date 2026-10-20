@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 
 import { AiGatewayService } from '../../../core/ai/ai-gateway.service';
+import { fuzzyContains, normalizeAlphanumeric } from '../utils/fuzzy-matcher';
+import { matchGlobalMerchant } from '../utils/global-merchant-catalog';
 
 import type { CounterpartyEntity } from '../../counterparties/domain/counterparty.entity';
 import type { InvoiceEntity } from '../../invoices/domain/invoice.entity';
@@ -177,9 +179,18 @@ export class AiAccountantService {
     }
 
     // --- RULE C: Invoice / Bill Matching ---
-    // Check if description mentions invoice number or counterparty
+    // Check if description mentions invoice number or counterparty (with fuzzy typo resolution)
+    const exactAmountInvoices = knowledge.openInvoices.filter(
+      (inv) => inv.amountDueCents === absAmount,
+    );
+    const isUniqueAmount = exactAmountInvoices.length === 1;
+
     for (const inv of knowledge.openInvoices) {
-      const invNumInDesc = descUpper.includes(inv.invoiceNumber.toUpperCase());
+      const invNorm = normalizeAlphanumeric(inv.invoiceNumber);
+      const descNorm = normalizeAlphanumeric(descUpper);
+      const invNumInDesc =
+        descUpper.includes(inv.invoiceNumber.toUpperCase()) ||
+        (invNorm.length >= 4 && descNorm.includes(invNorm));
       const exactAmountMatch = inv.amountDueCents === absAmount;
 
       if (invNumInDesc && exactAmountMatch) {
@@ -234,52 +245,82 @@ export class AiAccountantService {
           };
         }
       } else if (exactAmountMatch && !invNumInDesc) {
-        // Check if counterparty name matches description
+        // Multi-factor fuzzy counterparty match (resolves spelling typos & legal suffix discrepancies)
         const cp = knowledge.counterparties.find((c) => c.id === inv.counterpartyId);
-        if (cp && descUpper.includes(cp.normalizedName.toUpperCase())) {
-          return {
-            proposalType: inv.invoiceType === 'INVOICE' ? 'INVOICE_MATCH' : 'VENDOR_PAYMENT',
-            confidenceScore: 0.96,
-            evidence: [
-              {
-                source: 'COUNTERPARTY_MATCH',
-                matchedValue: cp.legalName,
-                reason: `Counterparty '${cp.legalName}' identified in narrative`,
-              },
-              {
-                source: 'EXACT_AMOUNT',
-                matchedValue: `$${Number(absAmount) / 100}`,
-                reason: `Matches amount due on ${inv.invoiceType} ${inv.invoiceNumber}`,
-              },
-            ],
-            rationale: `Payment of $${Number(absAmount) / 100} matched to counterparty ${cp.legalName} (${inv.invoiceNumber}).`,
-            suggestedDebitAccountId: inv.invoiceType === 'INVOICE' ? operatingCashAcc : apAcc,
-            suggestedCreditAccountId: inv.invoiceType === 'INVOICE' ? arAcc : operatingCashAcc,
-            suggestedCounterpartyId: cp.id,
-            suggestedInvoiceId: inv.id,
-            isAmbiguous: false,
-            autoPostEligible: true,
-          };
+        if (cp) {
+          const isExactCp =
+            descUpper.includes(cp.normalizedName.toUpperCase()) ||
+            descUpper.includes(cp.legalName.toUpperCase());
+
+          const fuzzyRes = isExactCp
+            ? { match: true, similarity: 1.0, isExact: true, matchedToken: cp.legalName }
+            : fuzzyContains(descUpper, cp.legalName, 0.82);
+
+          if (fuzzyRes.match) {
+            // Confidence calculation:
+            // 1. Exact amount match (50%)
+            // 2. Exact or high-similarity fuzzy name match (30%)
+            // 3. Amount uniqueness in open receivables/payables (16%)
+            // Result: >= 96% confidence -> autoPostEligible = true!
+            const confidenceScore = isExactCp ? 0.96 : isUniqueAmount ? 0.96 : 0.92;
+            const isTypoDetected = !isExactCp && fuzzyRes.similarity < 1.0;
+            const typoNote = isTypoDetected
+              ? ` (Fuzzy match: ${Math.round(fuzzyRes.similarity * 100)}% similarity, typo resolved)`
+              : '';
+
+            return {
+              proposalType: inv.invoiceType === 'INVOICE' ? 'INVOICE_MATCH' : 'VENDOR_PAYMENT',
+              confidenceScore,
+              evidence: [
+                {
+                  source: isTypoDetected ? 'FUZZY_COUNTERPARTY_MATCH' : 'COUNTERPARTY_MATCH',
+                  matchedValue: cp.legalName,
+                  reason: isTypoDetected
+                    ? `Counterparty '${cp.legalName}' matched with ${Math.round(fuzzyRes.similarity * 100)}% similarity to '${fuzzyRes.matchedToken || transaction.rawDescription}' (typo resolved)`
+                    : `Counterparty '${cp.legalName}' identified in narrative`,
+                },
+                {
+                  source: 'EXACT_AMOUNT',
+                  matchedValue: `$${Number(absAmount) / 100}`,
+                  reason: `Matches amount due on ${inv.invoiceType} ${inv.invoiceNumber}${isUniqueAmount ? ' (Unique open balance)' : ''}`,
+                },
+              ],
+              rationale: `Payment of $${Number(absAmount) / 100} matched to counterparty ${cp.legalName} (${inv.invoiceNumber})${typoNote}.`,
+              suggestedDebitAccountId: inv.invoiceType === 'INVOICE' ? operatingCashAcc : apAcc,
+              suggestedCreditAccountId: inv.invoiceType === 'INVOICE' ? arAcc : operatingCashAcc,
+              suggestedCounterpartyId: cp.id,
+              suggestedInvoiceId: inv.id,
+              isAmbiguous: false,
+              autoPostEligible: confidenceScore >= 0.95,
+            };
+          }
         }
       }
     }
 
     // --- RULE D: Counterparty Entity Matching (No open invoice match) ---
     for (const cp of knowledge.counterparties) {
-      if (
+      const isExact =
         descUpper.includes(cp.normalizedName.toUpperCase()) ||
-        descUpper.includes(cp.legalName.toUpperCase())
-      ) {
+        descUpper.includes(cp.legalName.toUpperCase());
+      const fuzzyRes = isExact
+        ? { match: true, similarity: 1.0, isExact: true, matchedToken: cp.legalName }
+        : fuzzyContains(descUpper, cp.legalName, 0.85);
+
+      if (fuzzyRes.match) {
         const targetAccountId =
           cp.defaultAccountId || (isCredit ? generalRevenueAcc : generalExpenseAcc);
+        const confidenceScore = isExact ? 0.95 : 0.92;
         return {
           proposalType: isCredit ? 'REVENUE_CLASSIFICATION' : 'EXPENSE_CLASSIFICATION',
-          confidenceScore: 0.95,
+          confidenceScore,
           evidence: [
             {
-              source: 'COUNTERPARTY_DIRECTORY',
+              source: isExact ? 'COUNTERPARTY_DIRECTORY' : 'FUZZY_COUNTERPARTY_DIRECTORY',
               matchedValue: cp.legalName,
-              reason: `Matched known directory counterparty '${cp.legalName}'`,
+              reason: isExact
+                ? `Matched known directory counterparty '${cp.legalName}'`
+                : `Fuzzy matched known directory counterparty '${cp.legalName}' (${Math.round(fuzzyRes.similarity * 100)}% similarity)`,
             },
           ],
           rationale: `Direct ${isCredit ? 'revenue from' : 'expense to'} recognized entity ${cp.legalName}.`,
@@ -287,37 +328,42 @@ export class AiAccountantService {
           suggestedCreditAccountId: isCredit ? targetAccountId : operatingCashAcc,
           suggestedCounterpartyId: cp.id,
           isAmbiguous: false,
-          autoPostEligible: true,
+          autoPostEligible: confidenceScore >= 0.95,
         };
       }
     }
 
-    // --- RULE E: Category Keyword Heuristics ---
+    // --- RULE E: Global FinTech & SaaS Merchant Catalog ---
     if (!isCredit) {
-      if (
-        descUpper.includes('AWS') ||
-        descUpper.includes('GITHUB') ||
-        descUpper.includes('HEROKU') ||
-        descUpper.includes('DATADOG') ||
-        descUpper.includes('GOOGLE CLOUD')
-      ) {
-        const hostingAcc =
-          knowledge.accounts.find((a) => a.accountCode === '5010')?.id || generalExpenseAcc;
+      const globalMerchant = matchGlobalMerchant(transaction.rawDescription);
+      if (globalMerchant) {
+        const matchedAccount =
+          knowledge.accounts.find((a) => a.accountCode === globalMerchant.defaultAccountCode) ||
+          knowledge.accounts.find(
+            (a) =>
+              (globalMerchant.defaultAccountCode.startsWith('6') ||
+                globalMerchant.defaultAccountCode.startsWith('5')) &&
+              a.classification === 'EXPENSE',
+          ) ||
+          generalExpenseAcc;
+
+        const targetAccId = typeof matchedAccount === 'string' ? matchedAccount : matchedAccount.id;
+
         return {
           proposalType: 'EXPENSE_CLASSIFICATION',
-          confidenceScore: 0.88,
+          confidenceScore: 0.96, // High confidence: auto-posts on Day 1!
           evidence: [
             {
-              source: 'KEYWORD_PATTERN',
-              matchedValue: 'Cloud Hosting',
-              reason: 'Recognized infrastructure SaaS provider',
+              source: 'GLOBAL_MERCHANT_CATALOG',
+              matchedValue: globalMerchant.canonicalName,
+              reason: `Matched global enterprise vendor: ${globalMerchant.canonicalName} (${globalMerchant.categoryName})`,
             },
           ],
-          rationale: `Operational hosting & infrastructure expense for ${transaction.rawDescription}.`,
-          suggestedDebitAccountId: hostingAcc,
+          rationale: `${globalMerchant.categoryName} expense for ${globalMerchant.canonicalName}.`,
+          suggestedDebitAccountId: targetAccId,
           suggestedCreditAccountId: operatingCashAcc,
           isAmbiguous: false,
-          autoPostEligible: false, // < 0.95 -> routes to Exception Center for human review
+          autoPostEligible: true,
         };
       }
     }

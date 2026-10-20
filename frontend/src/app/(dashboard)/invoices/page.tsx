@@ -14,6 +14,7 @@ import {
   Trash2,
   X,
   Send,
+  Mail,
   Building,
   Calendar,
   Receipt,
@@ -128,6 +129,30 @@ export default function InvoicesPage() {
     invoiceNumber: '',
     reason: 'Billed in error / cancelled by client',
   });
+
+  // Send Invoice Email Modal (Resend Integration)
+  const [sendModal, setSendModal] = React.useState<{
+    isOpen: boolean;
+    invoiceId: string;
+    invoiceNumber: string;
+    counterpartyName: string;
+    totalAmount: number;
+    currency: string;
+    dueDate: string;
+    recipientEmail: string;
+    paymentInstructions: string;
+  }>({
+    isOpen: false,
+    invoiceId: '',
+    invoiceNumber: '',
+    counterpartyName: '',
+    totalAmount: 0,
+    currency: 'USD',
+    dueDate: '',
+    recipientEmail: '',
+    paymentInstructions: '',
+  });
+  const [isSendingInvoice, setIsSendingInvoice] = React.useState(false);
 
   // Form Fields
   const [formType, setFormType] = React.useState<'INVOICE' | 'BILL'>('INVOICE');
@@ -788,6 +813,45 @@ export default function InvoicesPage() {
     }
   };
 
+  const handleOpenSendModal = (inv: InvoiceRecord) => {
+    setSendModal({
+      isOpen: true,
+      invoiceId: inv.id,
+      invoiceNumber: inv.invoiceNumber,
+      counterpartyName: inv.counterpartyName,
+      totalAmount: inv.totalAmount,
+      currency: inv.currency,
+      dueDate: inv.dueDate,
+      recipientEmail: '',
+      paymentInstructions:
+        'Please wire payment to our operating account or remit via ACH quoting this invoice number.',
+    });
+  };
+
+  const handleConfirmSendInvoice = async () => {
+    if (!sendModal.invoiceId) return;
+    const email = sendModal.recipientEmail.trim();
+    if (!email || !email.includes('@')) {
+      toast.error('Please enter a valid recipient email address');
+      return;
+    }
+
+    try {
+      setIsSendingInvoice(true);
+      await apiClient.post(`/invoices/${sendModal.invoiceId}/send`, {
+        recipientEmail: email,
+        paymentInstructions: sendModal.paymentInstructions.trim() || undefined,
+      });
+      toast.success(`Invoice ${sendModal.invoiceNumber} emailed successfully to ${email}`);
+      setSendModal((prev) => ({ ...prev, isOpen: false }));
+    } catch (err: unknown) {
+      const errorObj = err as { data?: { message?: string }; message?: string };
+      toast.error(errorObj?.data?.message || errorObj?.message || 'Failed to send invoice email');
+    } finally {
+      setIsSendingInvoice(false);
+    }
+  };
+
   // Immediate post from table row
   const handlePostDraftInvoice = async (invoiceId: string, invIssueDate: string) => {
     try {
@@ -1245,8 +1309,20 @@ export default function InvoicesPage() {
                         </TableCell>
                         <TableCell>{getStatusBadge(inv.status)}</TableCell>
                         <TableCell className="text-right">
-                          {inv.status === 'DRAFT' ? (
-                            <div className="flex items-center justify-end gap-1.5">
+                          <div className="flex items-center justify-end gap-1.5">
+                            {inv.type === 'ACCOUNTS_RECEIVABLE' && inv.status !== 'VOID' && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleOpenSendModal(inv)}
+                                className="h-7 text-xs text-primary hover:text-primary hover:bg-primary/10 cursor-pointer"
+                                title="Email invoice to customer"
+                              >
+                                <Mail className="w-3.5 h-3.5 mr-1" />
+                                Email
+                              </Button>
+                            )}
+                            {inv.status === 'DRAFT' ? (
                               <Button
                                 variant="outline"
                                 size="sm"
@@ -1261,35 +1337,35 @@ export default function InvoicesPage() {
                                 )}
                                 Record to Books
                               </Button>
-                            </div>
-                          ) : inv.status === 'POSTED' || inv.status === 'OVERDUE' ? (
-                            <div className="flex items-center justify-end gap-2">
-                              <span className="text-xs text-muted-foreground flex items-center gap-1">
+                            ) : inv.status === 'POSTED' || inv.status === 'OVERDUE' ? (
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-xs text-muted-foreground flex items-center gap-1">
+                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                                  In Books
+                                </span>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleOpenVoidModal(inv.id, inv.invoiceNumber)}
+                                  disabled={voidingInvoiceId === inv.id}
+                                  className="h-7 text-xs text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 cursor-pointer"
+                                  title="Void invoice to create reversing general ledger entry"
+                                >
+                                  {voidingInvoiceId === inv.id ? (
+                                    <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                                  ) : (
+                                    <Ban className="w-3 h-3 mr-1" />
+                                  )}
+                                  Void
+                                </Button>
+                              </div>
+                            ) : (
+                              <span className="text-xs text-muted-foreground flex items-center justify-end gap-1">
                                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-                                In Books
+                                {inv.status}
                               </span>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleOpenVoidModal(inv.id, inv.invoiceNumber)}
-                                disabled={voidingInvoiceId === inv.id}
-                                className="h-7 text-xs text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 cursor-pointer"
-                                title="Void invoice to create reversing general ledger entry"
-                              >
-                                {voidingInvoiceId === inv.id ? (
-                                  <Loader2 className="w-3 h-3 animate-spin mr-1" />
-                                ) : (
-                                  <Ban className="w-3 h-3 mr-1" />
-                                )}
-                                Void
-                              </Button>
-                            </div>
-                          ) : (
-                            <span className="text-xs text-muted-foreground flex items-center justify-end gap-1">
-                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-                              {inv.status}
-                            </span>
-                          )}
+                            )}
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -1342,7 +1418,19 @@ export default function InvoicesPage() {
                           {formatIsoDate(inv.dueDate)}
                         </span>
                       </div>
-                      <div>
+                      <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                        {inv.type === 'ACCOUNTS_RECEIVABLE' && inv.status !== 'VOID' && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleOpenSendModal(inv)}
+                            className="h-7 text-xs text-primary hover:text-primary hover:bg-primary/10 cursor-pointer px-2"
+                            title="Email invoice to customer"
+                          >
+                            <Mail className="w-3.5 h-3.5 mr-1" />
+                            Email
+                          </Button>
+                        )}
                         {inv.status === 'DRAFT' ? (
                           <Button
                             variant="outline"
@@ -2108,6 +2196,136 @@ export default function InvoicesPage() {
                   <>
                     <Ban className="w-3.5 h-3.5 mr-1.5" />
                     Confirm Void & Reverse
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Send Invoice via Email Modal (Resend Integration) */}
+      {sendModal.isOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !isSendingInvoice) {
+              setSendModal((prev) => ({ ...prev, isOpen: false }));
+            }
+          }}
+        >
+          <div className="relative w-full max-w-lg bg-card border border-border rounded-xl shadow-2xl p-6 animate-in fade-in-0 zoom-in-95 duration-200">
+            <div className="flex items-center justify-between mb-4 pb-3 border-b border-border/60">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-primary/10 text-primary">
+                  <Mail className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-foreground flex items-center gap-2">
+                    Send Invoice #{sendModal.invoiceNumber}
+                    <Badge
+                      variant="outline"
+                      className="text-[10px] font-semibold bg-primary/5 text-primary border-primary/20"
+                    >
+                      Resend Powered
+                    </Badge>
+                  </h3>
+                  <p className="text-xs text-muted-foreground">
+                    Deliver branded commercial invoice via email
+                  </p>
+                </div>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setSendModal((prev) => ({ ...prev, isOpen: false }))}
+                disabled={isSendingInvoice}
+                className="h-8 w-8 p-0 rounded-full cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+
+            {/* Invoice Summary Card */}
+            <div className="p-3.5 rounded-lg bg-muted/40 border border-border/60 mb-4 space-y-2 text-xs">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Billed To:</span>
+                <span className="font-semibold text-foreground">{sendModal.counterpartyName}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Due Date:</span>
+                <span className="font-medium text-foreground">
+                  {formatIsoDate(sendModal.dueDate)}
+                </span>
+              </div>
+              <div className="flex justify-between pt-1 border-t border-border/40 font-semibold text-sm">
+                <span className="text-foreground">Amount Due:</span>
+                <span className="font-mono text-primary font-bold">
+                  {formatCurrency(sendModal.totalAmount, sendModal.currency)}
+                </span>
+              </div>
+            </div>
+
+            <div className="space-y-3.5 mb-5">
+              <div>
+                <Label htmlFor="recipientEmail" className="text-xs font-semibold">
+                  Customer Email Address <span className="text-rose-500">*</span>
+                </Label>
+                <Input
+                  id="recipientEmail"
+                  type="email"
+                  placeholder="accounts@customer.com"
+                  value={sendModal.recipientEmail}
+                  onChange={(e) =>
+                    setSendModal((prev) => ({ ...prev, recipientEmail: e.target.value }))
+                  }
+                  className="mt-1 h-9 text-xs"
+                  autoFocus
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="paymentInstructions" className="text-xs font-semibold">
+                  Payment Instructions / Remittance Note
+                </Label>
+                <textarea
+                  id="paymentInstructions"
+                  rows={3}
+                  value={sendModal.paymentInstructions}
+                  onChange={(e) =>
+                    setSendModal((prev) => ({ ...prev, paymentInstructions: e.target.value }))
+                  }
+                  className="mt-1 w-full p-2.5 text-xs bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary font-sans"
+                  placeholder="Remittance details (e.g. Bank name, account number, swift code)..."
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-border/60">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setSendModal((prev) => ({ ...prev, isOpen: false }))}
+                disabled={isSendingInvoice}
+                className="text-xs cursor-pointer"
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleConfirmSendInvoice}
+                disabled={isSendingInvoice}
+                className="text-xs font-semibold bg-primary hover:bg-primary/90 text-primary-foreground cursor-pointer shadow-sm"
+              >
+                {isSendingInvoice ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                    Sending Email...
+                  </>
+                ) : (
+                  <>
+                    <Send className="w-3.5 h-3.5 mr-1.5" />
+                    Send Invoice via Email
                   </>
                 )}
               </Button>

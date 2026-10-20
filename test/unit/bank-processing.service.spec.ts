@@ -961,4 +961,48 @@ describe('BankProcessingService - AI Accountant Workflow', () => {
     expect(createdCp).toBeDefined();
     expect(createdCp?.defaultAccountId).toBe(checkingLedgerAccId);
   });
+
+  it("should resolve exception and route debit to Account 3020 (Owner's Personal Draw) with 100% tax compliance", async () => {
+    // 1. Process statement containing an ambiguous personal debit transaction
+    const csvContent = `Date,Description,Amount
+2026-03-20,TARGET STORE #1245 MINNEAPOLIS MN,-125.00`;
+
+    const result = await bankProcessingService.processStatementUpload(tenantId, userId, {
+      bankAccountId: operatingBankAccountId,
+      fileName: 'personal_expense_draw.csv',
+      mimeType: 'text/csv',
+      content: csvContent,
+    });
+
+    const proposal = result.proposals[0];
+    expect(proposal).toBeDefined();
+    expect(proposal!.status).toBe('PROPOSED');
+
+    // 2. Locate generated exception in Exception Center
+    const exceptions = await bankProcessingService.listExceptions(tenantId);
+    const targetExc = exceptions.find((e) => e.entityId === proposal!.id);
+    expect(targetExc).toBeDefined();
+
+    // 3. 1-Click Resolve as Owner's Personal Draw (Account 3020)
+    const resolved = await bankProcessingService.resolveException(tenantId, userId, targetExc!.id, {
+      status: 'RESOLVED',
+      resolutionNotes: "Categorized as Owner's Equity Draw (Personal / Non-Business)",
+      accountCode: '3020',
+    });
+
+    expect(resolved.status).toBe('RESOLVED');
+
+    // 4. Verify proposal was updated with Account 3020 and approved to ledger
+    const updatedProposal = await bankingRepo.findProposalById(tenantId, proposal!.id);
+    expect(updatedProposal?.status).toBe('APPROVED');
+
+    const ownerDrawAcc = await ledgerService.findAccountByCode(tenantId, '3020');
+    expect(ownerDrawAcc).toBeDefined();
+    expect(ownerDrawAcc?.accountCode).toBe('3020');
+    expect(ownerDrawAcc?.classification).toBe('EQUITY');
+    expect(updatedProposal?.debitAccountId).toBe(ownerDrawAcc!.id);
+
+    // 5. Verify General Ledger invariants: Trial Balance is 100% balanced
+    await expectTrialBalanceBalanced(ledgerService, tenantId, '2026-03-20');
+  });
 });

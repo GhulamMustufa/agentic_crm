@@ -71,3 +71,11 @@ export const voidInvoiceSchema = z.object({
 
 export type VoidInvoiceInput = z.input<typeof voidInvoiceSchema>;
 export type VoidInvoiceDto = z.infer<typeof voidInvoiceSchema>;
+
+export const sendInvoiceSchema = z.object({
+  recipientEmail: z.string().email('Valid recipient email address is required').optional(),
+  paymentInstructions: z.string().max(1000).optional(),
+});
+
+export type SendInvoiceInput = z.input<typeof sendInvoiceSchema>;
+export type SendInvoiceDto = z.infer<typeof sendInvoiceSchema>;

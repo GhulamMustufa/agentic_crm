@@ -83,6 +83,12 @@ export class LedgerService {
         subClassification: 'EQUITY',
       },
       {
+        accountCode: '3020',
+        name: "Owner's Equity Draw (Personal / Non-Business)",
+        classification: 'EQUITY' as const,
+        subClassification: 'EQUITY',
+      },
+      {
         accountCode: '3999',
         name: 'Retained Earnings',
         classification: 'EQUITY' as const,
@@ -166,6 +172,25 @@ export class LedgerService {
 
   async getAccountById(tenantId: string, id: string): Promise<AccountEntity | null> {
     return this.ledgerRepo.findAccountById(tenantId, id);
+  }
+
+  async ensureAccount(
+    tenantId: string,
+    accountCode: string,
+    name: string,
+    classification: 'ASSET' | 'LIABILITY' | 'EQUITY' | 'REVENUE' | 'EXPENSE',
+    subClassification?: string,
+  ): Promise<AccountEntity> {
+    const existing = await this.findAccountByCode(tenantId, accountCode);
+    if (existing) {
+      return existing;
+    }
+    return this.createAccount(tenantId, {
+      accountCode,
+      name,
+      classification,
+      subClassification,
+    });
   }
 
   /**

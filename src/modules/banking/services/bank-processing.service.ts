@@ -1340,6 +1340,38 @@ export class BankProcessingService {
       if (proposal && proposal.status === 'PROPOSED') {
         if (dto.status === 'RESOLVED') {
           try {
+            // Apply category / account override if provided
+            let targetAccountId = dto.accountId;
+            if (!targetAccountId && dto.accountCode) {
+              if (dto.accountCode === '3020') {
+                const acc = await this.ledgerService.ensureAccount(
+                  tenantId,
+                  '3020',
+                  "Owner's Equity Draw (Personal / Non-Business)",
+                  'EQUITY',
+                  'EQUITY',
+                );
+                targetAccountId = acc.id;
+              } else {
+                const acc = await this.ledgerService.findAccountByCode(tenantId, dto.accountCode);
+                if (acc) {
+                  targetAccountId = acc.id;
+                }
+              }
+            }
+
+            if (targetAccountId) {
+              const direction = proposal.debitAccountId ? 'OUTFLOW' : 'INFLOW';
+              await this.bankingRepo.updateProposalStatus(tenantId, proposal.id, 'PROPOSED', {
+                modifications: {
+                  debitAccountId:
+                    direction === 'OUTFLOW' ? targetAccountId : proposal.debitAccountId,
+                  creditAccountId:
+                    direction === 'INFLOW' ? targetAccountId : proposal.creditAccountId,
+                },
+              });
+            }
+
             await this.approveProposal(tenantId, userId, proposal.id);
           } catch (gateErr) {
             this.logger.warn(

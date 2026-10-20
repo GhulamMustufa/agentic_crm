@@ -15,9 +15,6 @@ import {
   Loader2,
   ArrowUpRight,
   ArrowDownRight,
-  DollarSign,
-  PieChart,
-  Layers,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -39,11 +36,9 @@ import { apiClient } from '@/lib/api-client';
 import { useQuery } from '@tanstack/react-query';
 import {
   usePeriodsQuery,
-  type StatementLineItem,
   type ProfitAndLossData,
   type BalanceSheetData,
   type TrialBalanceData,
-  type TrialBalanceRow,
 } from '@/hooks/use-dashboard-queries';
 
 export default function ReportsPage() {
@@ -108,7 +103,137 @@ export default function ReportsPage() {
     (trialBalance?.rows || trialBalance?.items || []).length > 0;
 
   const handleExportCsv = () => {
-    toast.success('Financial statement exported to CSV successfully');
+    const selectedPeriod = periods.find((p) => p.id === selectedPeriodId);
+    const periodLabel = selectedPeriod ? selectedPeriod.periodName : 'All_Periods';
+    const cleanPeriod = periodLabel.toLowerCase().replace(/[^a-z0-9]/g, '_');
+
+    const escapeCsv = (val: string | number | null | undefined): string => {
+      if (val === null || val === undefined) return '""';
+      const str = String(val);
+      if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+        return `"${str.replace(/"/g, '""')}"`;
+      }
+      return `"${str}"`;
+    };
+
+    const downloadCsvFile = (filename: string, rows: (string | number)[][]) => {
+      const csvContent = rows.map((r) => r.map(escapeCsv).join(',')).join('\r\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.setAttribute('href', url);
+      link.setAttribute('download', filename);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    };
+
+    if (reportType === 'PNL') {
+      const rows: (string | number)[][] = [
+        ['STATEMENT OF PROFIT AND LOSS (INCOME STATEMENT)', ''],
+        ['Reporting Period', periodLabel],
+        ['Base Currency', reportCurrency],
+        ['Generated At', new Date().toISOString()],
+        [],
+        ['Section', 'Account Code', 'Account Name', `Amount (${reportCurrency})`],
+        ...(pnl?.revenues || []).map((r) => [
+          'Operating Revenue',
+          r.accountCode,
+          r.accountName,
+          (Number(r.amountCents) / 100).toFixed(2),
+        ]),
+        ['TOTAL OPERATING REVENUE', '', '', totalRev.toFixed(2)],
+        [],
+        ...(pnl?.expenses || []).map((e) => [
+          'Operating Expense',
+          e.accountCode,
+          e.accountName,
+          (Number(e.amountCents) / 100).toFixed(2),
+        ]),
+        ['TOTAL OPERATING EXPENSES', '', '', totalExp.toFixed(2)],
+        [],
+        ['NET INCOME / (LOSS)', '', '', netIncome.toFixed(2)],
+      ];
+      downloadCsvFile(`profit_and_loss_${cleanPeriod}.csv`, rows);
+      toast.success(`Profit & Loss statement exported to CSV successfully`);
+    } else if (reportType === 'BALANCE_SHEET') {
+      const rows: (string | number)[][] = [
+        ['BALANCE SHEET (STATEMENT OF FINANCIAL POSITION)', ''],
+        ['Reporting Period', periodLabel],
+        ['Base Currency', reportCurrency],
+        ['Generated At', new Date().toISOString()],
+        [],
+        ['Classification', 'Account Code', 'Account Name', `Amount (${reportCurrency})`],
+        ...(balanceSheet?.assets || []).map((a) => [
+          'Assets',
+          a.accountCode,
+          a.accountName,
+          (Number(a.amountCents) / 100).toFixed(2),
+        ]),
+        ['TOTAL ASSETS', '', '', totalAssets.toFixed(2)],
+        [],
+        ...(balanceSheet?.liabilities || []).map((l) => [
+          'Liabilities',
+          l.accountCode,
+          l.accountName,
+          (Number(l.amountCents) / 100).toFixed(2),
+        ]),
+        ['TOTAL LIABILITIES', '', '', totalLiab.toFixed(2)],
+        [],
+        ...(balanceSheet?.equity || []).map((eq) => [
+          'Equity',
+          eq.accountCode,
+          eq.accountName,
+          (Number(eq.amountCents) / 100).toFixed(2),
+        ]),
+        ['TOTAL EQUITY', '', '', totalEq.toFixed(2)],
+        [],
+        ['TOTAL LIABILITIES & EQUITY', '', '', (totalLiab + totalEq).toFixed(2)],
+        [
+          'BALANCE INVARIANT CHECK',
+          '',
+          '',
+          balanceSheet?.isBalanced ? 'BALANCED' : 'OUT_OF_BALANCE',
+        ],
+      ];
+      downloadCsvFile(`balance_sheet_${cleanPeriod}.csv`, rows);
+      toast.success(`Balance Sheet statement exported to CSV successfully`);
+    } else {
+      const tbRows = trialBalance?.rows || trialBalance?.items || [];
+      const rows: (string | number)[][] = [
+        ['TRIAL BALANCE (GENERAL LEDGER INVARIANTS)', ''],
+        ['Reporting Period', periodLabel],
+        ['Base Currency', reportCurrency],
+        ['Generated At', new Date().toISOString()],
+        [],
+        [
+          'Account Code',
+          'Account Name',
+          'Classification',
+          `Debit (${reportCurrency})`,
+          `Credit (${reportCurrency})`,
+        ],
+        ...tbRows.map((row) => [
+          row.accountCode,
+          row.accountName,
+          row.classification,
+          (Number(row.debitCents) / 100).toFixed(2),
+          (Number(row.creditCents) / 100).toFixed(2),
+        ]),
+        [],
+        ['TOTALS', '', '', totalTbDebit.toFixed(2), totalTbCredit.toFixed(2)],
+        [
+          'LEDGER STATUS',
+          '',
+          '',
+          trialBalance?.isBalanced ? 'BALANCED (Sum Debits == Sum Credits)' : 'UNBALANCED',
+        ],
+      ];
+      downloadCsvFile(`trial_balance_${cleanPeriod}.csv`, rows);
+      toast.success(`Trial Balance exported to CSV successfully`);
+    }
   };
 
   const handlePrintPdf = () => {

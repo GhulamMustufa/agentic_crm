@@ -1,10 +1,12 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 
+import { EmailService, type InvoiceEmailLineItem } from '../../../core/email/email.service';
 import {
   ValidationError,
   NotFoundError,
   UnprocessableEntityError,
 } from '../../../core/errors/app-error';
+import { PrismaService } from '../../../core/prisma/prisma.service';
 import { AuditService } from '../../audit/services/audit.service';
 import {
   COUNTERPARTY_REPOSITORY_TOKEN,
@@ -20,10 +22,12 @@ import {
   type UpdateInvoiceInput,
   type RecordPaymentInput,
   type VoidInvoiceInput,
+  type SendInvoiceInput,
   createInvoiceSchema,
   updateInvoiceSchema,
   recordPaymentSchema,
   voidInvoiceSchema,
+  sendInvoiceSchema,
 } from '../dto/invoice.dto';
 
 import type { InvoiceEntity, InvoiceType, InvoiceStatus } from '../domain/invoice.entity';
@@ -38,6 +42,8 @@ export class InvoiceService {
     private readonly counterpartyRepo: ICounterpartyRepository,
     private readonly ledgerService: LedgerService,
     private readonly auditService: AuditService,
+    @Optional() private readonly emailService?: EmailService,
+    @Optional() private readonly prisma?: PrismaService,
   ) {}
 
   async createInvoice(tenantId: string, rawDto: CreateInvoiceInput): Promise<InvoiceEntity> {
@@ -496,6 +502,106 @@ export class InvoiceService {
     });
 
     return updated;
+  }
+
+  async sendInvoice(
+    tenantId: string,
+    userId: string,
+    invoiceId: string,
+    rawDto?: SendInvoiceInput,
+  ): Promise<{
+    sentTo: string;
+    invoiceNumber: string;
+    totalAmountCents: string;
+    sentAt: string;
+  }> {
+    const parseResult = sendInvoiceSchema.safeParse(rawDto || {});
+    if (!parseResult.success) {
+      throw new ValidationError(
+        'Send invoice validation failed',
+        parseResult.error.errors.map((e) => ({ field: e.path.join('.'), message: e.message })),
+      );
+    }
+    const dto = parseResult.data;
+
+    const invoice = await this.invoiceRepo.findInvoiceById(tenantId, invoiceId);
+    if (!invoice) {
+      throw new NotFoundError('Invoice', invoiceId);
+    }
+
+    const counterparty = await this.counterpartyRepo.findById(tenantId, invoice.counterpartyId);
+    const customerName =
+      counterparty?.legalName || invoice.counterparty?.legalName || 'Valued Customer';
+
+    const recipientEmail = dto.recipientEmail;
+    if (!recipientEmail) {
+      throw new ValidationError('A recipient email address is required to dispatch this invoice', [
+        { field: 'recipientEmail', message: 'Recipient email address must be provided' },
+      ]);
+    }
+
+    let orgName = 'Agentic Business OS';
+    if (this.prisma) {
+      try {
+        const tenant = await this.prisma.tenant.findUnique({
+          where: { id: tenantId },
+          select: { legalName: true },
+        });
+        if (tenant?.legalName) {
+          orgName = tenant.legalName;
+        }
+      } catch {
+        // Fallback to default
+      }
+    }
+
+    const lineItems: InvoiceEmailLineItem[] = invoice.lines.map((l) => ({
+      description: l.description,
+      quantity: l.quantity,
+      unitPriceCents: l.unitCostCents,
+      totalCents: l.totalCents,
+    }));
+
+    if (this.emailService) {
+      await this.emailService.sendInvoiceEmail({
+        to: recipientEmail,
+        customerName,
+        orgName,
+        invoiceNumber: invoice.invoiceNumber,
+        issueDate: invoice.issueDate,
+        dueDate: invoice.dueDate,
+        currency: invoice.currency,
+        subtotalCents: invoice.subtotalCents,
+        taxCents: invoice.taxCents,
+        totalAmountCents: invoice.totalCents,
+        lineItems,
+        paymentInstructions: dto.paymentInstructions,
+      });
+    }
+
+    const sentAt = new Date().toISOString();
+
+    await this.auditService.recordEvent({
+      tenantId,
+      action: 'INVOICE_SENT',
+      entityType: 'INVOICE',
+      entityId: invoice.id,
+      actorType: 'USER',
+      actorId: userId,
+      newState: {
+        invoiceNumber: invoice.invoiceNumber,
+        sentTo: recipientEmail,
+        totalCents: invoice.totalCents.toString(),
+        sentAt,
+      },
+    });
+
+    return {
+      sentTo: recipientEmail,
+      invoiceNumber: invoice.invoiceNumber,
+      totalAmountCents: invoice.totalCents.toString(),
+      sentAt,
+    };
   }
 
   async getInvoiceById(tenantId: string, id: string): Promise<InvoiceEntity | null> {

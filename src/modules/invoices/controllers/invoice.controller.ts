@@ -23,6 +23,7 @@ import type {
   UpdateInvoiceDto,
   RecordPaymentDto,
   VoidInvoiceDto,
+  SendInvoiceDto,
 } from '../dto/invoice.dto';
 
 function serializeBigInt(obj: unknown): unknown {
@@ -104,6 +105,18 @@ export class InvoiceController {
     const tenantId = this.requireTenant(user);
     const posted = await this.invoiceService.postInvoice(tenantId, user.userId, id);
     return { data: serializeBigInt(posted) };
+  }
+
+  @Post(':id/send')
+  @HttpCode(HttpStatus.OK)
+  async sendInvoice(
+    @CurrentUser() user: TenantSessionContext,
+    @Param('id') id: string,
+    @Body() dto: SendInvoiceDto,
+  ) {
+    const tenantId = this.requireTenant(user);
+    const result = await this.invoiceService.sendInvoice(tenantId, user.userId, id, dto);
+    return { data: serializeBigInt(result) };
   }
 
   @Post(':id/void')

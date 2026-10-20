@@ -369,11 +369,17 @@ export async function getPendingExceptions(
   }
 }
 
-export async function resolveException(id: string, action: string, categoryNotes?: string) {
+export async function resolveException(
+  id: string,
+  action: string,
+  categoryNotes?: string,
+  accountCode?: string,
+) {
   try {
     return await apiClient.post(`/banking/exceptions/${id}/resolve`, {
       status: action === 'REJECT' ? 'DISMISSED' : 'RESOLVED',
       resolutionNotes: categoryNotes || `Resolution marked as ${action} by user reviewer.`,
+      accountCode,
     });
   } catch (err) {
     console.warn('Live exception resolution error:', err);

@@ -26,6 +26,7 @@ import {
   Table2,
   X,
   AlertCircle,
+  Wallet,
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -56,6 +57,7 @@ import {
 } from '@/lib/api/exceptions';
 
 const STANDARD_CATEGORIES = [
+  { code: '3020', name: "Owner's Equity Draw (Personal / Non-Business)", type: 'EQUITY' },
   { code: '5020', name: 'Subcontractor & Freelancer Fees', type: 'EXPENSE' },
   { code: '5010', name: 'Cost of Goods Sold & Operating Supplies', type: 'EXPENSE' },
   { code: '6010', name: 'Software, Cloud & SaaS Subscriptions', type: 'EXPENSE' },
@@ -219,11 +221,12 @@ export function ExceptionListClient({
 
   // Optimistic Mutation: Approve
   const resolveMutation = useMutation({
-    mutationFn: ({ id, category }: { id: string; category: string }) =>
+    mutationFn: ({ id, category, note }: { id: string; category: string; note?: string }) =>
       resolveException(
         id,
         'APPROVE',
-        `Approved under category ${category}. Rule remembered: ${rememberRule}`,
+        note || `Approved under category ${category}. Rule remembered: ${rememberRule}`,
+        category,
       ),
     onMutate: async ({ id }) => {
       await queryClient.cancelQueries({ queryKey: exceptionKeys.lists() });
@@ -275,8 +278,12 @@ export function ExceptionListClient({
 
       return { previousQueries };
     },
-    onSuccess: () => {
-      toast.success('Approved & recorded to General Ledger');
+    onSuccess: (_data, variables) => {
+      if (variables?.category === '3020') {
+        toast.success("Recorded as Owner's Personal Draw (Account 3020) - 100% Tax Compliant");
+      } else {
+        toast.success('Approved & recorded to General Ledger');
+      }
     },
     onError: (err, variables, context) => {
       if (context?.previousQueries) {
@@ -1064,6 +1071,25 @@ export function ExceptionListClient({
                       <TableCell>{getConfidenceBadge(exc.confidenceScore)}</TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-1.5">
+                          {isOutflow && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                resolveMutation.mutate({
+                                  id: exc.id,
+                                  category: '3020',
+                                  note: "Classified as Owner's Equity Draw (Personal / Non-Business)",
+                                });
+                              }}
+                              disabled={resolveMutation.isPending}
+                              className="h-7 text-xs px-2 text-amber-600 dark:text-amber-400 border-amber-500/30 bg-amber-500/10 hover:bg-amber-500/20 font-medium cursor-pointer"
+                              title="1-Click Owner Draw (Account 3020)"
+                            >
+                              <Wallet className="w-3 h-3 mr-1" />
+                              Draw
+                            </Button>
+                          )}
                           <Button
                             variant="outline"
                             size="sm"
@@ -1071,7 +1097,7 @@ export function ExceptionListClient({
                               setSelectedId(exc.id);
                               setViewMode('split');
                             }}
-                            className="h-7 text-xs px-2.5"
+                            className="h-7 text-xs px-2.5 cursor-pointer"
                           >
                             Review
                           </Button>
@@ -1084,7 +1110,7 @@ export function ExceptionListClient({
                               });
                             }}
                             disabled={resolveMutation.isPending}
-                            className="h-7 text-xs px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white"
+                            className="h-7 text-xs px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer"
                           >
                             <Check className="w-3 h-3 mr-1" />
                             Approve
@@ -1483,7 +1509,30 @@ export function ExceptionListClient({
                     Ignore / Exclude
                   </Button>
 
-                  <div className="flex items-center gap-2 w-full sm:w-auto order-1 sm:order-2">
+                  <div className="flex items-center gap-2 w-full sm:w-auto order-1 sm:order-2 flex-wrap">
+                    {selectedException.direction === 'OUTFLOW' && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          if (selectedId && !resolveMutation.isPending) {
+                            resolveMutation.mutate({
+                              id: selectedId,
+                              category: '3020',
+                              note: "Classified as Owner's Equity Draw (Personal / Non-Business)",
+                            });
+                          }
+                        }}
+                        disabled={resolveMutation.isPending}
+                        className="text-xs cursor-pointer h-8 px-3 text-amber-600 dark:text-amber-400 border-amber-500/30 bg-amber-500/10 hover:bg-amber-500/20 font-medium"
+                        title="1-Click Owner Draw: Categorizes personal debit to Equity Account 3020 with 100% tax compliance"
+                      >
+                        <Wallet className="w-3.5 h-3.5 mr-1 text-amber-600 dark:text-amber-400" />
+                        Owner&apos;s Draw (3020)
+                      </Button>
+                    )}
+
                     <Button
                       type="button"
                       variant="outline"

@@ -21,6 +21,7 @@ describe('InvoiceService (Phase 1 Accounting Invariants)', () => {
   let invoiceRepo: InMemoryInvoiceRepository;
   let counterpartyRepo: InMemoryCounterpartyRepository;
   let ledgerRepo: InMemoryLedgerRepository;
+  let auditRepo: InMemoryAuditRepository;
   let auditService: AuditService;
 
   const tenantId = 'tenant-inv-001';
@@ -38,7 +39,8 @@ describe('InvoiceService (Phase 1 Accounting Invariants)', () => {
     invoiceRepo = new InMemoryInvoiceRepository();
     counterpartyRepo = new InMemoryCounterpartyRepository();
     ledgerRepo = new InMemoryLedgerRepository();
-    auditService = new AuditService(new InMemoryAuditRepository());
+    auditRepo = new InMemoryAuditRepository();
+    auditService = new AuditService(auditRepo);
 
     ledgerService = new LedgerService(ledgerRepo, auditService);
     counterpartyService = new CounterpartyService(counterpartyRepo, auditService);
@@ -618,6 +620,80 @@ describe('InvoiceService (Phase 1 Accounting Invariants)', () => {
           ],
         }),
       ).rejects.toThrow(UnprocessableEntityError);
+    });
+  });
+
+  describe('sendInvoice (Phase A Commercial Win)', () => {
+    it('should successfully send an invoice via email and record an audit event', async () => {
+      const invoice = await invoiceService.createInvoice(tenantId, {
+        counterpartyId: customerId,
+        invoiceType: 'INVOICE',
+        invoiceNumber: 'INV-SEND-2026-001',
+        issueDate: '2026-03-15',
+        dueDate: '2026-04-15',
+        currency: 'USD',
+        taxCents: 5000n,
+        lines: [
+          {
+            accountId: revenueAccountId,
+            description: 'Agentic CRM Cloud License',
+            quantity: 2,
+            unitCostCents: 25000n,
+          },
+        ],
+      });
+
+      const res = await invoiceService.sendInvoice(tenantId, userId, invoice.id, {
+        recipientEmail: 'finance@customer.com',
+        paymentInstructions: 'Wire Transfer to Operating Account 1010',
+      });
+
+      expect(res.sentTo).toBe('finance@customer.com');
+      expect(res.invoiceNumber).toBe('INV-SEND-2026-001');
+      expect(res.totalAmountCents).toBe('55000');
+      expect(res.sentAt).toBeDefined();
+
+      // Verify audit event
+      const auditEvents = await auditRepo.listEvents(tenantId);
+      const sentEvent = auditEvents.find(
+        (e) => e.action === 'INVOICE_SENT' && e.entityId === invoice.id,
+      );
+      expect(sentEvent).toBeDefined();
+      expect(sentEvent?.actorId).toBe(userId);
+      expect((sentEvent?.newState as Record<string, unknown>)?.sentTo).toBe('finance@customer.com');
+    });
+
+    it('should reject dispatching with an invalid recipient email', async () => {
+      const invoice = await invoiceService.createInvoice(tenantId, {
+        counterpartyId: customerId,
+        invoiceType: 'INVOICE',
+        invoiceNumber: 'INV-SEND-INVALID',
+        issueDate: '2026-03-15',
+        dueDate: '2026-04-15',
+        currency: 'USD',
+        lines: [
+          {
+            accountId: revenueAccountId,
+            description: 'Consulting',
+            quantity: 1,
+            unitCostCents: 10000n,
+          },
+        ],
+      });
+
+      await expect(
+        invoiceService.sendInvoice(tenantId, userId, invoice.id, {
+          recipientEmail: 'not-an-email',
+        }),
+      ).rejects.toThrow(ValidationError);
+    });
+
+    it('should throw NotFoundError if invoice does not exist', async () => {
+      await expect(
+        invoiceService.sendInvoice(tenantId, userId, '00000000-0000-0000-0000-000000000000', {
+          recipientEmail: 'client@example.com',
+        }),
+      ).rejects.toThrow(NotFoundError);
     });
   });
 });
