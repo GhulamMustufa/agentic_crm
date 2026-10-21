@@ -71,11 +71,22 @@ export const rejectProposalSchema = z.object({
 export type RejectProposalInput = z.input<typeof rejectProposalSchema>;
 export type RejectProposalDto = z.infer<typeof rejectProposalSchema>;
 
+export const splitAllocationSchema = z.object({
+  accountId: z.string().uuid().optional(),
+  accountCode: z.string().optional(),
+  amountCents: z.union([z.string(), z.number(), z.bigint()]),
+  memo: z.string().max(255).optional(),
+});
+
+export type SplitAllocationInput = z.input<typeof splitAllocationSchema>;
+export type SplitAllocationDto = z.infer<typeof splitAllocationSchema>;
+
 export const resolveExceptionSchema = z.object({
   status: z.enum(['RESOLVED', 'DISMISSED']),
   resolutionNotes: z.string().min(1).max(500).optional().default('Resolved by supervisor'),
   accountCode: z.string().optional(),
   accountId: z.string().uuid().optional(),
+  splits: z.array(splitAllocationSchema).min(2).max(20).optional(),
 });
 
 export type ResolveExceptionInput = z.input<typeof resolveExceptionSchema>;

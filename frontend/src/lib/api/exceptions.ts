@@ -369,22 +369,26 @@ export async function getPendingExceptions(
   }
 }
 
+export interface SplitAllocationPayload {
+  accountId?: string;
+  accountCode?: string;
+  amountCents: string | number;
+  memo?: string;
+}
+
 export async function resolveException(
   id: string,
   action: string,
   categoryNotes?: string,
   accountCode?: string,
+  splits?: SplitAllocationPayload[],
 ) {
-  try {
-    return await apiClient.post(`/banking/exceptions/${id}/resolve`, {
-      status: action === 'REJECT' ? 'DISMISSED' : 'RESOLVED',
-      resolutionNotes: categoryNotes || `Resolution marked as ${action} by user reviewer.`,
-      accountCode,
-    });
-  } catch (err) {
-    console.warn('Live exception resolution error:', err);
-    return { ok: true, id };
-  }
+  return await apiClient.post(`/banking/exceptions/${id}/resolve`, {
+    status: action === 'REJECT' ? 'DISMISSED' : 'RESOLVED',
+    resolutionNotes: categoryNotes || `Resolution marked as ${action} by user reviewer.`,
+    accountCode,
+    splits,
+  });
 }
 
 export async function batchResolveExceptions(

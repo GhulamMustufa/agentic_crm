@@ -2,6 +2,7 @@ import {
   Controller,
   Post,
   Get,
+  Patch,
   Param,
   Body,
   Query,
@@ -75,6 +76,23 @@ export class LedgerController {
     const tenantId = this.requireTenant(user);
     const periods = await this.ledgerService.listPeriods(tenantId);
     return { data: periods };
+  }
+
+  @Patch('periods/:id/status')
+  @HttpCode(HttpStatus.OK)
+  async updatePeriodStatus(
+    @CurrentUser() user: TenantSessionContext,
+    @Param('id') id: string,
+    @Body() dto: { status: 'OPEN' | 'LOCKED' | 'CLOSED' },
+  ) {
+    const tenantId = this.requireTenant(user);
+    const updated = await this.ledgerService.updatePeriodStatus(
+      tenantId,
+      user.userId,
+      id,
+      dto.status,
+    );
+    return { data: serializeBigInt(updated) };
   }
 
   @Post('accounts')

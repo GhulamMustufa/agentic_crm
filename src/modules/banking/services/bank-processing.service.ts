@@ -259,7 +259,10 @@ export class BankProcessingService {
       let parsedData;
       try {
         if (dto.mimeType === 'text/csv') {
-          parsedData = await this.csvParser.parse(dto.content);
+          parsedData = await this.csvParser.parse(dto.content, {
+            bankInstitution: bankAccount?.institutionName,
+            currency: bankAccount?.currency,
+          });
         } else {
           parsedData = await this.pdfParser.parse(dto.content);
         }
@@ -1421,44 +1424,187 @@ export class BankProcessingService {
       const proposal = await this.bankingRepo.findProposalById(tenantId, exc.entityId);
       if (proposal && proposal.status === 'PROPOSED') {
         if (dto.status === 'RESOLVED') {
-          try {
-            // Apply category / account override if provided
-            let targetAccountId = dto.accountId;
-            if (!targetAccountId && dto.accountCode) {
-              if (dto.accountCode === '3020') {
-                const acc = await this.ledgerService.ensureAccount(
-                  tenantId,
-                  '3020',
-                  "Owner's Equity Draw (Personal / Non-Business)",
-                  'EQUITY',
-                  'EQUITY',
-                );
-                targetAccountId = acc.id;
-              } else {
-                const acc = await this.ledgerService.findAccountByCode(tenantId, dto.accountCode);
-                if (acc) {
-                  targetAccountId = acc.id;
-                }
-              }
+          if (dto.splits && dto.splits.length >= 2) {
+            const transaction = await this.bankingRepo.findBankTransactionById(
+              tenantId,
+              proposal.bankTransactionId,
+            );
+            if (!transaction) {
+              throw new NotFoundError('Bank Transaction', proposal.bankTransactionId);
             }
 
-            if (targetAccountId) {
-              const direction = proposal.debitAccountId ? 'OUTFLOW' : 'INFLOW';
-              await this.bankingRepo.updateProposalStatus(tenantId, proposal.id, 'PROPOSED', {
-                modifications: {
-                  debitAccountId:
-                    direction === 'OUTFLOW' ? targetAccountId : proposal.debitAccountId,
-                  creditAccountId:
-                    direction === 'INFLOW' ? targetAccountId : proposal.creditAccountId,
-                },
+            let splitsSum = 0n;
+            for (const s of dto.splits) {
+              const cents = BigInt(s.amountCents);
+              if (cents <= 0n) {
+                throw new ValidationError('Each split amount must be greater than zero');
+              }
+              splitsSum += cents;
+            }
+
+            if (splitsSum !== proposal.amountCents) {
+              throw new ValidationError(
+                `Sum of split amounts (${splitsSum} cents) does not equal total transaction amount (${proposal.amountCents} cents)`,
+              );
+            }
+
+            const resolvedSplitLines: Array<{
+              accountId: string;
+              amountCents: bigint;
+              memo?: string;
+            }> = [];
+            for (const s of dto.splits) {
+              let accId = s.accountId;
+              if (!accId && s.accountCode) {
+                if (s.accountCode === '3020') {
+                  const acc = await this.ledgerService.ensureAccount(
+                    tenantId,
+                    '3020',
+                    "Owner's Equity Draw (Personal / Non-Business)",
+                    'EQUITY',
+                    'EQUITY',
+                  );
+                  accId = acc.id;
+                } else {
+                  const acc = await this.ledgerService.findAccountByCode(tenantId, s.accountCode);
+                  if (acc) {
+                    accId = acc.id;
+                  }
+                }
+              }
+              if (!accId) {
+                throw new ValidationError(
+                  `Could not resolve GL account for split item with code '${s.accountCode || ''}'`,
+                );
+              }
+              resolvedSplitLines.push({
+                accountId: accId,
+                amountCents: BigInt(s.amountCents),
+                memo: s.memo,
               });
             }
 
-            await this.approveProposal(tenantId, userId, proposal.id);
-          } catch (gateErr) {
-            this.logger.warn(
-              `Could not auto-post proposal ${proposal.id} during exception approval: ${gateErr}`,
+            const bankAcc = await this.bankingRepo.findBankAccountById(
+              tenantId,
+              transaction.bankAccountId,
             );
+            const cashAccount = bankAcc?.ledgerAccountId
+              ? await this.ledgerService.getAccountById(tenantId, bankAcc.ledgerAccountId)
+              : await this.ledgerService.findAccountByCode(tenantId, '1010');
+            if (!cashAccount) {
+              throw new ValidationError('Could not resolve GL Cash Account for bank transaction');
+            }
+
+            const isOutflow =
+              transaction.direction === 'DEBIT' ||
+              transaction.signedAmountCents < 0n ||
+              proposal.debitAccountId !== cashAccount.id;
+
+            let lines: Array<{
+              accountId: string;
+              debitCents: bigint;
+              creditCents: bigint;
+              memo?: string;
+            }>;
+
+            if (isOutflow) {
+              lines = resolvedSplitLines.map((s) => ({
+                accountId: s.accountId,
+                debitCents: s.amountCents,
+                creditCents: 0n,
+                memo: s.memo || transaction.rawDescription,
+              }));
+              lines.push({
+                accountId: cashAccount.id,
+                debitCents: 0n,
+                creditCents: proposal.amountCents,
+                memo: transaction.rawDescription,
+              });
+            } else {
+              lines = [
+                {
+                  accountId: cashAccount.id,
+                  debitCents: proposal.amountCents,
+                  creditCents: 0n,
+                  memo: transaction.rawDescription,
+                },
+              ];
+              for (const s of resolvedSplitLines) {
+                lines.push({
+                  accountId: s.accountId,
+                  debitCents: 0n,
+                  creditCents: s.amountCents,
+                  memo: s.memo || transaction.rawDescription,
+                });
+              }
+            }
+
+            const isUuid =
+              /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+                transaction.id,
+              );
+            const entry = await this.ledgerService.postJournalEntry(tenantId, userId, {
+              entryDate: transaction.transactionDate,
+              description: `Split Reconciliation: ${transaction.rawDescription}`,
+              sourceType: 'BANK_RECONCILIATION',
+              sourceId: isUuid ? transaction.id : undefined,
+              lines,
+            });
+
+            await this.bankingRepo.createReconciledTransaction({
+              tenantId,
+              bankTransactionId: transaction.id,
+              journalEntryId: entry.id,
+              reconciliationMethod: 'HUMAN_APPROVED',
+              confidenceScore: 1.0,
+              reconciledByUserId: userId,
+            });
+
+            await this.bankingRepo.updateTransactionStatus(tenantId, transaction.id, 'RECONCILED');
+            await this.bankingRepo.updateProposalStatus(tenantId, proposal.id, 'APPROVED', {
+              postedJournalEntryId: entry.id,
+              userId,
+            });
+          } else {
+            try {
+              // Apply category / account override if provided
+              let targetAccountId = dto.accountId;
+              if (!targetAccountId && dto.accountCode) {
+                if (dto.accountCode === '3020') {
+                  const acc = await this.ledgerService.ensureAccount(
+                    tenantId,
+                    '3020',
+                    "Owner's Equity Draw (Personal / Non-Business)",
+                    'EQUITY',
+                    'EQUITY',
+                  );
+                  targetAccountId = acc.id;
+                } else {
+                  const acc = await this.ledgerService.findAccountByCode(tenantId, dto.accountCode);
+                  if (acc) {
+                    targetAccountId = acc.id;
+                  }
+                }
+              }
+
+              if (targetAccountId) {
+                const direction = proposal.debitAccountId ? 'OUTFLOW' : 'INFLOW';
+                await this.bankingRepo.updateProposalStatus(tenantId, proposal.id, 'PROPOSED', {
+                  modifications: {
+                    debitAccountId:
+                      direction === 'OUTFLOW' ? targetAccountId : proposal.debitAccountId,
+                    creditAccountId:
+                      direction === 'INFLOW' ? targetAccountId : proposal.creditAccountId,
+                  },
+                });
+              }
+
+              await this.approveProposal(tenantId, userId, proposal.id);
+            } catch (gateErr) {
+              this.logger.warn(
+                `Could not auto-post proposal ${proposal.id} during exception approval: ${gateErr}`,
+              );
+            }
           }
         } else if (dto.status === 'DISMISSED') {
           try {

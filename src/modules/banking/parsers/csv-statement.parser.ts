@@ -6,6 +6,7 @@ import type {
   IStatementParser,
   ParsedStatementResult,
   ParsedTransactionLine,
+  ParseStatementOptions,
 } from './statement-parser.interface';
 
 export function parseMonetaryCents(val: string): bigint {
@@ -55,15 +56,88 @@ export function parseMonetaryCents(val: string): bigint {
   return isParenNegative || isMinusNegative ? -totalCents : totalCents;
 }
 
-export function normalizeDate(dateStr: string): string {
+export interface DateParseOptions {
+  dateFormat?: 'DD/MM/YYYY' | 'MM/DD/YYYY' | 'AUTO';
+  bankInstitution?: string;
+  currency?: string;
+}
+
+const US_INSTITUTIONS = [
+  'CHASE',
+  'JPMORGAN',
+  'MERCURY',
+  'SVB',
+  'SILICON VALLEY BANK',
+  'WELLS FARGO',
+  'BANK OF AMERICA',
+  'BOA',
+  'CITI',
+  'CITIBANK',
+  'PNC',
+  'US BANK',
+  'CAPITAL ONE',
+  'STRIPE',
+  'BREX',
+  'FIRST REPUBLIC',
+];
+
+const COMMONWEALTH_INSTITUTIONS = [
+  'MAYBANK',
+  'CIMB',
+  'PUBLIC BANK',
+  'RHB',
+  'HONG LEONG',
+  'AMBANK',
+  'BANK ISLAM',
+  'BARCLAYS',
+  'HSBC',
+  'LLOYDS',
+  'NATWEST',
+  'ANZ',
+  'CBA',
+  'WESTPAC',
+  'DBS',
+  'OCBC',
+  'UOB',
+  'STANDARD CHARTERED',
+];
+
+export function resolveDateFormatPreference(
+  options?: DateParseOptions,
+): 'MM/DD/YYYY' | 'DD/MM/YYYY' {
+  if (options?.dateFormat === 'MM/DD/YYYY' || options?.dateFormat === 'DD/MM/YYYY') {
+    return options.dateFormat;
+  }
+  const instUpper = (options?.bankInstitution || '').toUpperCase();
+  const currUpper = (options?.currency || '').toUpperCase();
+
+  if (US_INSTITUTIONS.some((inst) => instUpper.includes(inst)) || currUpper === 'USD') {
+    return 'MM/DD/YYYY';
+  }
+  if (
+    COMMONWEALTH_INSTITUTIONS.some((inst) => instUpper.includes(inst)) ||
+    ['MYR', 'GBP', 'EUR', 'AUD', 'SGD'].includes(currUpper)
+  ) {
+    return 'DD/MM/YYYY';
+  }
+  // Default to DD/MM/YYYY for international / Commonwealth standard
+  return 'DD/MM/YYYY';
+}
+
+export function normalizeDate(dateStr: string, options?: DateParseOptions): string {
   const trimmed = dateStr.trim();
   // Format YYYY-MM-DD
   if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
     return trimmed;
   }
-  // Format DD/MM without year (e.g. 01/06)
+  const pref = resolveDateFormatPreference(options);
+
+  // Format DD/MM or MM/DD without year (e.g. 01/06)
   const dmMatch = trimmed.match(/^(\d{1,2})\/(\d{1,2})$/);
   if (dmMatch && dmMatch[1] && dmMatch[2]) {
+    if (pref === 'MM/DD/YYYY') {
+      return `2026-${dmMatch[1].padStart(2, '0')}-${dmMatch[2].padStart(2, '0')}`;
+    }
     return `2026-${dmMatch[2].padStart(2, '0')}-${dmMatch[1].padStart(2, '0')}`;
   }
   // Format Chinese: YYYY年MM月DD日 or YYYY年M月D日
@@ -105,15 +179,29 @@ export function normalizeDate(dateStr: string): string {
       if (n2 > 12) {
         return `${y}-${p1.padStart(2, '0')}-${p2.padStart(2, '0')}`;
       }
-      // Default to Commonwealth / Malaysian DD/MM/YYYY when both are <= 12
+      // Both numbers are <= 12: resolve based on bank institution / currency preference
+      if (pref === 'MM/DD/YYYY') {
+        return `${y}-${p1.padStart(2, '0')}-${p2.padStart(2, '0')}`;
+      }
       return `${y}-${p2.padStart(2, '0')}-${p1.padStart(2, '0')}`;
     }
   }
-  // Format DD-MM-YYYY
+  // Format DD-MM-YYYY or MM-DD-YYYY
   const dashMatch = trimmed.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
   if (dashMatch) {
     const [, d, m, y] = dashMatch;
     if (d && m && y) {
+      const n1 = parseInt(d, 10);
+      const n2 = parseInt(m, 10);
+      if (n1 > 12) {
+        return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+      }
+      if (n2 > 12) {
+        return `${y}-${d.padStart(2, '0')}-${m.padStart(2, '0')}`;
+      }
+      if (pref === 'MM/DD/YYYY') {
+        return `${y}-${d.padStart(2, '0')}-${m.padStart(2, '0')}`;
+      }
       return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
     }
   }
@@ -149,7 +237,10 @@ export function parseCsvLine(line: string): string[] {
 
 @Injectable()
 export class CsvStatementParser implements IStatementParser {
-  async parse(content: string | Buffer): Promise<ParsedStatementResult> {
+  async parse(
+    content: string | Buffer,
+    options?: ParseStatementOptions,
+  ): Promise<ParsedStatementResult> {
     let text = typeof content === 'string' ? content : content.toString('utf-8');
 
     // Auto-detect and decode base64 string if content is base64 encoded
@@ -292,7 +383,7 @@ export class CsvStatementParser implements IStatementParser {
         throw new ValidationError(`Row ${i + 1} has missing required date or description fields`);
       }
 
-      const parsedDate = normalizeDate(rawDate);
+      const parsedDate = normalizeDate(rawDate, options);
 
       let amountCents = 0n;
       if (amountColIdx !== -1 && row[amountColIdx] !== undefined && row[amountColIdx] !== '') {

@@ -28,7 +28,11 @@ import type {
   StatementLineItem,
 } from '../domain/balance.entity';
 import type { JournalEntryEntity } from '../domain/journal-entry.entity';
-import type { AccountingPeriodEntity, FiscalYearEntity } from '../domain/period.entity';
+import type {
+  AccountingPeriodEntity,
+  FiscalYearEntity,
+  AccountingPeriodStatus,
+} from '../domain/period.entity';
 
 @Injectable()
 export class LedgerService {
@@ -289,6 +293,35 @@ export class LedgerService {
       throw new NotFoundError('Accounting Period', periodId);
     }
     return this.ledgerRepo.updatePeriodStatus(tenantId, periodId, 'CLOSED', userId);
+  }
+
+  async updatePeriodStatus(
+    tenantId: string,
+    userId: string,
+    periodId: string,
+    status: AccountingPeriodStatus,
+  ): Promise<AccountingPeriodEntity> {
+    const period = await this.ledgerRepo.findPeriodById(tenantId, periodId);
+    if (!period) {
+      throw new NotFoundError('Accounting Period', periodId);
+    }
+    const updated = await this.ledgerRepo.updatePeriodStatus(
+      tenantId,
+      periodId,
+      status,
+      status !== 'OPEN' ? userId : undefined,
+    );
+    await this.auditService.recordEvent({
+      tenantId,
+      action: status === 'OPEN' ? 'PERIOD_REOPENED' : 'PERIOD_CLOSED',
+      entityType: 'ACCOUNTING_PERIOD',
+      entityId: periodId,
+      actorId: userId,
+      actorType: 'USER',
+      previousState: { status: period.status },
+      newState: { status, periodName: period.periodName },
+    });
+    return updated;
   }
 
   /**

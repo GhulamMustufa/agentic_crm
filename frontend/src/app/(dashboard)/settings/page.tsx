@@ -15,6 +15,9 @@ import {
   RefreshCw,
   CheckCircle2,
   Lock,
+  Unlock,
+  Calendar,
+  AlertTriangle,
   Copy,
   Sliders,
   DollarSign,
@@ -39,9 +42,22 @@ import {
 } from '@/components/ui/table';
 import { apiClient } from '@/lib/api-client';
 import { authStorage, AuthUser } from '@/lib/auth-storage';
-import { formatCurrency } from '@/lib/formatters';
+import { formatCurrency, formatIsoDate } from '@/lib/formatters';
 
-type SettingsTab = 'AI_GUARDRAILS' | 'ORGANIZATION' | 'TEAM_MEMBERS' | 'MY_PROFILE';
+type SettingsTab =
+  'AI_GUARDRAILS' | 'ORGANIZATION' | 'TEAM_MEMBERS' | 'MY_PROFILE' | 'ACCOUNTING_PERIODS';
+
+interface AccountingPeriodState {
+  id: string;
+  fiscalYearId: string;
+  periodNumber: number;
+  periodName: string;
+  startDate: string;
+  endDate: string;
+  status: 'OPEN' | 'LOCKED' | 'CLOSED';
+  closedAt?: string;
+  closedByUserId?: string;
+}
 
 interface TenantSettingsState {
   allowAiAutoPosting: boolean;
@@ -129,14 +145,72 @@ export default function SettingsPage() {
   const [newPassword, setNewPassword] = React.useState('');
   const [updatingPassword, setUpdatingPassword] = React.useState(false);
 
+  // Accounting Periods state
+  const [periods, setPeriods] = React.useState<AccountingPeriodState[]>([]);
+  const [loadingPeriods, setLoadingPeriods] = React.useState(false);
+  const [updatingPeriodId, setUpdatingPeriodId] = React.useState<string | null>(null);
+  const [initializingFiscalYear, setInitializingFiscalYear] = React.useState(false);
+
+  const loadPeriods = React.useCallback(async () => {
+    try {
+      setLoadingPeriods(true);
+      const res = await apiClient.get<{ data: AccountingPeriodState[] }>('/ledger/periods');
+      if (res && res.data) {
+        setPeriods(res.data);
+      }
+    } catch {
+      toast.error('Failed to load accounting periods');
+    } finally {
+      setLoadingPeriods(false);
+    }
+  }, []);
+
+  const handleInitializeFiscalYear = async () => {
+    try {
+      setInitializingFiscalYear(true);
+      const currentYear = new Date().getFullYear();
+      await apiClient.post('/ledger/fiscal-years', { year: currentYear });
+      toast.success(`Fiscal Year ${currentYear} initialized with 12 monthly periods`);
+      await loadPeriods();
+    } catch (err: unknown) {
+      toast.error((err as Error)?.message || 'Failed to initialize fiscal year');
+    } finally {
+      setInitializingFiscalYear(false);
+    }
+  };
+
+  const handleTogglePeriodStatus = async (period: AccountingPeriodState) => {
+    const newStatus = period.status === 'OPEN' ? 'CLOSED' : 'OPEN';
+    try {
+      setUpdatingPeriodId(period.id);
+      await apiClient.patch<{ data: AccountingPeriodState }>(
+        `/ledger/periods/${period.id}/status`,
+        {
+          status: newStatus,
+        },
+      );
+      setPeriods((prev) => prev.map((p) => (p.id === period.id ? { ...p, status: newStatus } : p)));
+      toast.success(
+        newStatus === 'CLOSED'
+          ? `Period ${period.periodName} is now CLOSED. Transactions are locked.`
+          : `Period ${period.periodName} has been REOPENED.`,
+      );
+    } catch (err: unknown) {
+      toast.error((err as Error)?.message || `Failed to update period ${period.periodName}`);
+    } finally {
+      setUpdatingPeriodId(null);
+    }
+  };
+
   const loadSettingsData = React.useCallback(async (tid: string) => {
     try {
       setLoading(true);
-      const [settingsRes, orgRes, membersRes, invitesRes] = await Promise.allSettled([
+      const [settingsRes, orgRes, membersRes, invitesRes, periodsRes] = await Promise.allSettled([
         apiClient.get<{ data: Record<string, unknown> }>(`/organizations/${tid}/settings`),
         apiClient.get<{ data: TenantDetails }>(`/organizations/${tid}`),
         apiClient.get<{ data: TeamMember[] }>(`/organizations/${tid}/members`),
         apiClient.get<{ data: PendingInvitation[] }>(`/organizations/${tid}/invitations`),
+        apiClient.get<{ data: AccountingPeriodState[] }>('/ledger/periods'),
       ]);
 
       if (settingsRes.status === 'fulfilled' && settingsRes.value.data) {
@@ -163,6 +237,10 @@ export default function SettingsPage() {
 
       if (invitesRes.status === 'fulfilled' && invitesRes.value.data) {
         setPendingInvitations(invitesRes.value.data);
+      }
+
+      if (periodsRes.status === 'fulfilled' && periodsRes.value.data) {
+        setPeriods(periodsRes.value.data);
       }
     } catch {
       toast.error('Failed to load organization settings');
@@ -389,6 +467,23 @@ export default function SettingsPage() {
         >
           <User className="w-4 h-4" />
           My Profile & Security
+        </Button>
+        <Button
+          variant={activeTab === 'ACCOUNTING_PERIODS' ? 'default' : 'outline'}
+          size="sm"
+          onClick={() => {
+            setActiveTab('ACCOUNTING_PERIODS');
+            if (periods.length === 0) loadPeriods();
+          }}
+          className="gap-2 h-9 shrink-0"
+        >
+          <Calendar className="w-4 h-4" />
+          Fiscal Periods & Locks
+          {periods.length > 0 && (
+            <Badge variant="secondary" className="ml-1 text-xs h-5 px-2 font-medium">
+              {periods.filter((p) => p.status === 'CLOSED').length} Locked
+            </Badge>
+          )}
         </Button>
       </div>
 
@@ -1223,6 +1318,218 @@ export default function SettingsPage() {
                   {updatingPassword ? 'Updating...' : 'Update Password'}
                 </Button>
               </form>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* TAB 5: FISCAL PERIODS & LOCKS */}
+      {activeTab === 'ACCOUNTING_PERIODS' && (
+        <div className="space-y-6">
+          {/* Header Callout */}
+          <Card className="border-border/70 bg-primary/5 shadow-sm">
+            <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 pb-2 pt-4 px-5">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center shrink-0">
+                  <Lock className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                </div>
+                <div>
+                  <CardTitle className="text-sm font-semibold">
+                    Fiscal Calendar & Period Locking
+                  </CardTitle>
+                  <CardDescription className="text-xs">
+                    Lock accounting periods to prevent unauthorized retroactive modifications or
+                    backdated journal entries.
+                  </CardDescription>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={loadPeriods}
+                  disabled={loadingPeriods}
+                  className="h-8 gap-1.5 text-xs"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${loadingPeriods ? 'animate-spin' : ''}`} />
+                  Refresh
+                </Button>
+                {periods.length === 0 && (
+                  <Button
+                    size="sm"
+                    onClick={handleInitializeFiscalYear}
+                    disabled={initializingFiscalYear}
+                    className="h-8 gap-1.5 text-xs"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    {initializingFiscalYear
+                      ? 'Initializing...'
+                      : `Initialize Fiscal Year ${new Date().getFullYear()}`}
+                  </Button>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent className="px-5 pb-4 pt-1">
+              <div className="rounded-md border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-muted-foreground flex items-start gap-2.5">
+                <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                <div>
+                  <span className="font-semibold text-foreground">
+                    GAAP / IFRS Tamper-Resistance Invariant:
+                  </span>{' '}
+                  When a period is{' '}
+                  <span className="font-semibold text-amber-700 dark:text-amber-300">LOCKED</span>{' '}
+                  or{' '}
+                  <span className="font-semibold text-amber-700 dark:text-amber-300">CLOSED</span>,
+                  no bank statement transactions can be settled into it, no backdated invoices can
+                  be posted, and direct journal entries are rejected by the general ledger engine.
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Periods Table */}
+          <Card className="border-border/70 shadow-sm">
+            <CardHeader className="pb-3 border-b border-border/40 flex flex-row items-center justify-between">
+              <div>
+                <CardTitle className="text-base font-semibold">Accounting Fiscal Months</CardTitle>
+                <CardDescription className="text-xs">
+                  Review period statuses and toggle lock state to protect finalized tax books.
+                </CardDescription>
+              </div>
+              <div className="flex items-center gap-2 text-xs">
+                <Badge
+                  variant="outline"
+                  className="bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-400"
+                >
+                  {periods.filter((p) => p.status === 'OPEN').length} Open
+                </Badge>
+                <Badge
+                  variant="outline"
+                  className="bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-950/40 dark:text-amber-400"
+                >
+                  {periods.filter((p) => p.status !== 'OPEN').length} Locked
+                </Badge>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              {loadingPeriods ? (
+                <div className="p-12 text-center text-muted-foreground text-sm flex flex-col items-center gap-2">
+                  <Loader2 className="w-6 h-6 animate-spin text-primary" />
+                  Loading fiscal periods...
+                </div>
+              ) : periods.length === 0 ? (
+                <div className="p-12 text-center space-y-3">
+                  <Calendar className="w-10 h-10 text-muted-foreground mx-auto stroke-1" />
+                  <p className="text-sm font-medium text-foreground">
+                    No Accounting Periods Initialized
+                  </p>
+                  <p className="text-xs text-muted-foreground max-w-sm mx-auto">
+                    Initialize the 12 fiscal months for the current financial year to enable
+                    month-end close workflows and period locking.
+                  </p>
+                  <Button
+                    size="sm"
+                    onClick={handleInitializeFiscalYear}
+                    disabled={initializingFiscalYear}
+                    className="gap-2 text-xs"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    {initializingFiscalYear
+                      ? 'Initializing...'
+                      : `Initialize Fiscal Year ${new Date().getFullYear()}`}
+                  </Button>
+                </div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow className="hover:bg-transparent">
+                      <TableHead className="w-16">#</TableHead>
+                      <TableHead>Period Name</TableHead>
+                      <TableHead>Start Date</TableHead>
+                      <TableHead>End Date</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Locked Date</TableHead>
+                      <TableHead className="text-right">Action</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {periods.map((period) => {
+                      const isClosed = period.status !== 'OPEN';
+                      const isUpdating = updatingPeriodId === period.id;
+
+                      return (
+                        <TableRow key={period.id}>
+                          <TableCell className="font-mono text-xs text-muted-foreground">
+                            {String(period.periodNumber).padStart(2, '0')}
+                          </TableCell>
+                          <TableCell className="font-medium text-sm">{period.periodName}</TableCell>
+                          <TableCell className="text-xs text-muted-foreground font-mono">
+                            {formatIsoDate(period.startDate)}
+                          </TableCell>
+                          <TableCell className="text-xs text-muted-foreground font-mono">
+                            {formatIsoDate(period.endDate)}
+                          </TableCell>
+                          <TableCell>
+                            {isClosed ? (
+                              <Badge
+                                variant="outline"
+                                className="bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30 gap-1 text-xs font-semibold"
+                              >
+                                <Lock className="w-3 h-3" />
+                                {period.status}
+                              </Badge>
+                            ) : (
+                              <Badge
+                                variant="outline"
+                                className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30 gap-1 text-xs font-semibold"
+                              >
+                                <Unlock className="w-3 h-3" />
+                                OPEN
+                              </Badge>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-xs text-muted-foreground">
+                            {period.closedAt ? formatIsoDate(period.closedAt) : '—'}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {isClosed ? (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={isUpdating}
+                                onClick={() => handleTogglePeriodStatus(period)}
+                                className="h-8 gap-1.5 text-xs text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 border-emerald-300 dark:border-emerald-800 dark:hover:bg-emerald-950/50"
+                              >
+                                {isUpdating ? (
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                ) : (
+                                  <Unlock className="w-3.5 h-3.5" />
+                                )}
+                                Reopen Period
+                              </Button>
+                            ) : (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={isUpdating}
+                                onClick={() => handleTogglePeriodStatus(period)}
+                                className="h-8 gap-1.5 text-xs text-amber-600 hover:text-amber-700 hover:bg-amber-50 border-amber-300 dark:border-amber-800 dark:hover:bg-amber-950/50"
+                              >
+                                {isUpdating ? (
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                ) : (
+                                  <Lock className="w-3.5 h-3.5" />
+                                )}
+                                Lock Period
+                              </Button>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              )}
             </CardContent>
           </Card>
         </div>

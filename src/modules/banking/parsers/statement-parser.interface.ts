@@ -40,6 +40,12 @@ export interface ParsedStatementResult {
   metadata?: Record<string, unknown>;
 }
 
+export interface ParseStatementOptions {
+  dateFormat?: 'DD/MM/YYYY' | 'MM/DD/YYYY' | 'AUTO';
+  bankInstitution?: string;
+  currency?: string;
+}
+
 export interface IStatementParser {
-  parse(content: string | Buffer): Promise<ParsedStatementResult>;
+  parse(content: string | Buffer, options?: ParseStatementOptions): Promise<ParsedStatementResult>;
 }

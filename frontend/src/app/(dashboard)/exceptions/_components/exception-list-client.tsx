@@ -27,12 +27,16 @@ import {
   X,
   AlertCircle,
   Wallet,
+  Split,
+  Plus,
+  Trash2,
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import {
   Table,
@@ -54,6 +58,7 @@ import {
   getPendingExceptions,
   resolveException,
   batchResolveExceptions,
+  SplitAllocationPayload,
 } from '@/lib/api/exceptions';
 
 const STANDARD_CATEGORIES = [
@@ -212,6 +217,18 @@ export function ExceptionListClient({
   const selectedException = exceptions.find((e) => e.id === selectedId);
 
   // Auto-sync category selection when selected item changes
+  interface SplitRow {
+    accountCode: string;
+    amountStr: string;
+    memo: string;
+  }
+
+  const [splittingItem, setSplittingItem] = React.useState<ExceptionItem | null>(null);
+  const [splitRows, setSplitRows] = React.useState<SplitRow[]>([
+    { accountCode: '6010', amountStr: '', memo: '' },
+    { accountCode: '6020', amountStr: '', memo: '' },
+  ]);
+
   React.useEffect(() => {
     if (selectedException) {
       setSelectedCategoryCode(selectedException.suggestedAccountCode || '5020');
@@ -219,14 +236,37 @@ export function ExceptionListClient({
     }
   }, [selectedException?.id]);
 
+  React.useEffect(() => {
+    if (splittingItem) {
+      setSplitRows([
+        { accountCode: splittingItem.suggestedAccountCode || '6010', amountStr: '', memo: '' },
+        { accountCode: '6020', amountStr: '', memo: '' },
+      ]);
+    }
+  }, [splittingItem?.id]);
+
   // Optimistic Mutation: Approve
   const resolveMutation = useMutation({
-    mutationFn: ({ id, category, note }: { id: string; category: string; note?: string }) =>
+    mutationFn: ({
+      id,
+      category,
+      note,
+      splits,
+    }: {
+      id: string;
+      category?: string;
+      note?: string;
+      splits?: SplitAllocationPayload[];
+    }) =>
       resolveException(
         id,
         'APPROVE',
-        note || `Approved under category ${category}. Rule remembered: ${rememberRule}`,
+        note ||
+          (splits
+            ? 'Split multi-category transaction'
+            : `Approved under category ${category}. Rule remembered: ${rememberRule}`),
         category,
+        splits,
       ),
     onMutate: async ({ id }) => {
       await queryClient.cancelQueries({ queryKey: exceptionKeys.lists() });
@@ -279,19 +319,25 @@ export function ExceptionListClient({
       return { previousQueries };
     },
     onSuccess: (_data, variables) => {
-      if (variables?.category === '3020') {
+      if (variables?.splits) {
+        toast.success(
+          `Transaction successfully split across ${variables.splits.length} accounts & posted to General Ledger`,
+        );
+      } else if (variables?.category === '3020') {
         toast.success("Recorded as Owner's Personal Draw (Account 3020) - 100% Tax Compliant");
       } else {
         toast.success('Approved & recorded to General Ledger');
       }
     },
-    onError: (err, variables, context) => {
+    onError: (err: unknown, _variables, context) => {
       if (context?.previousQueries) {
         context.previousQueries.forEach(([key, val]) => {
           queryClient.setQueryData(key, val);
         });
       }
-      toast.error('Failed to approve transaction.');
+      const errObj = err as { data?: { message?: string }; message?: string };
+      const msg = errObj?.data?.message || errObj?.message || 'Failed to approve transaction.';
+      toast.error(msg);
       console.error('Failed to resolve exception item:', err);
     },
     onSettled: () => {
@@ -1094,6 +1140,18 @@ export function ExceptionListClient({
                             variant="outline"
                             size="sm"
                             onClick={() => {
+                              setSplittingItem(exc);
+                            }}
+                            className="h-7 text-xs px-2 text-indigo-600 dark:text-indigo-400 border-indigo-500/30 bg-indigo-500/10 hover:bg-indigo-500/20 font-medium cursor-pointer"
+                            title="Split into multiple Chart of Accounts allocations"
+                          >
+                            <Split className="w-3 h-3 mr-1" />
+                            Split
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
                               setSelectedId(exc.id);
                               setViewMode('split');
                             }}
@@ -1537,6 +1595,23 @@ export function ExceptionListClient({
                       type="button"
                       variant="outline"
                       size="sm"
+                      onClick={() => {
+                        if (selectedException) {
+                          setSplittingItem(selectedException);
+                        }
+                      }}
+                      disabled={resolveMutation.isPending}
+                      className="text-xs cursor-pointer h-8 px-3 text-indigo-600 dark:text-indigo-400 border-indigo-500/30 bg-indigo-500/10 hover:bg-indigo-500/20 font-medium"
+                      title="Split single transaction into multiple Chart of Accounts allocations"
+                    >
+                      <Split className="w-3.5 h-3.5 mr-1" />
+                      Split
+                    </Button>
+
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
                       onClick={handleSkip}
                       disabled={resolveMutation.isPending}
                       className="text-xs cursor-pointer h-8 px-3 flex-1 sm:flex-initial"
@@ -1823,6 +1898,284 @@ export function ExceptionListClient({
                   <>
                     <XCircle className="w-3.5 h-3.5 mr-1.5" />
                     Dismiss {selectedExceptionIds.size} Items
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Split Transaction Modal */}
+      {splittingItem && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 overflow-y-auto"
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !resolveMutation.isPending) {
+              setSplittingItem(null);
+            }
+          }}
+        >
+          <div className="relative w-full max-w-2xl bg-card border border-border rounded-xl shadow-2xl p-6 animate-in fade-in-0 zoom-in-95 duration-200">
+            <div className="flex items-center justify-between mb-4 pb-3 border-b border-border/60">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-indigo-500/10 text-indigo-500">
+                  <Split className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-foreground flex items-center gap-2">
+                    Split Transaction: {splittingItem.cleanPayee}
+                    <Badge
+                      variant="outline"
+                      className="text-[10px] font-semibold bg-indigo-500/5 text-indigo-600 dark:text-indigo-400 border-indigo-500/20"
+                    >
+                      Multi-Category
+                    </Badge>
+                  </h3>
+                  <p className="text-xs text-muted-foreground">
+                    Total Amount:{' '}
+                    <span className="font-mono font-bold text-foreground">
+                      {formatCurrency(
+                        splittingItem.amount,
+                        splittingItem.currency || tenantCurrency,
+                      )}
+                    </span>{' '}
+                    • {formatIsoDate(splittingItem.date)}
+                  </p>
+                </div>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setSplittingItem(null)}
+                disabled={resolveMutation.isPending}
+                className="h-8 w-8 p-0 rounded-full cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+
+            <p className="text-xs text-muted-foreground mb-4">
+              Allocate this bank transaction across multiple accounts in your General Ledger. The
+              sum of all line items must equal the total transaction amount.
+            </p>
+
+            <div className="space-y-3 max-h-[380px] overflow-y-auto pr-1">
+              {splitRows.map((row, idx) => (
+                <div
+                  key={idx}
+                  className="flex items-center gap-2 p-2.5 rounded-lg border border-border bg-muted/20"
+                >
+                  <div className="flex-1 min-w-[160px]">
+                    <label className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider mb-1 block">
+                      Category / Account
+                    </label>
+                    <select
+                      value={row.accountCode}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setSplitRows((prev) =>
+                          prev.map((r, i) => (i === idx ? { ...r, accountCode: val } : r)),
+                        );
+                      }}
+                      className="w-full h-8 text-xs rounded-md border border-border bg-background px-2 font-medium"
+                    >
+                      {STANDARD_CATEGORIES.map((cat) => (
+                        <option key={cat.code} value={cat.code}>
+                          {cat.code} - {cat.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="w-32">
+                    <label className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider mb-1 block">
+                      Amount ({splittingItem.currency || tenantCurrency})
+                    </label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0.01"
+                      placeholder="0.00"
+                      value={row.amountStr}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setSplitRows((prev) =>
+                          prev.map((r, i) => (i === idx ? { ...r, amountStr: val } : r)),
+                        );
+                      }}
+                      className="h-8 text-xs font-mono font-bold"
+                    />
+                  </div>
+
+                  <div className="flex-1 min-w-[140px]">
+                    <label className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider mb-1 block">
+                      Memo / Note (Optional)
+                    </label>
+                    <Input
+                      type="text"
+                      placeholder="e.g. Office Equipment"
+                      value={row.memo}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setSplitRows((prev) =>
+                          prev.map((r, i) => (i === idx ? { ...r, memo: val } : r)),
+                        );
+                      }}
+                      className="h-8 text-xs"
+                    />
+                  </div>
+
+                  <div className="pt-5">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        if (splitRows.length > 2) {
+                          setSplitRows((prev) => prev.filter((_, i) => i !== idx));
+                        }
+                      }}
+                      disabled={splitRows.length <= 2 || resolveMutation.isPending}
+                      className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive cursor-pointer disabled:opacity-30"
+                      title={
+                        splitRows.length <= 2
+                          ? 'Minimum 2 split lines required'
+                          : 'Remove split line'
+                      }
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-3 flex items-center justify-between">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setSplitRows((prev) => [
+                    ...prev,
+                    { accountCode: '6010', amountStr: '', memo: '' },
+                  ]);
+                }}
+                disabled={splitRows.length >= 10 || resolveMutation.isPending}
+                className="text-xs h-8 cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5 mr-1" />
+                Add Split Line
+              </Button>
+
+              {/* Balance Verification Indicator */}
+              <div className="flex items-center gap-2">
+                {(() => {
+                  const totalCents = Math.round(splittingItem.amount * 100);
+                  const allocatedCents = splitRows.reduce((sum, r) => {
+                    const parsed = parseFloat(r.amountStr);
+                    return sum + (isNaN(parsed) ? 0 : Math.round(parsed * 100));
+                  }, 0);
+                  const remainingCents = totalCents - allocatedCents;
+
+                  if (remainingCents === 0 && splitRows.every((r) => parseFloat(r.amountStr) > 0)) {
+                    return (
+                      <Badge className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 text-xs py-1 px-2.5 flex items-center gap-1.5 font-medium">
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        Balanced (100% matched)
+                      </Badge>
+                    );
+                  }
+
+                  if (remainingCents > 0) {
+                    return (
+                      <Badge
+                        variant="outline"
+                        className="bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 text-xs py-1 px-2.5 flex items-center gap-1.5 font-medium"
+                      >
+                        <AlertTriangle className="w-3.5 h-3.5" />
+                        Remaining:{' '}
+                        {formatCurrency(
+                          remainingCents / 100,
+                          splittingItem.currency || tenantCurrency,
+                        )}
+                      </Badge>
+                    );
+                  }
+
+                  return (
+                    <Badge
+                      variant="outline"
+                      className="bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/30 text-xs py-1 px-2.5 flex items-center gap-1.5 font-medium"
+                    >
+                      <AlertCircle className="w-3.5 h-3.5" />
+                      Over by:{' '}
+                      {formatCurrency(
+                        Math.abs(remainingCents) / 100,
+                        splittingItem.currency || tenantCurrency,
+                      )}
+                    </Badge>
+                  );
+                })()}
+              </div>
+            </div>
+
+            {/* Modal Actions */}
+            <div className="mt-6 pt-4 border-t border-border flex items-center justify-end gap-2.5">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setSplittingItem(null)}
+                disabled={resolveMutation.isPending}
+                className="text-xs h-8 cursor-pointer"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => {
+                  const totalCents = Math.round(splittingItem.amount * 100);
+                  const allocatedCents = splitRows.reduce((sum, r) => {
+                    const parsed = parseFloat(r.amountStr);
+                    return sum + (isNaN(parsed) ? 0 : Math.round(parsed * 100));
+                  }, 0);
+                  if (allocatedCents !== totalCents) {
+                    toast.error('Sum of split amounts must equal total transaction amount');
+                    return;
+                  }
+                  resolveMutation.mutate({
+                    id: splittingItem.id,
+                    splits: splitRows.map((r) => ({
+                      accountCode: r.accountCode,
+                      amountCents: Math.round(parseFloat(r.amountStr) * 100),
+                      memo: r.memo.trim() || undefined,
+                    })),
+                  });
+                  setSplittingItem(null);
+                }}
+                disabled={
+                  resolveMutation.isPending ||
+                  splitRows.length < 2 ||
+                  splitRows.some((r) => !parseFloat(r.amountStr) || parseFloat(r.amountStr) <= 0) ||
+                  splitRows.reduce(
+                    (sum, r) => sum + Math.round((parseFloat(r.amountStr) || 0) * 100),
+                    0,
+                  ) !== Math.round(splittingItem.amount * 100)
+                }
+                className="text-xs h-8 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold cursor-pointer shadow-sm disabled:opacity-50"
+              >
+                {resolveMutation.isPending ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />
+                    Posting Split...
+                  </>
+                ) : (
+                  <>
+                    <Check className="w-3.5 h-3.5 mr-1.5" />
+                    Save & Post Split ({splitRows.length} Lines)
                   </>
                 )}
               </Button>
