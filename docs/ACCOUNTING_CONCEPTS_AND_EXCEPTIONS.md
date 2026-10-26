@@ -70,7 +70,20 @@ Below are the most important account codes you will see throughout the applicati
 - **When it moves:**
   - Whenever card charges or vendor payments for infrastructure are detected on your bank statement, they are categorized into `5010`.
 
-#### 6. `9999` — Suspense / Unallocated Account (Temporary Clearing)
+#### 6. `3020` — Owner Personal Draw / Equity Distribution (Equity)
+
+- **What it is:** Non-business, personal expenditures made on corporate payment cards by founders or partners (e.g., weekend coffee, personal groceries, personal travel).
+- **When it moves:**
+  - When you click **"Personal Draw"** on an accidental personal charge.
+  - **Why it matters:** It debits Equity (`3020`) and credits Cash (`1010`), bypassing the Profit & Loss statement completely so personal spending never pollutes tax deductions or triggers audit penalties.
+
+#### 7. `6030` — Merchant & Payment Gateway Fees (Expense)
+
+- **What it is:** Transaction fees deducted by payment processors (Stripe, PayPal, Adyen, Square) before net funds hit your operating account.
+- **When it moves:**
+  - When an invoice of \$1,000 is settled with a \$970.70 bank deposit, the \$29.30 difference is automatically posted as an expense in `6030`.
+
+#### 8. `9999` — Suspense / Unallocated Account (Temporary Clearing)
 
 - **What it is:** A temporary digital holding bucket.
 - **When it moves:**
@@ -179,11 +192,25 @@ _(System Codes: `MALFORMED_PDF`, `INVALID_FILE_FORMAT`, `EXTRACTION_UNCERTAIN`, 
 
 ---
 
+### Category 6: Closed Period Backdated Transaction
+
+_(System Codes: `CLOSED_PERIOD_VIOLATION`, `LOCKED_PERIOD_ATTEMPT`)_
+
+- **What happened:** A bank statement or transaction upload arrived with transaction dates falling inside an already closed/locked fiscal month or tax year.
+- **Why it is flagged:** To prevent historical records and already-filed tax returns from being silently changed or distorted.
+- **How to resolve it:**
+  - **Reopen Period:** An authorized administrator or controller can unlock the period in Settings with an explicit audit justification.
+  - **Post as Current-Period Adjustment:** Reclassify the adjustment into the current open fiscal month.
+
+---
+
 ## Part 3: What Happens Behind the Scenes When You Click a Button
 
 | Button Clicked           | What the System Does                                                                                        | Effect on Your Books                                                          |
 | :----------------------- | :---------------------------------------------------------------------------------------------------------- | :---------------------------------------------------------------------------- |
 | **"Approve & Record"**   | Accepts the suggested category, creates a balanced double-entry journal entry, and marks the item resolved. | Your Cash (`1010`), Invoices (`1200`/`2010`), and Reports update immediately. |
+| **"Split"**              | Opens an interactive multi-category allocation modal with real-time balance calculations.                   | Distributes one bank charge across multiple expense accounts (e.g., Costco).  |
+| **"Personal Draw"**      | Tags the transaction directly as non-business personal spending.                                            | Debits Owner Draw (`3020`) and credits Cash (`1010`), bypassing P&L expenses. |
 | **"Ignore / Unmatched"** | Discards or unlinks the suggestion without making any journal entry.                                        | Your general ledger remains untouched. No phantom expenses are recorded.      |
 | **"Decide Later"**       | Leaves the item in the queue and jumps to the next item in line.                                            | Does not change anything. Lets you finish other items first.                  |
 | **"Upload Receipt"**     | Stores the receipt file securely in object storage and attaches it to the transaction.                      | Keeps your business fully audit-compliant.                                    |

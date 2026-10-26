@@ -72,7 +72,7 @@ export function LandingHero() {
         {/* No Credit Card Required micro-copy */}
         <p className="mt-3 text-xs text-muted-foreground">
           ✓ No credit card required &nbsp;•&nbsp; ✓ Instant 2-minute setup &nbsp;•&nbsp; ✓ Works
-          with any bank PDF
+          with any bank PDF &nbsp;•&nbsp; ✓ 100+ Pre-trained global merchants
         </p>
 
         {/* Highlight Stats Row */}
@@ -91,6 +91,17 @@ export function LandingHero() {
           <div className="p-3.5 sm:p-4 rounded-xl border border-border/70 bg-card/60 backdrop-blur-xs flex flex-col justify-between">
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-medium mb-1">
               <Sparkles className="w-3.5 h-3.5 text-primary" />
+              <span>Day-1 Catalog</span>
+            </div>
+            <div className="text-xl sm:text-2xl font-bold tracking-tight text-foreground font-mono">
+              100+ Vendors
+            </div>
+            <p className="text-xs text-muted-foreground mt-0.5">Pre-trained AWS, Google, Uber</p>
+          </div>
+
+          <div className="p-3.5 sm:p-4 rounded-xl border border-border/70 bg-card/60 backdrop-blur-xs flex flex-col justify-between">
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-medium mb-1">
+              <FileCheck2 className="w-3.5 h-3.5 text-primary" />
               <span>Smart Clustering</span>
             </div>
             <div className="text-xl sm:text-2xl font-bold tracking-tight text-foreground font-mono">
@@ -108,17 +119,6 @@ export function LandingHero() {
               100% Strict
             </div>
             <p className="text-xs text-muted-foreground mt-0.5">Zero AI ledger hallucination</p>
-          </div>
-
-          <div className="p-3.5 sm:p-4 rounded-xl border border-border/70 bg-card/60 backdrop-blur-xs flex flex-col justify-between">
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-medium mb-1">
-              <Lock className="w-3.5 h-3.5 text-primary" />
-              <span>Security</span>
-            </div>
-            <div className="text-xl sm:text-2xl font-bold tracking-tight text-foreground font-mono">
-              AES-256
-            </div>
-            <p className="text-xs text-muted-foreground mt-0.5">Bank-grade tenant encryption</p>
           </div>
         </div>
       </div>

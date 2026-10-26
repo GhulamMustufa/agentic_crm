@@ -36,6 +36,20 @@ Instead of forcing founders and finance teams to spend weekends categorizing rec
 4. **Radical Explainability (Plain-English Reasons):** Every time the system makes a suggestion, it clearly explains **why** in simple English with a confidence score (e.g. _"Matched to Google LLC based on recurring monthly subscription"_).
 5. **Zero Enterprise Clutter:** Traditional accounting tools overwhelm users with hundreds of nested menus and jargon. The Agentic Business OS provides a clean, fast, clutter-free experience that works seamlessly across desktop, tablet, and mobile in both light and dark themes.
 
+### 1.3 Why Customers Switch from Legacy Accounting Software (QuickBooks & Xero)
+
+For detailed battlecards and competitive breakdowns, see [`/docs/WHY_AGENTIC_OS_VS_QUICKBOOKS.md`](file:///Users/mac/Desktop/projects/agentic_crm/docs/WHY_AGENTIC_OS_VS_QUICKBOOKS.md).
+
+Growing companies migrate from QuickBooks and Xero because legacy tools create 7 daily operational friction traps:
+
+1. **The Payment Gateway Net Fee Trap:** QuickBooks leaves unpaid phantom balances on invoices when Stripe/PayPal deducts a processing fee (\$29.30). Agentic OS auto-books the fee to Account 6030 and marks the invoice 100% paid.
+2. **The Single-Letter Typo Trap:** A client's wire memo with a 1-letter typo ("Staright Corp") fails exact string match in QuickBooks. Agentic OS uses Levenshtein distance & suffix stripping to match and auto-settle.
+3. **The Multi-Invoice Batch Settlement Trap:** One \$10,000 wire paying 3 invoices requires manual search and checking in QuickBooks. Agentic OS solves subset-sum combinations automatically.
+4. **The Mixed Receipt Split Trap:** Splitting a \$650 Costco receipt across Office Supplies and Team Meals requires multi-line manual entry in QuickBooks. Agentic OS provides an interactive split modal with real-time balance validation.
+5. **The Accidental Personal Expense Trap:** Swiping the business card for personal coffee or shopping pollutes business deductions in QuickBooks. Agentic OS provides 1-click **Owner Personal Draw (Account 3020)** equity routing.
+6. **The Day-1 Cold-Start Problem:** QuickBooks forces weeks of manual rule writing. Agentic OS pre-seeds 100+ global tech, SaaS, and travel vendors (AWS, Google, Slack, Uber) with zero manual setup.
+7. **The Retroactive Tampering Trap:** QuickBooks allows silent backdated changes to closed tax years. Agentic OS enforces deterministic **Fiscal Period Locking** and quarantines historical statement overlaps.
+
 ---
 
 ## 2. Product Principles & Financial Safety Rules
