@@ -19,6 +19,7 @@ import { PublicBankAdapter } from './parsers/adapters/public-bank.adapter';
 import { RhbAdapter } from './parsers/adapters/rhb.adapter';
 import { AiStatementParser } from './parsers/ai-statement.parser';
 import { CsvStatementParser } from './parsers/csv-statement.parser';
+import { ImageStatementParser } from './parsers/image-statement.parser';
 import { DocumentInspectorService } from './parsers/layout/document-inspector.service';
 import { LayoutExtractorService } from './parsers/layout/layout-extractor.service';
 import { PdfStatementParser } from './parsers/pdf-statement.parser';
@@ -67,6 +68,7 @@ import { StatementValidationService } from './services/statement-validation.serv
     DocumentInspectorService,
     LayoutExtractorService,
     PdfStatementParser,
+    ImageStatementParser,
     StatementProcessor,
     {
       provide: BANKING_REPOSITORY_TOKEN,
@@ -88,6 +90,7 @@ import { StatementValidationService } from './services/statement-validation.serv
     BankAdapterRegistry,
     DocumentInspectorService,
     LayoutExtractorService,
+    ImageStatementParser,
     BANKING_REPOSITORY_TOKEN,
   ],
 })

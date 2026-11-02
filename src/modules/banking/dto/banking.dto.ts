@@ -12,14 +12,25 @@ export const createBankAccountSchema = z.object({
 export type CreateBankAccountInput = z.input<typeof createBankAccountSchema>;
 export type CreateBankAccountDto = z.infer<typeof createBankAccountSchema>;
 
+export const supportedStatementMimeTypes = [
+  'text/csv',
+  'application/pdf',
+  'application/x-pdf',
+  'image/png',
+  'image/jpeg',
+  'image/webp',
+] as const;
+
+export type SupportedStatementMimeType = (typeof supportedStatementMimeTypes)[number];
+
 export const uploadStatementSchema = z.object({
   bankAccountId: z.string().uuid().optional(),
   fileName: z.string().min(1).max(255),
-  mimeType: z.enum(['text/csv', 'application/pdf', 'application/x-pdf']),
+  mimeType: z.enum(supportedStatementMimeTypes),
   content: z.union([
     z.string().min(10, 'Statement content is required'),
     z.custom<Buffer>((b) => Buffer.isBuffer(b), 'Statement content must be string or Buffer'),
-  ]), // Raw CSV string, Base64 PDF, or raw Buffer
+  ]), // Raw CSV string, Base64 PDF/image, or raw Buffer
   manualBankName: z.string().min(2).optional(),
   manualAccountType: z.enum(['CHECKING', 'SAVINGS', 'CREDIT_CARD']).optional(),
   manualAccountNumberLast4: z
@@ -33,7 +44,7 @@ export type UploadStatementDto = z.infer<typeof uploadStatementSchema>;
 
 export const presignedUrlSchema = z.object({
   fileName: z.string().min(1).max(255),
-  mimeType: z.enum(['text/csv', 'application/pdf', 'application/x-pdf']),
+  mimeType: z.enum(supportedStatementMimeTypes),
 });
 
 export type PresignedUrlInput = z.input<typeof presignedUrlSchema>;
@@ -42,7 +53,7 @@ export type PresignedUrlDto = z.infer<typeof presignedUrlSchema>;
 export const queueStatementUploadSchema = z.object({
   bankAccountId: z.string().uuid().optional(),
   fileName: z.string().min(1).max(255),
-  mimeType: z.enum(['text/csv', 'application/pdf', 'application/x-pdf']),
+  mimeType: z.enum(supportedStatementMimeTypes),
   objectKey: z.string().min(5),
   manualBankName: z.string().min(2).optional(),
   manualAccountType: z.enum(['CHECKING', 'SAVINGS', 'CREDIT_CARD']).optional(),

@@ -42,6 +42,24 @@ export class MockAiProvider implements IAiProvider {
     request: AiStructuredExtractionRequest<T>,
   ): Promise<{ data: T; confidence: number; durationMs: number }> {
     try {
+      if (request.documentTextOrImageBase64.startsWith('data:image/')) {
+        const base64Part = request.documentTextOrImageBase64.split(',')[1];
+        if (base64Part) {
+          try {
+            const decoded = Buffer.from(base64Part, 'base64').toString('utf-8');
+            const jsonStart = decoded.indexOf('{');
+            const jsonEnd = decoded.lastIndexOf('}');
+            if (jsonStart !== -1 && jsonEnd > jsonStart) {
+              const jsonStr = decoded.slice(jsonStart, jsonEnd + 1);
+              const parsed = JSON.parse(jsonStr);
+              const validated = request.schema.parse(parsed);
+              return { data: validated, confidence: 0.98, durationMs: 15 };
+            }
+          } catch {
+            // Not a JSON-encoded mock image; fall through to default
+          }
+        }
+      }
       const parsed = JSON.parse(request.documentTextOrImageBase64);
       const validated = request.schema.parse(parsed);
       return { data: validated, confidence: 0.98, durationMs: 15 };
@@ -91,6 +109,23 @@ export class UniversalAiProvider implements IAiProvider {
     request: AiStructuredExtractionRequest<T>,
   ): Promise<{ data: T; confidence: number; durationMs: number }> {
     const start = Date.now();
+    const isImage = request.documentTextOrImageBase64.startsWith('data:image/');
+
+    const userContent = isImage
+      ? [
+          {
+            type: 'text' as const,
+            text: 'Extract all bank statement data from this document image according to the schema.',
+          },
+          {
+            type: 'image_url' as const,
+            image_url: {
+              url: request.documentTextOrImageBase64,
+            },
+          },
+        ]
+      : request.documentTextOrImageBase64;
+
     const response = await this.client.chat.completions.create({
       model: this.defaultModel,
       response_format: { type: 'json_object' },
@@ -99,7 +134,8 @@ export class UniversalAiProvider implements IAiProvider {
           role: 'system',
           content: `${request.systemPrompt}\nCRITICAL: Respond ONLY with a valid JSON object matching the requested schema.`,
         },
-        { role: 'user', content: request.documentTextOrImageBase64 },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        { role: 'user', content: userContent as any },
       ],
       temperature: 0.1,
     });
@@ -167,6 +203,7 @@ export class AiGatewayService {
     // 3. Google Gemini (OpenAI-compatible endpoint)
     const geminiKey = (this.config?.get('GEMINI_API_KEY') ?? process.env.GEMINI_API_KEY) as
       string | undefined;
+    const geminiModel = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
     if (geminiKey && geminiKey.trim().length > 10) {
       try {
         this.registerProvider(
@@ -174,7 +211,7 @@ export class AiGatewayService {
             providerName: 'gemini',
             apiKey: geminiKey.trim(),
             baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/',
-            model: 'gemini-1.5-flash',
+            model: geminiModel,
           }),
         );
       } catch (err) {

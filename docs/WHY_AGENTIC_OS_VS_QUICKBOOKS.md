@@ -166,19 +166,19 @@ At the end of the year, your CPA prepares and files your corporate tax return ba
 
 ## Direct Side-by-Side Feature Comparison
 
-| Capability                              |                  Agentic Business OS                   |                QuickBooks Online                 |                  Xero                   |
-| :-------------------------------------- | :----------------------------------------------------: | :----------------------------------------------: | :-------------------------------------: |
-| **Bank Statement PDF Processing**       |   **Native multi-page PDF OCR & auto-balance check**   |         Requires 3rd-party paid add-ons          |     Requires manual CSV formatting      |
-| **Payment Gateway Net Fees (Stripe)**   |   **Auto-splits fee (\$29.30) & marks invoice PAID**   |          Leaves unpaid phantom balance           |    Fails without complex bank rules     |
-| **Typo-Tolerant Wire Matching**         |      **Fuzzy Levenshtein matching (89%+ match)**       |           Fails on single-letter typo            |       Fails on single-letter typo       |
-| **Batch Multi-Invoice Wire Settlement** |            **Subset-sum automated solver**             |     Manual search & multi-checkbox selection     |     Manual multi-checkbox selection     |
-| **Mixed Receipt Splitting (Costco)**    |   **Interactive split modal with real-time balance**   |          Multi-row manual journal entry          |         Multi-row manual entry          |
-| **Accidental Personal Spending**        |         **1-Click Owner Draw (3020) tagging**          |          Complex manual equity transfer          |     Complex manual equity transfer      |
-| **Day-1 Merchant Recognition**          |    **100+ Pre-seeded global vendors (AWS, Google)**    | Zero vendors pre-trained; weeks of rule building | Zero vendors pre-trained; manual rules  |
-| **AI Reliability Guarantee**            | **100% Deterministic Math Core ($\sum Dr = \sum Cr$)** |        Gimmicky chat widget; no autonomy         |  Basic predictive prompt; no auto-post  |
-| **Month-End Close Duration**            |              **&lt; 15 minutes / month**               |         10 to 14 days of manual matching         |     8 to 12 days of manual matching     |
-| **Audit Protection & Period Locking**   |      **Tamper-proof lock & backdated quarantine**      |   Soft warning; allows silent historical edits   | Optional password lock; easily bypassed |
-| **Pricing Predictability**              |     **Flat, transparent tiers; zero per-seat tax**     |       Rapid price hikes + paid add-on fees       | Strict transaction caps on lower tiers  |
+| Capability                                  |                            Agentic Business OS                            |                QuickBooks Online                 |                  Xero                   |
+| :------------------------------------------ | :-----------------------------------------------------------------------: | :----------------------------------------------: | :-------------------------------------: |
+| **Bank Statement Ingestion (PDF & Photos)** | **Native multi-page PDF & Photos/Screenshots (.PNG, .JPG) via Vision AI** |         Requires 3rd-party paid add-ons          |     Requires manual CSV formatting      |
+| **Payment Gateway Net Fees (Stripe)**       |            **Auto-splits fee (\$29.30) & marks invoice PAID**             |          Leaves unpaid phantom balance           |    Fails without complex bank rules     |
+| **Typo-Tolerant Wire Matching**             |                **Fuzzy Levenshtein matching (89%+ match)**                |           Fails on single-letter typo            |       Fails on single-letter typo       |
+| **Batch Multi-Invoice Wire Settlement**     |                      **Subset-sum automated solver**                      |     Manual search & multi-checkbox selection     |     Manual multi-checkbox selection     |
+| **Mixed Receipt Splitting (Costco)**        |            **Interactive split modal with real-time balance**             |          Multi-row manual journal entry          |         Multi-row manual entry          |
+| **Accidental Personal Spending**            |                   **1-Click Owner Draw (3020) tagging**                   |          Complex manual equity transfer          |     Complex manual equity transfer      |
+| **Day-1 Merchant Recognition**              |             **100+ Pre-seeded global vendors (AWS, Google)**              | Zero vendors pre-trained; weeks of rule building | Zero vendors pre-trained; manual rules  |
+| **AI Reliability Guarantee**                |          **100% Deterministic Math Core ($\sum Dr = \sum Cr$)**           |        Gimmicky chat widget; no autonomy         |  Basic predictive prompt; no auto-post  |
+| **Month-End Close Duration**                |                        **&lt; 15 minutes / month**                        |         10 to 14 days of manual matching         |     8 to 12 days of manual matching     |
+| **Audit Protection & Period Locking**       |               **Tamper-proof lock & backdated quarantine**                |   Soft warning; allows silent historical edits   | Optional password lock; easily bypassed |
+| **Pricing Predictability**                  |              **Flat, transparent tiers; zero per-seat tax**               |       Rapid price hikes + paid add-on fees       | Strict transaction caps on lower tiers  |
 
 ---
 

@@ -477,8 +477,24 @@ export default function BankingPage() {
           );
         }
 
-        const isPdf = item.fileName.endsWith('.pdf') || item.mimeType.includes('pdf');
-        const mimeType = isPdf ? ('application/pdf' as const) : ('text/csv' as const);
+        let mimeType: 'text/csv' | 'application/pdf' | 'image/png' | 'image/jpeg' | 'image/webp' =
+          'text/csv';
+
+        const lowerName = item.fileName.toLowerCase();
+        if (lowerName.endsWith('.pdf') || item.mimeType.includes('pdf')) {
+          mimeType = 'application/pdf';
+        } else if (lowerName.endsWith('.png') || item.mimeType.includes('png')) {
+          mimeType = 'image/png';
+        } else if (lowerName.endsWith('.webp') || item.mimeType.includes('webp')) {
+          mimeType = 'image/webp';
+        } else if (
+          lowerName.endsWith('.jpg') ||
+          lowerName.endsWith('.jpeg') ||
+          item.mimeType.includes('jpeg') ||
+          item.mimeType.includes('jpg')
+        ) {
+          mimeType = 'image/jpeg';
+        }
 
         // 1. Request presigned upload URL from backend (S3 in production, Local Storage in development)
         const presignedRes = await apiClient.post<{ data: { url: string; objectKey: string } }>(
@@ -682,18 +698,43 @@ export default function BankingPage() {
     }
   };
 
+  const resolveStatementMimeType = (
+    file: File,
+  ): 'text/csv' | 'application/pdf' | 'image/png' | 'image/jpeg' | 'image/webp' => {
+    const name = file.name.toLowerCase();
+    if (name.endsWith('.pdf') || file.type.includes('pdf')) return 'application/pdf';
+    if (name.endsWith('.png') || file.type.includes('png')) return 'image/png';
+    if (name.endsWith('.webp') || file.type.includes('webp')) return 'image/webp';
+    if (
+      name.endsWith('.jpg') ||
+      name.endsWith('.jpeg') ||
+      file.type.includes('jpeg') ||
+      file.type.includes('jpg')
+    ) {
+      return 'image/jpeg';
+    }
+    return 'text/csv';
+  };
+
   const handleFilesProcess = (files: FileList | File[]) => {
     const fileList = Array.from(files);
-    const validFiles = fileList.filter(
-      (f) =>
-        f.name.endsWith('.pdf') ||
-        f.name.endsWith('.csv') ||
+    const validFiles = fileList.filter((f) => {
+      const name = f.name.toLowerCase();
+      return (
+        name.endsWith('.pdf') ||
+        name.endsWith('.csv') ||
+        name.endsWith('.png') ||
+        name.endsWith('.jpg') ||
+        name.endsWith('.jpeg') ||
+        name.endsWith('.webp') ||
         f.type.includes('pdf') ||
-        f.type.includes('csv'),
-    );
+        f.type.includes('csv') ||
+        f.type.includes('image')
+      );
+    });
 
     if (validFiles.length === 0) {
-      toast.error('Please select valid .PDF or .CSV statement files.');
+      toast.error('Please select valid .PDF, .CSV, or image (.PNG, .JPG, .WebP) statement files.');
       return;
     }
 
@@ -702,7 +743,7 @@ export default function BankingPage() {
       file,
       fileName: file.name,
       fileSize: file.size,
-      mimeType: file.name.endsWith('.pdf') ? 'application/pdf' : 'text/csv',
+      mimeType: resolveStatementMimeType(file),
       status: 'QUEUED',
       stageName: 'Queued in batch...',
       progress: 0,
@@ -1145,7 +1186,7 @@ export default function BankingPage() {
                 ref={fileInputRef}
                 type="file"
                 multiple
-                accept=".pdf,.csv,text/csv,application/pdf"
+                accept=".pdf,.csv,.png,.jpg,.jpeg,.webp,text/csv,application/pdf,image/png,image/jpeg,image/webp"
                 className="hidden"
                 onChange={handleFileInputChange}
               />
@@ -1170,11 +1211,11 @@ export default function BankingPage() {
                 </div>
                 <div className="space-y-1">
                   <h3 className="font-semibold text-sm text-foreground">
-                    Click or drag bank statements here
+                    Click or drag bank statements & photos here
                   </h3>
                   <p className="text-xs text-muted-foreground max-w-sm mx-auto">
-                    Select one or <strong>multiple statements (.PDF or .CSV)</strong> for automatic
-                    batch processing.
+                    Upload <strong>PDFs, CSVs, or Photos/Screenshots (.PNG, .JPG)</strong> for
+                    instant automated Vision AI processing.
                   </p>
                 </div>
 
@@ -1187,6 +1228,7 @@ export default function BankingPage() {
                     'Stripe',
                     'Wise',
                     'Standard CSV',
+                    'Image & Photos (Vision)',
                     'Multi-File Batch',
                   ].map((tag) => (
                     <span

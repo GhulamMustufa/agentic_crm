@@ -178,17 +178,19 @@ _(System Codes: `MISSING_RECEIPT`, `MISSING_FIELDS`, `MISSING_INFORMATION`)_
 
 ---
 
-### Category 5: File Reading or Format Issues
+### Category 5: File Reading, Image Quality, or Format Issues
 
 _(System Codes: `MALFORMED_PDF`, `INVALID_FILE_FORMAT`, `EXTRACTION_UNCERTAIN`, `BALANCE_MISMATCH`)_
 
 - **What happened:**
-  - The uploaded bank PDF was password-protected, corrupted, or scanned with low visual quality, **OR**
+  - The uploaded statement (PDF, CSV, or Image photo/screenshot) was corrupted, password-protected, or had unreadable magic bytes.
+  - An uploaded image was **blurry or cut off**, causing the AI model to misread a smudged digit.
   - The starting balance plus all deposits and withdrawals doesn't equal the ending balance printed on the bank statement.
-- **Why it is flagged:** The platform enforces strict mathematical precision. It will never invent numbers from unreadable files.
+  - An image uploaded was not an authentic bank statement (e.g. personal selfie, dining receipt, or pet photo).
+- **Why it is flagged:** The platform enforces strict mathematical precision. It will never guess or invent numbers from unreadable files.
 - **How to resolve it:**
-  - **Re-upload Statement:** Export a clean PDF or CSV directly from your bank's website and re-upload it.
-  - **Manual Check:** If only one blurry line was missed, enter that specific line manually.
+  - **Re-upload Statement / Photo:** Take a clearer, well-lit photo or download the digital PDF/CSV directly from your bank.
+  - **Manual Check:** If only one blurry line was misread, confirm or adjust that specific line in the review drawer.
 
 ---
 

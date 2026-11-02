@@ -38,6 +38,7 @@ import {
   resolveExceptionClusterSchema,
 } from '../dto/banking.dto';
 import { CsvStatementParser } from '../parsers/csv-statement.parser';
+import { ImageStatementParser } from '../parsers/image-statement.parser';
 import { PdfStatementParser, MalformedPdfError } from '../parsers/pdf-statement.parser';
 import { logMemoryDiagnostics } from '../utils/memory-diagnostics';
 import { cleanBankPayee } from '../utils/payee-cleaner';
@@ -99,6 +100,9 @@ export class BankProcessingService {
     private readonly csvParser: CsvStatementParser,
     @Inject(forwardRef(() => PdfStatementParser))
     private readonly pdfParser: PdfStatementParser,
+    @Optional()
+    @Inject(forwardRef(() => ImageStatementParser))
+    private readonly imageParser?: ImageStatementParser,
     @Optional()
     @Inject(forwardRef(() => StatementValidationService))
     validationService?: StatementValidationService,
@@ -255,11 +259,19 @@ export class BankProcessingService {
         }
       }
 
-      // 3. Document Extraction (CSV or PDF)
+      // 3. Document Extraction (CSV, Image, or PDF)
       let parsedData;
       try {
         if (dto.mimeType === 'text/csv') {
           parsedData = await this.csvParser.parse(dto.content, {
+            bankInstitution: bankAccount?.institutionName,
+            currency: bankAccount?.currency,
+          });
+        } else if (dto.mimeType.startsWith('image/')) {
+          if (!this.imageParser) {
+            throw new ValidationError('Image statement processing parser is not configured');
+          }
+          parsedData = await this.imageParser.parse(dto.content, {
             bankInstitution: bankAccount?.institutionName,
             currency: bankAccount?.currency,
           });
@@ -283,7 +295,12 @@ export class BankProcessingService {
           status: 'FAILED',
         });
 
-        const excType = err instanceof MalformedPdfError ? 'MALFORMED_PDF' : 'MISSING_FIELDS';
+        const excType =
+          err instanceof MalformedPdfError
+            ? 'MALFORMED_PDF'
+            : dto.mimeType.startsWith('image/')
+              ? 'EXTRACTION_UNCERTAIN'
+              : 'MISSING_FIELDS';
         const reason = err instanceof Error ? err.message : 'Unknown parsing failure';
 
         const exc = await this.bankingRepo.createExceptionItem({
